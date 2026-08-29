@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: #FFFFFF;
+  -webkit-font-smoothing: antialiased;
+  /* 画面の端を引っぱっても、うしろの白が見えないようにする */
+  overscroll-behavior-y: none;
+}
+/* iPhoneで入力欄をさわったとき、画面が勝手に拡大しないように16px以上を守る */
+input, textarea, select { font-size: 16px; }
