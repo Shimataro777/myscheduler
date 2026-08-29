@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover ＝ ノッチのある機種でも画面の端まで使う -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+    <title>Hibi</title>
+    <meta name="description" content="ひびの記録をつける、じぶんだけの手帳" />
+    <meta name="theme-color" content="#FFFFFF" />
+
+    <!-- ホーム画面に置いたとき、上の余白まで深い緑にする -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Hibi" />
+
+    <!-- 文字の読み込みを少しでも早くするための下ごしらえ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <link rel="stylesheet" href="./app.css" />
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon-v4.png" />
+    <link rel="manifest" href="./manifest-v4.json" />
+
+    <style>
+      /* 読み込みが終わるまでの間だけ出す絵。
+         中身が出たら __hibiHideSplash() で静かに消える */
+      #hibi-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483600;
+        /* アイコンと同じ、白地に水色の手帳。**アプリの帯の色と混ぜないこと** */
+        background: #FFFFFF;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 260ms ease;
+      }
+      #hibi-splash .mark {
+        width: 84px;
+        height: 106px;
+        border-radius: 10px;
+        background: #6FB9E0;
+        position: relative;
+        opacity: 0;
+        animation: hibi-in 520ms cubic-bezier(0.16, 1, 0.3, 1) 120ms forwards;
+        overflow: hidden;
+      }
+      #hibi-splash .mark::before {
+        content: "";
+        position: absolute;
+        left: 0; top: 0; bottom: 0;
+        width: 20px;
+        background: #4E9CC7;
+      }
+      #hibi-splash .mark::after {
+        content: "";
+        position: absolute;
+        left: 38px; top: 0;
+        width: 22px; height: 54px;
+        background: #F2B75C;
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%);
+      }
+      @keyframes hibi-in {
+        from { opacity: 0; transform: translateY(8px) scale(0.96); }
+        to   { opacity: 1; transform: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #hibi-splash .mark { animation: none; opacity: 1; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hibi-splash"><div class="mark"></div></div>
+    <div id="root"></div>
+    <script>
+      /* 消し方は index.html の側に持たせてある。
+         こうしておくと、本体の読み込みが失敗しても絵が残り続けない */
+      window.__hibiHideSplash = function () {
+        var el = document.getElementById("hibi-splash");
+        if (!el) return;
+        el.style.opacity = "0";
+        setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+      };
+      /* 念のため、5秒たったら必ず消す */
+      setTimeout(function () { window.__hibiHideSplash(); }, 5000);
+    </script>
+    <script src="./app.js" defer></script>
+  </body>
+</html>
