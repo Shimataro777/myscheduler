@@ -24,6 +24,11 @@ Error generating stack: `+e.message+`
 .font-medium { font-weight: 500; }
 .font-semibold { font-weight: 600; }
 .font-sans, body { font-family: 'Noto Sans JP', sans-serif; }
+/* **\u7E26\u306E\u5DFB\u304D\u53D6\u308A\u68D2\uFF08\u30B9\u30AF\u30ED\u30FC\u30EB\u30D0\u30FC\uFF09\u3067\u5E45\u3092\u5909\u3048\u306A\u3044\u3053\u3068\u3002**
+   \u8A18\u9332\u304C\u5897\u3048\u3066\u8EE2\u304C\u308B\u3088\u3046\u306B\u306A\u3063\u305F\u77AC\u9593\u306B\u3001\u898B\u51FA\u3057\u306E\u5E2F\u3060\u3051\u7D30\u304F\u306A\u3063\u3066\u898B\u3048\u308B */
+html { scrollbar-gutter: stable; }
+.ft-root { overflow-anchor: none; }
+
 /* \u7DDA\u306F\u7D30\u304F\u3002\u3057\u308B\u3057\u306E\u7DDA\u304C\u592A\u3044\u3068\u3001\u305D\u308C\u3060\u3051\u3067\u753B\u9762\u304C\u56FA\u304F\u898B\u3048\u308B */
 .ft-root svg:not(.thick) { stroke-width: 1.75; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

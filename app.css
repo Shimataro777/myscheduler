@@ -1,4 +1,5 @@
 *,::before,::after{box-sizing:border-box;border:0 solid #E5E5E5;margin:0;padding:0}
+html{scrollbar-gutter:stable}
 html,body,#root{height:100%}
 body{background:#FFFFFF;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none;
   font-family:'Noto Sans JP',system-ui,sans-serif;color:#171717;line-height:1.5}
@@ -117,6 +118,8 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .inline-block{display:inline-block}
 .inline-flex{display:inline-flex}
 .inset-0{top:0;right:0;bottom:0;left:0}
+.inset-x-12{left:48px;right:48px}
+.inset-x-14{left:56px;right:56px}
 .items-center{align-items:center}
 .items-end{align-items:flex-end}
 .items-start{align-items:flex-start}
