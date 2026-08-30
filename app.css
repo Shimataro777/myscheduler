@@ -1,4 +1,3 @@
-/* もとになる下ごしらえ（Tailwind の preflight を、必要なぶんだけ手で書いたもの）*/
 *,::before,::after{box-sizing:border-box;border:0 solid #E5E5E5;margin:0;padding:0}
 html,body,#root{height:100%}
 body{background:#FFFFFF;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none;
@@ -12,14 +11,13 @@ ul,ol{list-style:none}
 a{color:inherit;text-decoration:none}
 h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 [hidden]{display:none}
-.-bottom-2\.5{bottom:-10px}
+
 .-ml-1\.5{margin-left:-6px}
 .-mr-1{margin-right:-4px}
 .-mr-2{margin-right:-8px}
 .-mt-1{margin-top:-4px}
 .-mx-5{margin-left:-20px;margin-right:-20px}
 .-top-1\.5{top:-6px}
-.-top-2\.5{top:-10px}
 .-translate-x-1\/2{transform:translateX(-50%)}
 .absolute{position:absolute}
 .aspect-square{aspect-ratio:1/1}
@@ -39,13 +37,16 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .bg-neutral-300{background-color:#D4D4D4}
 .bg-neutral-50{background-color:#FAFAFA}
 .bg-neutral-900{background-color:#171717}
+.bg-rose-700{background-color:#BE123C}
 .bg-th-50{background-color:#F4FAFD}
 .bg-th-800{background-color:#6FAFD2}
+.bg-transparent{background-color:transparent}
 .bg-white{background-color:#FFFFFF}
 .bg-white\/15{background-color:rgba(255,255,255,0.15)}
 .block{display:block}
 .border{border-width:1px;border-style:solid}
 .border-2{border-width:2px;border-style:solid}
+.border-\[1\.5px\]{border-width:1.5px}
 .border-b{border-bottom-width:1px;border-style:solid}
 .border-dashed{border-style:dashed}
 .border-l{border-left-width:1px;border-style:solid}
@@ -53,18 +54,25 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .border-neutral-200{border-color:#E5E5E5}
 .border-neutral-300{border-color:#D4D4D4}
 .border-r{border-right-width:1px;border-style:solid}
+.border-rose-200{border-color:#FECDD3}
 .border-t{border-top-width:1px;border-style:solid}
 .border-th-200{border-color:#C6EBDD}
 .border-y-2{border-top-width:2px;border-bottom-width:2px;border-style:solid}
 .bottom-0{bottom:0px}
 .break-all{word-break:break-all}
 .break-words{overflow-wrap:break-word}
+.btn-h{min-height:52px}
 .btn-h-lg{min-height:58px}
 .card-soft{box-shadow:0 1px 2px rgba(17,94,89,.05), 0 4px 12px rgba(17,94,89,.06)}
+.cursor-pointer{cursor:pointer}
+.disabled\:opacity-25:disabled{opacity:0.25}
+.disabled\:opacity-40:disabled{opacity:0.4}
+.disabled\:opacity-50:disabled{opacity:0.5}
 .duration-300{transition-duration:300ms}
 .fixed{position:fixed}
 .flex{display:flex}
 .flex-1{flex:1 1 0%}
+.flex-\[2\]{flex:2}
 .flex-col{flex-direction:column}
 .flex-wrap{flex-wrap:wrap}
 .font-bold{font-weight:600}
@@ -80,6 +88,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}
 .grid-cols-7{grid-template-columns:repeat(7,minmax(0,1fr))}
 .h-1{height:4px}
+.h-1\.5{height:6px}
 .h-10{height:40px}
 .h-11{height:44px}
 .h-12{height:48px}
@@ -95,10 +104,17 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .h-8{height:32px}
 .h-9{height:36px}
 .h-\[3px\]{height:3px}
+.h-\[48px\]{height:48px}
 .h-\[52px\]{height:52px}
 .h-\[64px\]{height:64px}
 .h-full{height:100%}
 .hidden{display:none}
+.hover\:bg-neutral-100:hover{background-color:#F5F5F5}
+.hover\:bg-neutral-50:hover{background-color:#FAFAFA}
+.hover\:bg-rose-50:hover{background-color:#FFF1F2}
+.hover\:bg-rose-800:hover{background-color:#9F1239}
+.hover\:text-red-700:hover{color:#B91C1C}
+.hover\:text-rose-700:hover{color:#BE123C}
 .inline-block{display:inline-block}
 .inline-flex{display:inline-flex}
 .inset-0{top:0;right:0;bottom:0;left:0}
@@ -107,12 +123,19 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .items-start{align-items:flex-start}
 .justify-between{justify-content:space-between}
 .justify-center{justify-content:center}
+.justify-end{justify-content:flex-end}
+.leading-\[12px\]{line-height:12px}
+.leading-\[13px\]{line-height:13px}
 .leading-none{line-height:1}
+.leading-normal{line-height:1.5}
 .leading-relaxed{line-height:1.75}
 .leading-snug{line-height:1.4}
 .left-0{left:0px}
 .left-1\/2{left:50%}
 .left-4{left:16px}
+.left-9{left:36px}
+@media (min-width:1024px){.lg\:max-w-3xl{max-width:48rem}}
+@media (min-width:1024px){.lg\:max-w-5xl{max-width:64rem}}
 .line-through{text-decoration:line-through}
 .max-h-full{max-height:100%}
 .max-w-2xl{max-width:42rem}
@@ -139,9 +162,10 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .min-h-\[40px\]{min-height:40px}
 .min-h-\[42px\]{min-height:42px}
 .min-h-\[44px\]{min-height:44px}
+.min-h-\[46px\]{min-height:46px}
 .min-h-\[48px\]{min-height:48px}
-.min-h-\[52px\]{min-height:52px}
 .min-h-\[56px\]{min-height:56px}
+.min-h-\[58px\]{min-height:58px}
 .min-h-\[60px\]{min-height:60px}
 .min-h-\[64px\]{min-height:64px}
 .min-h-\[92px\]{min-height:92px}
@@ -159,7 +183,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .mt-2{margin-top:8px}
 .mt-2\.5{margin-top:10px}
 .mt-3{margin-top:12px}
-.mt-5{margin-top:20px}
 .mx-auto{margin-left:auto;margin-right:auto}
 .overflow-hidden{overflow:hidden}
 .overflow-y-auto{overflow-y:auto}
@@ -183,10 +206,13 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .pb-6{padding-bottom:24px}
 .pl-3{padding-left:12px}
 .pl-5{padding-left:20px}
+.placeholder-neutral-300::placeholder{color:#D4D4D4}
+.placeholder-neutral-400::placeholder{color:#A3A3A3}
 .pointer-events-none{pointer-events:none}
 .pr-1{padding-right:4px}
 .pr-2{padding-right:8px}
 .pr-3{padding-right:12px}
+.pr-4{padding-right:16px}
 .pt-1{padding-top:4px}
 .pt-2{padding-top:8px}
 .pt-3{padding-top:12px}
@@ -222,6 +248,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .right-1\.5{right:6px}
 .right-4{right:16px}
 .right-5{right:20px}
+.rotate-180{transform:rotate(180deg)}
 .rotate-45{transform:rotate(45deg)}
 .rounded-2xl{border-radius:16px}
 .rounded-\[2px\]{border-radius:2px}
@@ -284,12 +311,11 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .top-1\.5{top:6px}
 .top-16{top:64px}
 .top-3{top:12px}
-.top-3\.5{top:14px}
-.top-5{top:20px}
 .tracking-tight{letter-spacing:-.01em}
 .tracking-wide{letter-spacing:.02em}
 .transition-all{transition:all .2s}
 .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.w-1\.5{width:6px}
 .w-10{width:40px}
 .w-11{width:44px}
 .w-12{width:48px}
