@@ -93,7 +93,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .h-11{height:44px}
 .h-12{height:48px}
 .h-14{height:56px}
-.h-16{height:64px}
 .h-2{height:8px}
 .h-28{height:112px}
 .h-3{height:12px}
@@ -168,6 +167,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .min-h-\[58px\]{min-height:58px}
 .min-h-\[60px\]{min-height:60px}
 .min-h-\[64px\]{min-height:64px}
+.min-h-\[74px\]{min-height:74px}
 .min-h-\[92px\]{min-height:92px}
 .min-w-0{min-width:0}
 .min-w-\[40px\]{min-width:40px}
@@ -203,6 +203,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .pb-3{padding-bottom:12px}
 .pb-3\.5{padding-bottom:14px}
 .pb-4{padding-bottom:16px}
+.pb-40{padding-bottom:160px}
 .pb-6{padding-bottom:24px}
 .pl-3{padding-left:12px}
 .pl-5{padding-left:20px}
@@ -320,7 +321,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .w-11{width:44px}
 .w-12{width:48px}
 .w-14{width:56px}
-.w-16{width:64px}
 .w-2{width:8px}
 .w-28{width:112px}
 .w-3{width:12px}
