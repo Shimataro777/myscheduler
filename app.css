@@ -231,7 +231,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .px-5{padding-left:20px;padding-right:20px}
 .px-6{padding-left:24px;padding-right:24px}
 .px-8{padding-left:32px;padding-right:32px}
-.px-\[3px\]{padding-left:3px;padding-right:3px}
 .py-1{padding-top:4px;padding-bottom:4px}
 .py-1\.5{padding-top:6px;padding-bottom:6px}
 .py-10{padding-top:40px;padding-bottom:40px}
@@ -256,7 +255,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .rounded-2xl{border-radius:16px}
 .rounded-\[14px\]{border-radius:14px}
 .rounded-\[2px\]{border-radius:2px}
-.rounded-\[3px\]{border-radius:3px}
 .rounded-full{border-radius:9999px}
 .rounded-lg{border-radius:8px}
 .rounded-md{border-radius:6px}
@@ -291,7 +289,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .text-\[16px\]{font-size:16px}
 .text-\[17\.5px\]{font-size:17.5px}
 .text-\[17px\]{font-size:17px}
-.text-\[19px\]{font-size:19px}
 .text-\[20px\]{font-size:20px}
 .text-\[21px\]{font-size:21px}
 .text-\[22px\]{font-size:22px}
