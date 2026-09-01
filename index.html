@@ -19,8 +19,8 @@
 
     <link rel="stylesheet" href="./app.css" />
     <link rel="icon" type="image/png" href="./favicon.png" />
-    <link rel="apple-touch-icon" href="./apple-touch-icon-v4.png" />
-    <link rel="manifest" href="./manifest-v4.json" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon-v5.png" />
+    <link rel="manifest" href="./manifest-v5.json" />
 
     <style>
       /* 読み込みが終わるまでの間だけ出す絵。
@@ -37,28 +37,27 @@
         transition: opacity 260ms ease;
       }
       #hibi-splash .mark {
-        width: 84px;
-        height: 106px;
-        border-radius: 10px;
-        background: #6FB9E0;
+        width: 92px;
+        height: 82px;
+        border: 5px solid #6FB9E0;
+        border-radius: 12px;
         position: relative;
         opacity: 0;
         animation: hibi-in 520ms cubic-bezier(0.16, 1, 0.3, 1) 120ms forwards;
-        overflow: hidden;
       }
       #hibi-splash .mark::before {
         content: "";
         position: absolute;
-        left: 0; top: 0; bottom: 0;
-        width: 20px;
-        background: #4E9CC7;
+        left: 23px; top: -5px; bottom: -5px;
+        width: 5px;
+        background: #6FB9E0;
       }
       #hibi-splash .mark::after {
         content: "";
         position: absolute;
-        left: 38px; top: 0;
-        width: 22px; height: 54px;
-        background: #F2B75C;
+        left: 55px; top: -5px;
+        width: 18px; height: 44px;
+        background: #6FB9E0;
         clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%);
       }
       @keyframes hibi-in {
