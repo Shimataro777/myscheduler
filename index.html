@@ -4,14 +4,14 @@
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover ＝ ノッチのある機種でも画面の端まで使う -->
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
-    <title>Hibi</title>
+    <title>My手帳</title>
     <meta name="description" content="ひびの記録をつける、じぶんだけの手帳" />
     <meta name="theme-color" content="#FFFFFF" />
 
     <!-- ホーム画面に置いたとき、上の余白まで深い緑にする -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Hibi" />
+    <meta name="apple-mobile-web-app-title" content="My手帳" />
 
     <!-- 文字の読み込みを少しでも早くするための下ごしらえ -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -19,13 +19,13 @@
 
     <link rel="stylesheet" href="./app.css" />
     <link rel="icon" type="image/png" href="./favicon.png" />
-    <link rel="apple-touch-icon" href="./apple-touch-icon-v5.png" />
-    <link rel="manifest" href="./manifest-v5.json" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon-v6.png" />
+    <link rel="manifest" href="./manifest-v6.json" />
 
     <style>
       /* 読み込みが終わるまでの間だけ出す絵。
          中身が出たら __hibiHideSplash() で静かに消える */
-      #hibi-splash {
+      #app-splash {
         position: fixed;
         inset: 0;
         z-index: 2147483600;
@@ -36,7 +36,7 @@
         justify-content: center;
         transition: opacity 260ms ease;
       }
-      #hibi-splash .mark {
+      #app-splash .mark {
         width: 92px;
         height: 82px;
         border: 5px solid #6FB9E0;
@@ -45,14 +45,14 @@
         opacity: 0;
         animation: hibi-in 520ms cubic-bezier(0.16, 1, 0.3, 1) 120ms forwards;
       }
-      #hibi-splash .mark::before {
+      #app-splash .mark::before {
         content: "";
         position: absolute;
         left: 23px; top: -5px; bottom: -5px;
         width: 5px;
         background: #6FB9E0;
       }
-      #hibi-splash .mark::after {
+      #app-splash .mark::after {
         content: "";
         position: absolute;
         left: 55px; top: -5px;
@@ -65,18 +65,18 @@
         to   { opacity: 1; transform: none; }
       }
       @media (prefers-reduced-motion: reduce) {
-        #hibi-splash .mark { animation: none; opacity: 1; }
+        #app-splash .mark { animation: none; opacity: 1; }
       }
     </style>
   </head>
   <body>
-    <div id="hibi-splash"><div class="mark"></div></div>
+    <div id="app-splash"><div class="mark"></div></div>
     <div id="root"></div>
     <script>
       /* 消し方は index.html の側に持たせてある。
          こうしておくと、本体の読み込みが失敗しても絵が残り続けない */
       window.__hibiHideSplash = function () {
-        var el = document.getElementById("hibi-splash");
+        var el = document.getElementById("app-splash");
         if (!el) return;
         el.style.opacity = "0";
         setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
