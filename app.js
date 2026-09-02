@@ -17743,6 +17743,10 @@ function migratePlan(p) {
             .filter((g) => g && typeof g === "object").map((g) => ({
             id: g.id || uid(), title: String(g.title || ""), dueDate: g.dueDate || "",
             done: !!g.done,
+            /* 大事なものを上に置いておける。**記録の押しピンと同じ考え方にそろえること** */
+            pinned: !!g.pinned,
+            /* 期日を入れていないものの並びが、開くたびに変わらないようにする */
+            createdAt: typeof g.createdAt === "string" && g.createdAt ? g.createdAt : "1970-01-01T00:00:00.000Z",
             items: Array.isArray(g.items) ? g.items.filter((i) => i && typeof i === "object")
                 .map((i) => ({ id: i.id || uid(), text: String(i.text || ""), done: !!i.done })) : [],
         })),
@@ -17781,6 +17785,30 @@ function scopedRepeatsOn(r, key) {
 function stepDone(s) {
     return !!(s && s.done);
 }
+/* やることの並び。**この順を画面ごとに変えないこと**（記録の並びと同じ考え方）。
+   固定したもの → 期日の近い順 → 期日なし → 書いた順。
+   済んだものは、呼ぶ側で下へまとめる */
+function compareSteps(a, b) {
+    if (!!a.pinned !== !!b.pinned)
+        return a.pinned ? -1 : 1;
+    if (!!a.dueDate !== !!b.dueDate)
+        return a.dueDate ? -1 : 1;
+    if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate)
+        return a.dueDate.localeCompare(b.dueDate);
+    return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+}
+/* 期日まであと何日か。期日がなければ null */
+function stepLeft(s) {
+    return s && s.dueDate ? daysBetween(todayStr(), s.dueDate) : null;
+}
+/* 「あと3日」「今日まで」「2日すぎ」 */
+function stepLeftLabel(left) {
+    if (left === null)
+        return "";
+    if (left === 0)
+        return "今日まで";
+    return left > 0 ? `あと${left}日` : `${-left}日すぎ`;
+}
 /* ============================================================
    フォルダ
    ・tags … このタグが付いた記録を自動で集める（どれかに当てはまれば入る）
@@ -17793,15 +17821,15 @@ function emptyFolder(name) {
     return { id: uid(), name: name || "", tags: [], types: [], from: "", to: "", marked: false,
         picked: [], excluded: [], createdAt: new Date().toISOString() };
 }
-/* はじめから入っているフォルダ。**消せないようにすること。**
-   印を付けた記録の置き場は、いつでも同じところにあってほしい */
+/* **はじめから入っているフォルダは、もう作らないこと。**
+   「印つき」を消せない形で置いていたが、要らない人には邪魔なだけだった。
+   印を付けた記録は、みつける画面の「印つき」でしぼれる。
+   自分で「印つき」のフォルダを作りたい人は、集める条件から選べる */
 const STAR_FOLDER_ID = "folder-marked";
-function starFolder() {
-    return {
-        ...emptyFolder("印つき"),
-        id: STAR_FOLDER_ID, marked: true, builtin: true,
-        createdAt: "1970-01-01T00:00:00.000Z",
-    };
+/* 前に入れておいた「印つき」を、読み込むときに取りのぞく。
+   **記録は消えないこと**（フォルダは集めて見せるだけの入れもの） */
+function isRetiredStarFolder(f) {
+    return !!f && (f.id === STAR_FOLDER_ID || f.builtin === true);
 }
 function migrateFolder(f) {
     if (!f || typeof f !== "object")
@@ -17819,7 +17847,6 @@ function migrateFolder(f) {
         marked: !!f.marked,
         picked: Array.isArray(f.picked) ? f.picked.filter((x) => typeof x === "string") : [],
         excluded: Array.isArray(f.excluded) ? f.excluded.filter((x) => typeof x === "string") : [],
-        builtin: !!f.builtin,
         id: f.id || uid(),
     };
 }
@@ -18124,6 +18151,14 @@ const BTN_SECONDARY = BTN_BASE + " bg-white border border-neutral-200 text-neutr
 const BTN_DANGER = BTN_BASE + " bg-rose-700 text-white hover:bg-rose-800";
 const BTN_DANGER_SOFT = BTN_BASE + " bg-white border border-rose-200 text-rose-700 hover:bg-rose-50";
 const BTN_QUIET = BTN_BASE + " text-neutral-500 hover:bg-neutral-100";
+/* 札（記録・やること）の横幅の決めごと。
+   **画面ごとに px-… を書き足さないこと。** 少しずつずれて、並んだときにだけ気づく。
+   本文の箱は px-5（20px）なので、いったん CARD_LIST で戻し、
+   CARD_SLOT の 16px を当てる。どの画面でも、札は画面の端から16px。
+   ・CARD_LIST … 札をならべる箱に付ける
+   ・CARD_SLOT … 札ひとつぶんの外わくに付ける */
+const CARD_LIST = "ft-seq -mx-5 pt-1";
+const CARD_SLOT = "relative flex gap-2 pb-2.5 px-4";
 function TextInput(props) { return react_1.default.createElement("input", { ...props, className: inputCls + " " + (props.className || "") }); }
 /* bare ＝ 枠なしの書き味。メモ本文のように、紙に書くように使う欄で使う。
    **枠を消すのに border-0 を足さないこと。** もとの枠の指定と重なって
@@ -19858,8 +19893,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selected, on
     const body = r.type === "memo" ? restOfLines(r) : "";
     const tap = () => { if (selectMode)
         onSelect(r); };
-    return (react_1.default.createElement("div", { onClick: tap, className: "relative flex gap-2 pb-2.5 " + (selectMode ? "pl-3 pr-4 " : "px-4 ")
-            + (selectMode ? "ft-tap cursor-pointer " : "") },
+    return (react_1.default.createElement("div", { onClick: tap, className: (selectMode ? "relative flex gap-2 pb-2.5 pl-3 pr-4 ft-tap cursor-pointer" : CARD_SLOT) },
         !selectMode && (lineUp || lineDown) && (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("span", { className: "absolute", "aria-hidden": "true", style: {
                     left: 7, width: 2, background: color.mid, opacity: 0.45,
@@ -20367,7 +20401,7 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
     }
     /* 時刻の入った記録は、しるしの列を縦線が貫いて串のように見える。
        時刻のないものには線を引かない（つながっていないほうが正しい） */
-    return (react_1.default.createElement("div", { className: "ft-seq ft-spread -mx-5 pt-1" }, list.map((r, i) => {
+    return (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r, i) => {
         const on = timed(r);
         return (react_1.default.createElement(RecordRow, { key: r.id + (r.__repeat ? "-rep" : ""), r: r, repeated: r.__repeat, onEdit: onEdit, onToggleItem: onToggleItem, lineUp: on && i > 0 && timed(list[i - 1]), lineDown: on && i < list.length - 1 && timed(list[i + 1]), onPin: onPin, selectMode: selectMode, selected: !!selectedIds && selectedIds.has(r.id), onSelect: onSelect }));
     })));
@@ -20594,7 +20628,7 @@ function ScopedNotes({ scope, dateKey, records, onEdit, onToggleItem, onAdd, onP
             .map((r) => ({ ...r, __repeat: true, date: dateKey, items: (r.items || []).map((i) => ({ ...i, done: false })) }));
         return [...own, ...rep].sort(compareTimeline);
     }, [records, scope, dateKey]);
-    return (react_1.default.createElement("div", { className: "mb-3" }, list.length > 0 && (react_1.default.createElement("div", { className: "mb-2 ft-seq -mx-5 pt-1" }, list.map((r) => react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin }))))));
+    return (react_1.default.createElement("div", { className: "mb-3" }, list.length > 0 && (react_1.default.createElement("div", { className: "mb-2 " + CARD_LIST }, list.map((r) => react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin }))))));
 }
 /* ============================================================
    記録をえらんで、まとめて削除する
@@ -20661,12 +20695,52 @@ function SelectBar({ sel, list, extraLabel, onExtra }) {
    左右に払っても送れる
    ============================================================ */
 const SPANS = [{ key: "day", label: "日" }, { key: "week", label: "週" }, { key: "month", label: "月" }];
+/* Today の上に出す、期日が近いやることの札。
+   ひとつの計画ぶんを1枚にまとめる。**同じ計画名を何度も出さないこと。**
+   ・見出しの帯を押すと、その計画の画面がひらく（行き来しやすいように、
+     いちばん大きな押し場所を計画へつなげてある）
+   ・やることは2つまで見せて、3つめからはたたむ */
+const DUE_SHOWN = 2;
+function PlanDueCard({ plan, list, onOpen }) {
+    const [open, setOpen] = (0, react_1.useState)(false);
+    const color = colorOf(plan.color);
+    const shown = open ? list : list.slice(0, DUE_SHOWN);
+    const rest = list.length - DUE_SHOWN;
+    return (react_1.default.createElement("div", { className: "flex-1 min-w-0 rounded-[14px] bg-white border border-neutral-200 overflow-hidden" },
+        react_1.default.createElement("button", { type: "button", onClick: onOpen, className: "w-full flex items-center gap-2 px-3.5 min-h-[46px] py-2 text-left ft-tap ft-tap-card", style: { background: color.soft } },
+            react_1.default.createElement("span", { className: "w-7 h-7 rounded-lg flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: color.deep } },
+                react_1.default.createElement(lucide_react_1.Target, { size: 15 })),
+            react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[14px] font-bold truncate", style: { color: color.deep } }, plan.name || "（名前なし）"),
+            react_1.default.createElement("span", { className: "text-[12px] font-bold tabular-nums shrink-0", style: { color: color.deep } },
+                list.length,
+                "\u4EF6"),
+            react_1.default.createElement(lucide_react_1.ChevronRight, { size: 17, className: "shrink-0", style: { color: color.mid } })),
+        react_1.default.createElement("div", { className: "divide-y divide-neutral-100" }, shown.map(({ step, left }) => (react_1.default.createElement("button", { key: step.id, type: "button", onClick: onOpen, className: "w-full flex items-center gap-2 px-3.5 min-h-[46px] py-2 text-left ft-tap ft-tap-card" },
+            step.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: color.mid }, fill: "currentColor" }),
+            react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[14.5px] font-bold text-neutral-900 truncate" }, step.title || "（名前なし）"),
+            react_1.default.createElement("span", { className: "text-[13px] font-bold tabular-nums shrink-0", style: { color: left <= 3 ? color.deep : "#737373" } }, stepLeftLabel(left)))))),
+        rest > 0 && (react_1.default.createElement("button", { type: "button", onClick: () => setOpen((v) => !v), "aria-expanded": open, className: "w-full flex items-center justify-center gap-1 min-h-[42px] text-[13px] font-bold text-neutral-500 border-t border-neutral-100 ft-tap" },
+            open ? "とじる" : `他${rest}件を表示`,
+            react_1.default.createElement("span", { className: "flex " + (open ? "rotate-180" : "") },
+                react_1.default.createElement(lucide_react_1.ChevronDown, { size: 15 }))))));
+}
+/* 日→週→月と回すボタンのしるし。ふたつの弧が、輪をえがいて回っている形。
+   **lucide の refresh をそのまま使わないこと。** あれは輪が閉じていて
+   「読み込み直し」に見える。ここは「切り替わる」ことを伝えたいので、
+   弧のあいだをあけて、矢じりを大きめにしてある。
+   線の太さ・角の丸めは、ほかのしるしとそろえてある */
+function SpanCycleIcon({ size = 21 }) {
+    return (react_1.default.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.75", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true", focusable: "false" },
+        react_1.default.createElement("path", { d: "M20 12a8 8 0 0 0-13.3-6" }),
+        react_1.default.createElement("path", { d: "M10.9 3.9 6.3 6.2l2.3 4.6" }),
+        react_1.default.createElement("path", { d: "M4 12a8 8 0 0 0 13.3 6" }),
+        react_1.default.createElement("path", { d: "M13.1 20.1l4.6-2.3-2.3-4.6" })));
+}
 function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPlan, onAddScoped, onDeleteMany, onPin, onSelecting, onViewDate, onSwapScoped }) {
     const [span, setSpan] = (0, react_1.useState)("day");
     const [date, setDate] = (0, react_1.useState)(todayStr());
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
     const [filterOpen, setFilterOpen] = (0, react_1.useState)(false);
-    const spanSwipe = (0, react_1.useRef)(null); // 切り替えの帯を払ったときの、指の出発点
     const [hidden, setHidden] = (0, react_1.useState)([]); // 出さない記録の種類
     const [weekSel, setWeekSel] = (0, react_1.useState)(null); // 週の画面で押している日
     const sel = useSelectMode(onDeleteMany);
@@ -20694,18 +20768,20 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 return ymd(nd);
             });
     };
-    /* 画面のどこを払っても、日→週→月と切り替わる。
-       **上の切り替え帯の上だけにしないこと。** どこで効くのか分からない。
-       日付の前後は、両側の矢印と「今日」で移る */
-    const moveSpan = (d) => {
+    /* 画面のどこを払っても、前の日／次の日へ移る（週なら前後の週、月なら前後の月）。
+       **上の日付の矢印だけにしないこと。** いちばんよく使う動きなので、
+       どこで払っても効くようにしておく。
+       日→週→月の切り替えは、上の帯か、右下の丸いボタンで行う */
+    const { areaRef, pageCls, setDir } = useSwipePages(() => step(-1), () => step(1));
+    /* 日→週→月→日 と、ひと押しで順に切り替える。
+       **端で止めないこと。** 一巡して日へ戻るほうが、押す回数が読める */
+    const cycleSpan = () => {
         const i = SPANS.findIndex((s) => s.key === span);
-        const next = SPANS[Math.min(SPANS.length - 1, Math.max(0, i + d))];
-        if (next && next.key !== span) {
-            setDir(0);
-            setSpan(next.key);
-        }
+        const next = SPANS[(i + 1) % SPANS.length];
+        setDir(0);
+        setSpan(next.key);
     };
-    const { areaRef, pageCls, setDir } = useSwipePages(() => moveSpan(-1), () => moveSpan(1));
+    const nextSpanLabel = SPANS[(SPANS.findIndex((s) => s.key === span) + 1) % SPANS.length].label;
     /* いま見ている日を外へ伝える。右下の＋が、その日の記録を作れるようにするため */
     (0, react_1.useEffect)(() => { if (onViewDate)
         onViewDate(date); }, [date]); // eslint-disable-line
@@ -20713,15 +20789,25 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
     const label = span === "day" ? fmtDate(date)
         : span === "week" ? `${Number(weekStart.slice(5, 7))}/${Number(weekStart.slice(8, 10))} – ${Number(addDays(weekStart, 6).slice(5, 7))}/${Number(addDays(weekStart, 6).slice(8, 10))}`
             : `${y}年 ${mo}月`;
-    /* 締め切りが近い目標を、そっと上に出す（設定で出さないようにもできる） */
+    /* 締め切りが近いやることを、そっと上に出す。
+       **ひとつずつ札にしないこと。** 同じ計画のものが並ぶと、同じ名前が何度も出て、
+       記録を見せる場所がそのぶん減る。計画ごとに1枚へまとめる */
     const upcoming = (0, react_1.useMemo)(() => {
         const out = [];
-        (plans || []).forEach((p) => (p.steps || []).forEach((g) => {
-            if (!g.dueDate || stepDone(g))
+        (plans || []).forEach((p) => {
+            if (p.doneAt)
                 return;
-            out.push({ plan: p, goal: g, left: daysBetween(todayStr(), g.dueDate) });
-        }));
-        return out.filter((x) => x.left >= 0).sort((a, b) => a.left - b.left).slice(0, 3);
+            const list = (p.steps || [])
+                .filter((g) => g.dueDate && !stepDone(g))
+                .map((g) => ({ step: g, left: daysBetween(todayStr(), g.dueDate) }))
+                .filter((x) => x.left >= 0)
+                /* 固定したものが先、あとは期日の近い順（計画の画面と同じ並び） */
+                .sort((a, b) => compareSteps(a.step, b.step));
+            if (list.length)
+                out.push({ plan: p, list, soonest: list[0].left });
+        });
+        /* いちばん急ぐ計画から。札は3枚まで（それ以上は計画の画面で見る） */
+        return out.sort((a, b) => a.soonest - b.soonest).slice(0, 3);
     }, [plans]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "Today" }),
@@ -20738,13 +20824,8 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                         + (hidden.length ? "text-th-800" : "text-neutral-500 hover:bg-neutral-100") },
                     react_1.default.createElement(lucide_react_1.Filter, { size: 20 }),
                     hidden.length > 0 && (react_1.default.createElement("span", { className: "absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-th-800" })))))),
-        upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "px-5 mb-3 space-y-1.5" }, upcoming.map(({ plan, goal, left }) => (react_1.default.createElement("button", { key: goal.id, type: "button", onClick: () => onOpenPlan(plan), className: "w-full flex items-center gap-2 rounded-2xl bg-white border border-neutral-100 card-soft px-3.5 min-h-[46px] py-2 text-left ft-tap ft-tap-card" },
-            react_1.default.createElement("span", { className: "w-8 h-8 rounded-xl flex items-center justify-center shrink-0", style: { background: colorOf(plan.color).soft, color: colorOf(plan.color).deep } },
-                react_1.default.createElement(lucide_react_1.Target, { size: 16 })),
-            react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                react_1.default.createElement("span", { className: "block text-[11.5px] text-neutral-500 truncate" }, plan.name),
-                react_1.default.createElement("span", { className: "block text-[14.5px] font-bold text-neutral-900 truncate" }, goal.title)),
-            react_1.default.createElement("span", { className: "text-[13.5px] font-bold tabular-nums shrink-0", style: { color: colorOf(plan.color).deep } }, left === 0 ? "今日まで" : `あと${left}日`)))))),
+        upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "mb-1" }, upcoming.map(({ plan, list }) => (react_1.default.createElement("div", { key: plan.id, className: CARD_SLOT },
+            react_1.default.createElement(PlanDueCard, { plan: plan, list: list, onOpen: () => onOpenPlan(plan) })))))),
         react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { touchAction: "pan-y", minHeight: "60vh" } },
             react_1.default.createElement("div", { key: span === "day" ? span + date : span, className: span === "day" ? pageCls : "" },
                 span === "day" && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin })),
@@ -20759,6 +20840,9 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 " ",
                 TYPE_LABELS[t])))),
             hidden.length > 0 && (react_1.default.createElement("button", { type: "button", onClick: () => setHidden([]), className: BTN_SECONDARY + " w-full " + BTN_H + " text-[14.5px] mt-3" }, "\u3059\u3079\u3066\u8868\u793A")))),
+        !sel.on && (react_1.default.createElement("button", { type: "button", onClick: cycleSpan, "aria-label": `${nextSpanLabel}の画面に切り替える`, className: "fixed rounded-2xl bg-white text-th-900 border border-th-200 card-soft flex items-center justify-center ft-tap ft-fab-side z-40", style: { width: 46, height: 46, bottom: "calc(env(safe-area-inset-bottom) + 101px)" } },
+            react_1.default.createElement("span", { key: span, className: "ft-tabpop inline-flex" },
+                react_1.default.createElement(SpanCycleIcon, { size: 21 })))),
         jumpOpen && (react_1.default.createElement(MonthJumpSheet, { year: y, month: mo, years: jumpYears(y), onClose: () => setJumpOpen(false), onConfirm: (yy, mm) => {
                 const d = Math.min(Number(date.slice(8, 10)), new Date(yy, mm, 0).getDate());
                 setDate(`${yy}-${String(mm).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
@@ -20983,14 +21067,14 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
                 react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
                     react_1.default.createElement(SelectButton, { sel: sel }),
                     react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-500 flex-1 text-right" }, "\u6700\u8FD1\u306E\u8A18\u9332")),
-                react_1.default.createElement("div", { className: "ft-seq ft-spread -mx-5 pt-1" }, recent.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle }))))))) : results.length === 0 ? (react_1.default.createElement("div", { className: "ft-noresult py-10 text-center" },
+                react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, recent.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle }))))))) : results.length === 0 ? (react_1.default.createElement("div", { className: "ft-noresult py-10 text-center" },
                 react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement(react_1.default.Fragment, null,
                 react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
                     react_1.default.createElement(SelectButton, { sel: sel }),
                     react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-500 flex-1 text-right" },
                         results.length,
                         "\u4EF6")),
-                react_1.default.createElement("div", { className: "ft-seq ft-spread -mx-5 pt-1" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle }))))))),
+                react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle }))))))),
         react_1.default.createElement(SelectBar, { sel: sel, list: hasCriteria ? results : recent }),
         tagOpen && (react_1.default.createElement(TagPickDialog, { title: "\u30BF\u30B0\u3067\u7D5E\u308A\u8FBC\u3080", selected: tags, known: knownTags, onApply: (v) => { setTags(v); setTagOpen(false); }, onCancel: () => setTagOpen(false) }))));
 }
@@ -21019,7 +21103,8 @@ function PlanCard({ plan, records, onOpen, onPin }) {
     const steps = p.steps || [];
     const doneSteps = steps.filter((g) => stepDone(g)).length;
     const recs = records.filter((r) => r.planId === p.id).length;
-    const next = steps.filter((g) => !stepDone(g) && g.dueDate).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+    /* つぎに出すやることは、計画の画面といちばん上を合わせる（固定 → 期日順） */
+    const next = steps.filter((g) => !stepDone(g) && g.dueDate).sort(compareSteps)[0];
     const left = next ? daysBetween(todayStr(), next.dueDate) : null;
     const done = !!p.doneAt;
     return (react_1.default.createElement("div", { onClick: onOpen, role: "button", tabIndex: 0, onKeyDown: (e) => { if (e.key === "Enter")
@@ -21036,8 +21121,9 @@ function PlanCard({ plan, records, onOpen, onPin }) {
                     react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: p.pinned ? "currentColor" : "none" })))),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })),
         !done && next && left !== null && left >= 0 && (react_1.default.createElement("div", { className: "mt-2.5 flex items-center gap-2" },
+            next.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: c.mid }, fill: "currentColor" }),
             react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[13px] text-neutral-600 truncate" }, next.title),
-            react_1.default.createElement("span", { className: "text-[14.5px] font-bold tabular-nums shrink-0", style: { color: c.deep } }, left === 0 ? "今日まで" : `あと${left}日`)))));
+            react_1.default.createElement("span", { className: "text-[14.5px] font-bold tabular-nums shrink-0", style: { color: c.deep } }, stepLeftLabel(left))))));
 }
 function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan }) {
     /* 並び順：上に固定したもの → ふつうのもの → やり遂げたもの */
@@ -21123,56 +21209,128 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
    大きな1つ「いつまでに何を」の中に、小さな「そのために何をするか」が入る
    例：8/31までにこの単元を覚える → 12〜18ページ／19〜25ページ …
    ============================================================ */
-function StepBlock({ step, color, onChange, onDelete }) {
-    const [draft, setDraft] = (0, react_1.useState)("");
+/* やることの札（読むだけ）。
+   **その場で書き換えられるようにしないこと。** 前は題も期日もいつでも直せて、
+   ×ひとつで消えてしまった。記録の札と同じで、見るときは読むだけ、
+   直すときは鉛筆から開く（消すのも、そのなかの「削除」＋確かめの窓を通す） */
+function StepCard({ step, color, onChange, onEdit, onPin }) {
     const items = step.items || [];
-    const done = items.filter((i) => i.done).length;
-    const left = step.dueDate ? daysBetween(todayStr(), step.dueDate) : null;
-    /* **中の項目から自動で決めないこと。** 上の段のチェックだけで決める */
-    const allDone = !!step.done;
+    const doneCount = items.filter((i) => i.done).length;
+    const left = stepLeft(step);
+    const allDone = stepDone(step);
+    const toggleItem = (id) => onChange({ ...step, items: items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)) });
+    /* 期日の色。過ぎていたら知らせの色、今日なら計画の色、あとは灰 */
+    const dueStyle = allDone ? { color: "#A3A3A3" }
+        : left === null ? { color: "#A3A3A3" }
+            : left < 0 ? { color: "#BE123C" }
+                : left <= 3 ? { color: color.deep } : { color: "#737373" };
+    return (react_1.default.createElement("div", { className: CARD_SLOT },
+        react_1.default.createElement("div", { className: "flex-1 min-w-0 rounded-[14px] bg-white border overflow-hidden", style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5" } },
+            react_1.default.createElement("div", { className: "flex items-start gap-1 px-2.5 py-2", style: step.pinned && !allDone ? { boxShadow: `inset 3px 0 0 ${color.mid}` } : undefined },
+                react_1.default.createElement("button", { type: "button", onClick: () => onChange({ ...step, done: !step.done }), "aria-label": allDone ? "やっていないに戻す" : "やり終えた", "aria-pressed": allDone, className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-xl ft-tap ft-tap-icon" },
+                    react_1.default.createElement("span", { className: "w-6 h-6 rounded-full border-2 flex items-center justify-center", style: allDone ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4" } }, allDone && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
+                        react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })))),
+                react_1.default.createElement("button", { type: "button", onClick: onEdit, className: "flex-1 min-w-0 py-1.5 text-left ft-tap rounded-lg" },
+                    react_1.default.createElement("span", { className: "block ft-input font-bold break-words "
+                            + (allDone ? "line-through text-neutral-400" : "text-neutral-900") }, step.title || react_1.default.createElement("span", { className: "text-neutral-300" }, "\uFF08\u540D\u524D\u306A\u3057\uFF09")),
+                    react_1.default.createElement("span", { className: "flex items-center gap-2 mt-1 flex-wrap" },
+                        step.dueDate && (react_1.default.createElement("span", { className: "text-[12.5px] font-bold tabular-nums", style: dueStyle },
+                            shortDate(step.dueDate),
+                            !allDone && left !== null ? `・${stepLeftLabel(left)}` : "")),
+                        !step.dueDate && react_1.default.createElement("span", { className: "text-[12.5px] text-neutral-400" }, "\u671F\u9650\u306A\u3057"),
+                        items.length > 0 && (react_1.default.createElement("span", { className: "text-[12.5px] font-bold text-neutral-400 tabular-nums" },
+                            doneCount,
+                            "/",
+                            items.length))),
+                    items.length > 0 && react_1.default.createElement("span", { className: "block mt-1.5" },
+                        react_1.default.createElement(ProgressBar, { ratio: doneCount / items.length, color: color.mid }))),
+                react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-0.5 mt-0.5 shrink-0" },
+                    onPin && (react_1.default.createElement("button", { type: "button", onClick: () => onPin(step), "aria-label": step.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!step.pinned, className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: step.pinned ? { background: color.soft, color: color.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
+                        react_1.default.createElement("span", { key: step.pinned ? "on" : "off", className: "flex " + (step.pinned ? "ft-mark" : "") },
+                            react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: step.pinned ? "currentColor" : "none" })))),
+                    react_1.default.createElement("button", { type: "button", onClick: onEdit, "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
+                        react_1.default.createElement(lucide_react_1.Pencil, { size: 16 })))),
+            items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5" }, items.map((it) => (react_1.default.createElement("button", { key: it.id, type: "button", onClick: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-2 min-h-[44px] rounded-xl ft-tap" },
+                react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
+                    react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
+                react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text)))))))));
+}
+/* やることを書く画面。
+   **記録を書く画面と別の作りにしないこと。** 同じ「書くこと」なのに
+   開き方も、閉じ方も、消し方も違うと、そのつど手が迷う。
+   RecordForm と、次のところをそろえてある。
+   ・下から立ち上がる、画面いっぱいの面（小窓ではない）
+   ・頭は 左に×／まん中にしるしと名前
+   ・上から ① 題 → ② いつのことか → ③ 中身 の順
+   ・足もとは 左から「キャンセル・削除・保存」。**削除を本文に埋めないこと**
+   ・書きかけで閉じようとしたら、いちど確かめる
+   ・削除も、確かめの窓をひとつ越えてから */
+function StepForm({ initial, color, onSave, onCancel, onDelete }) {
+    const [step, setStep] = (0, react_1.useState)(initial);
+    const [add, setAdd] = (0, react_1.useState)("");
+    const [dirty, setDirty] = (0, react_1.useState)(false);
+    const [confirmDel, setConfirmDel] = (0, react_1.useState)(false);
+    const [confirmLeave, setConfirmLeave] = (0, react_1.useState)(false);
+    const items = step.items || [];
+    const set = (patch) => { setStep((s) => ({ ...s, ...patch })); setDirty(true); };
     const addItem = () => {
-        const t = draft.trim();
+        const t = add.trim();
         if (!t)
             return;
-        onChange({ ...step, items: [...items, { id: uid(), text: t, done: false }] });
-        setDraft("");
+        set({ items: [...items, { id: uid(), text: t, done: false }] });
+        setAdd("");
     };
-    const toggleItem = (id) => onChange({ ...step, items: items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)) });
-    const delItem = (id) => onChange({ ...step, items: items.filter((i) => i.id !== id) });
-    return (react_1.default.createElement("div", { className: "rounded-2xl bg-white border overflow-hidden", style: { borderColor: allDone ? color.mid : "#E5E5E5" } },
-        react_1.default.createElement("div", { className: "flex items-start gap-1 px-2 py-2 border-b border-neutral-100", style: { background: allDone ? color.soft : "transparent" } },
-            react_1.default.createElement("button", { type: "button", onClick: () => onChange({ ...step, done: !step.done }), "aria-label": "\u9054\u6210", className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-xl ft-tap ft-tap-icon" },
-                react_1.default.createElement("span", { className: "w-6 h-6 rounded-full border-2 flex items-center justify-center", style: allDone ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4" } }, allDone && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
-                    react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })))),
-            react_1.default.createElement("div", { className: "flex-1 min-w-0 py-1.5" },
-                react_1.default.createElement("input", { value: step.title, onChange: (e) => onChange({ ...step, title: e.target.value }), placeholder: "\u3044\u3064\u307E\u3067\u306B\u4F55\u3092\u3059\u308B\u304B", className: "w-full ft-input font-bold bg-transparent text-neutral-900 placeholder-neutral-300 focus:outline-none "
-                        + (allDone ? "line-through text-neutral-400" : "") }),
-                react_1.default.createElement("div", { className: "flex items-center gap-2 mt-1" },
-                    react_1.default.createElement(DateInput, { pill: true, value: step.dueDate, allowEmpty: true, placeholder: "\u671F\u9650", onChange: (e) => onChange({ ...step, dueDate: e.target.value }) }),
-                    step.dueDate && left !== null && !allDone && (react_1.default.createElement("span", { className: "text-[12.5px] font-bold tabular-nums", style: { color: color.deep } }, left >= 0 ? `あと${left}日` : `${-left}日すぎ`)),
-                    items.length > 0 && (react_1.default.createElement("span", { className: "text-[12.5px] font-bold text-neutral-400 tabular-nums ml-auto" },
-                        done,
-                        "/",
-                        items.length))),
-                items.length > 0 && react_1.default.createElement("div", { className: "mt-1.5" },
-                    react_1.default.createElement(ProgressBar, { ratio: done / items.length, color: color.mid }))),
-            react_1.default.createElement("button", { type: "button", onClick: onDelete, "aria-label": "\u524A\u9664", className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-xl text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
-                react_1.default.createElement(lucide_react_1.X, { size: 18 }))),
-        react_1.default.createElement("div", { className: "pl-5 pr-2 py-1" },
-            items.map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-start gap-1" },
-                react_1.default.createElement("button", { type: "button", onClick: () => toggleItem(it.id), className: "flex-1 min-w-0 flex items-start gap-2.5 text-left px-1.5 py-2.5 min-h-[46px] rounded-xl ft-tap" },
-                    react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
-                        react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
-                    react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text)),
-                react_1.default.createElement("button", { type: "button", onClick: () => delItem(it.id), "aria-label": "\u524A\u9664", className: "w-10 h-10 shrink-0 flex items-center justify-center rounded-full text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
-                    react_1.default.createElement(lucide_react_1.X, { size: 16 }))))),
-            react_1.default.createElement("div", { className: "flex items-start gap-1" },
-                react_1.default.createElement("span", { className: "w-7 shrink-0 flex items-center justify-center text-neutral-300 pt-3" },
-                    react_1.default.createElement(lucide_react_1.Plus, { size: 15 })),
-                react_1.default.createElement(TextArea, { bare: true, value: draft, onChange: (e) => setDraft(e.target.value), placeholder: "\u305D\u306E\u305F\u3081\u306B\u3084\u308B\u3053\u3068", minRows: 1, className: "flex-1 min-w-0 py-2.5 placeholder-neutral-300", onKeyDown: (e) => { if (e.key === "Enter") {
-                        e.preventDefault();
-                        addItem();
-                    } }, onBlur: addItem })))));
+    /* 書きかけの1行を、捨てずに入れてから保存する */
+    const finish = () => {
+        const t = add.trim();
+        onSave(t ? { ...step, items: [...items, { id: uid(), text: t, done: false }] } : step);
+    };
+    const cancel = () => { if (dirty || add.trim())
+        setConfirmLeave(true);
+    else
+        onCancel(); };
+    /* チェックリストの記録と同じ決まり：題があるか、中に1行でもあれば保存できる */
+    const canSave = !!(step.title || "").trim() || items.length > 0;
+    return (react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60 },
+        react_1.default.createElement("div", { className: "absolute inset-0 bg-white flex flex-col" },
+            react_1.default.createElement("div", { className: "px-3 pb-2 flex items-center gap-1 shrink-0", style: SAFE_TOP(10) },
+                react_1.default.createElement(TapButton, { onClick: cancel, "aria-label": "\u30AD\u30E3\u30F3\u30BB\u30EB", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 shrink-0" },
+                    react_1.default.createElement(lucide_react_1.X, { size: 26 })),
+                react_1.default.createElement("span", { className: "flex-1 min-w-0 flex items-center justify-center gap-1.5" },
+                    react_1.default.createElement("span", { style: { color: color.deep } },
+                        react_1.default.createElement(lucide_react_1.ListChecks, { size: 17 })),
+                    react_1.default.createElement("span", { className: "text-[15.5px] font-bold text-neutral-700 truncate" }, "\u3084\u308B\u3053\u3068")),
+                react_1.default.createElement("span", { className: "min-w-[52px] shrink-0", "aria-hidden": "true" })),
+            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 max-w-2xl mx-auto w-full" },
+                react_1.default.createElement(TextInput, { value: step.title, onChange: (e) => set({ title: e.target.value }), placeholder: "\u3044\u3064\u307E\u3067\u306B\u4F55\u3092\u3059\u308B\u304B", className: "font-bold mb-3" }),
+                react_1.default.createElement(RowCard, { className: "mb-3" },
+                    react_1.default.createElement(SheetRow, { label: "\u671F\u9650" },
+                        react_1.default.createElement(DateInput, { pill: true, value: step.dueDate, allowEmpty: true, placeholder: "\u306A\u3057", onChange: (e) => set({ dueDate: e.target.value }) })),
+                    react_1.default.createElement(SheetRow, { label: "\u4E0A\u306B\u56FA\u5B9A", last: true },
+                        react_1.default.createElement(Switch, { on: !!step.pinned, label: "\u4E0A\u306B\u56FA\u5B9A", onChange: (v) => set({ pinned: v }) }))),
+                react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1.5" }, "\u305D\u306E\u305F\u3081\u306B\u3084\u308B\u3053\u3068"),
+                react_1.default.createElement("div", { className: "space-y-1" },
+                    items.map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-start gap-1" },
+                        react_1.default.createElement("button", { type: "button", onClick: () => set({ items: items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)) }), className: "flex-1 min-w-0 flex items-start gap-2.5 text-left px-1.5 py-2.5 min-h-[46px] rounded-xl ft-tap" },
+                            react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick text-white" })),
+                            react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text)),
+                        react_1.default.createElement("button", { type: "button", onClick: () => set({ items: items.filter((x) => x.id !== it.id) }), "aria-label": "\u3053\u306E\u884C\u3092\u5916\u3059", className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
+                            react_1.default.createElement(lucide_react_1.X, { size: 16 }))))),
+                    react_1.default.createElement("div", { className: "flex items-start gap-1" },
+                        react_1.default.createElement("span", { className: "w-7 shrink-0 flex items-center justify-center text-neutral-300 pt-3" },
+                            react_1.default.createElement(lucide_react_1.Plus, { size: 15 })),
+                        react_1.default.createElement(TextArea, { bare: true, value: add, onChange: (e) => setAdd(e.target.value), placeholder: "\u3072\u3068\u3064\u66F8\u304F", minRows: 1, className: "flex-1 min-w-0 py-2.5 placeholder-neutral-300", onKeyDown: (e) => { if (e.key === "Enter") {
+                                e.preventDefault();
+                                addItem();
+                            } }, onBlur: addItem })))),
+            react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
+                react_1.default.createElement("button", { type: "button", onClick: cancel, className: BTN_SECONDARY + " flex-1 btn-h-lg text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
+                onDelete && (react_1.default.createElement("button", { type: "button", onClick: () => setConfirmDel(true), className: BTN_DANGER_SOFT + " flex-1 btn-h-lg text-[14.5px]" }, "\u524A\u9664")),
+                react_1.default.createElement("button", { type: "button", onClick: finish, disabled: !canSave, style: { flex: 1.4 }, className: BTN_PRIMARY + " btn-h-lg text-[14.5px]" },
+                    react_1.default.createElement(lucide_react_1.Check, { size: 17 }),
+                    " \u4FDD\u5B58")),
+            confirmLeave && (react_1.default.createElement(ConfirmDialog, { title: "\u4FDD\u5B58\u305B\u305A\u306B\u9589\u3058\u307E\u3059\u304B", body: "\u66F8\u3044\u305F\u5185\u5BB9\u306F\u6B8B\u308A\u307E\u305B\u3093\u3002", danger: false, confirmLabel: "\u9589\u3058\u308B", onCancel: () => setConfirmLeave(false), onConfirm: () => { setConfirmLeave(false); onCancel(); } })),
+            confirmDel && (react_1.default.createElement(ConfirmDialog, { title: "\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u6D88\u3059\u3068\u5143\u306B\u623B\u305B\u307E\u305B\u3093\u3002", onCancel: () => setConfirmDel(false), onConfirm: () => { setConfirmDel(false); onDelete(); } })))));
 }
 /* --- 計画をひらいた画面 ---
    ひとつの計画のなかで、
@@ -21189,6 +21347,8 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
     const [celebrate, setCelebrate] = (0, react_1.useState)(false);
     const [doneAsk, setDoneAsk] = (0, react_1.useState)(false);
     const [addOpen, setAddOpen] = (0, react_1.useState)(false);
+    const [stepEdit, setStepEdit] = (0, react_1.useState)(null); // 書いているやること {step, isNew}
+    const [doneOpen, setDoneOpen] = (0, react_1.useState)(false); // 済んだやることをひらいているか
     const color = colorOf(plan.color);
     const today = todayStr();
     const planRecords = (0, react_1.useMemo)(() => records.filter((r) => r.planId === plan.id).sort(compareTimeline), [records, plan.id]);
@@ -21206,39 +21366,54 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
     /* 2段のチェックリスト */
     const steps = plan.steps || [];
     const setStep = (s) => onChange({ ...plan, steps: steps.map((x) => (x.id === s.id ? s : x)) });
-    const addStep = () => onChange({ ...plan, steps: [...steps, { id: uid(), title: "", dueDate: "", done: false, items: [] }] });
+    /* **作った時点で計画に入れないこと。** 記録と同じで、
+       「保存」を押すまでは、まだどこにも無い。やめれば何も残らない */
+    const addStep = () => setStepEdit({
+        step: { id: uid(), title: "", dueDate: "", done: false, pinned: false, createdAt: new Date().toISOString(), items: [] },
+        isNew: true,
+    });
+    const editStep = (s) => setStepEdit({ step: s, isNew: false });
     const delStep = (id) => onChange({ ...plan, steps: steps.filter((x) => x.id !== id) });
+    const saveStep = (s) => {
+        onChange({ ...plan, steps: stepEdit && stepEdit.isNew ? [...steps, s] : steps.map((x) => (x.id === s.id ? s : x)) });
+        setStepEdit(null);
+    };
     const doneSteps = steps.filter((s) => stepDone(s)).length;
-    /* 期日の近い順にならべる。**書いた順のままにしないこと。**
-       いま何をすればよいかが、上から読めるようにする */
-    const sortedSteps = (0, react_1.useMemo)(() => steps.slice().sort((a, b) => {
-        const da = stepDone(a), db = stepDone(b);
-        if (da !== db)
-            return da ? 1 : -1; // 済んだものは下へ
-        if (!!a.dueDate !== !!b.dueDate)
-            return a.dueDate ? -1 : 1; // 期日なしは下へ
-        if (a.dueDate && b.dueDate)
-            return a.dueDate.localeCompare(b.dueDate);
-        return 0;
-    }), [steps]);
+    /* まだのものと、済んだもの。
+       **済んだものを混ぜて並べないこと。** いま何をすればよいかが読めなくなる */
+    const openSteps = (0, react_1.useMemo)(() => steps.filter((s) => !stepDone(s)).sort(compareSteps), [steps]);
+    const closedSteps = (0, react_1.useMemo)(() => steps.filter(stepDone).sort(compareSteps), [steps]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 max-w-2xl mx-auto w-full pad-fab" },
-                steps.length > 0 && (react_1.default.createElement("div", { className: "rounded-2xl p-4 mb-5 flex items-end gap-3", style: { background: color.soft, border: `1px solid ${color.line}` } },
-                    react_1.default.createElement("span", { className: "flex-1" },
-                        react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 mb-0.5" }, "\u9054\u6210\u3057\u305F\u3082\u306E"),
-                        react_1.default.createElement("span", { className: "block font-display text-[20px] tabular-nums", style: { color: color.deep } },
-                            doneSteps,
-                            react_1.default.createElement("span", { className: "text-[15px] text-neutral-400" },
-                                " / ",
-                                steps.length))),
-                    react_1.default.createElement("span", { className: "flex-[2] pb-1.5" },
-                        react_1.default.createElement(ProgressBar, { ratio: steps.length ? doneSteps / steps.length : 0, color: color.mid })))),
+                steps.length > 0 && (react_1.default.createElement("div", { className: "-mx-5 px-4 mb-3" },
+                    react_1.default.createElement("div", { className: "rounded-[14px] p-4 flex items-end gap-3", style: { background: color.soft, border: `1px solid ${color.line}` } },
+                        react_1.default.createElement("span", { className: "flex-1" },
+                            react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 mb-0.5" }, "\u9054\u6210\u3057\u305F\u3082\u306E"),
+                            react_1.default.createElement("span", { className: "block font-display text-[20px] tabular-nums", style: { color: color.deep } },
+                                doneSteps,
+                                react_1.default.createElement("span", { className: "text-[15px] text-neutral-400" },
+                                    " / ",
+                                    steps.length))),
+                        react_1.default.createElement("span", { className: "flex-[2] pb-1.5" },
+                            react_1.default.createElement(ProgressBar, { ratio: steps.length ? doneSteps / steps.length : 0, color: color.mid }))))),
                 react_1.default.createElement("div", { className: "mb-5" },
-                    react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, sortedSteps.map((s) => (react_1.default.createElement(StepBlock, { key: s.id, step: s, color: color, onChange: setStep, onDelete: () => delStep(s.id) }))))),
+                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, openSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, color: color, onChange: setStep, onEdit: () => editStep(s), onPin: (x) => setStep({ ...x, pinned: !x.pinned }) })))),
+                    closedSteps.length > 0 && (react_1.default.createElement("div", { className: "-mx-5" },
+                        react_1.default.createElement("div", { className: "px-4" },
+                            react_1.default.createElement("button", { type: "button", onClick: () => setDoneOpen((v) => !v), "aria-expanded": doneOpen, className: "w-full flex items-center gap-2 rounded-[14px] border border-neutral-200 bg-white px-3.5 min-h-[46px] text-left ft-tap ft-tap-card" },
+                                react_1.default.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0", style: { background: color.deep, color: "#FFFFFF" } },
+                                    react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })),
+                                react_1.default.createElement("span", { className: "flex-1 text-[14px] font-bold text-neutral-500" },
+                                    "\u3084\u308A\u7D42\u3048\u305F ",
+                                    closedSteps.length,
+                                    "\u4EF6"),
+                                react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (doneOpen ? "rotate-180" : "") },
+                                    react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
+                        doneOpen && (react_1.default.createElement("div", { className: "ft-seq pt-2.5" }, closedSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, color: color, onChange: setStep, onEdit: () => editStep(s) })))))))),
                 plan.doneAt && (react_1.default.createElement("div", { className: "rounded-2xl p-4 mb-5 flex items-center gap-3", style: { background: color.soft } },
                     react_1.default.createElement("span", { className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0", style: { background: color.deep, color: "#FFFFFF" } },
                         react_1.default.createElement(lucide_react_1.Check, { size: 22, strokeWidth: 3, className: "thick" })),
@@ -21254,12 +21429,13 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                     react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1 flex items-center gap-1" },
                         react_1.default.createElement(lucide_react_1.Pin, { size: 12 }),
                         " \u4E0A\u306B\u56FA\u5B9A"),
-                    react_1.default.createElement("div", { className: "ft-seq ft-spread -mx-5 pt-1" }, pinned.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))),
+                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, pinned.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))),
                 byDate.length === 0 ? (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-3" }, "\u307E\u3060\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093")) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, list]) => (react_1.default.createElement("div", { key: d },
-                    react_1.default.createElement("div", { className: "ft-seq ft-spread -mx-5 pt-1" }, list.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))))),
+                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))))),
             react_1.default.createElement(SelectBar, { sel: sel, list: planRecords }),
             !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 })),
+            stepEdit && (react_1.default.createElement(StepForm, { initial: stepEdit.step, color: color, onCancel: () => setStepEdit(null), onSave: saveStep, onDelete: stepEdit.isNew ? null : () => { delStep(stepEdit.step.id); setStepEdit(null); } })),
             addOpen && (react_1.default.createElement(TypePickSheet, { title: "\u306A\u306B\u3092\u8FFD\u52A0\u3057\u307E\u3059\u304B", types: ["__step", ...TYPES], labels: { __step: "やること" }, icons: { __step: react_1.default.createElement(lucide_react_1.ListChecks, { size: 22 }) }, onCancel: () => setAddOpen(false), onPick: (k) => {
                     setAddOpen(false);
                     if (k === "__step") {
@@ -21449,7 +21625,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                         "\u4EF6"))),
                 byDate.length === 0 ? (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-3" }, "\u53F3\u4E0B\u306E\u30DC\u30BF\u30F3\u304B\u3089\u3001\u8A18\u9332\u3092\u5165\u308C\u3089\u308C\u307E\u3059")) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, items]) => (react_1.default.createElement("div", { key: d },
                     react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1.5 tabular-nums" }, d ? fmtDate(d) : ""),
-                    react_1.default.createElement("div", { className: "ft-seq -mx-5 pt-1" }, items.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))))),
+                    react_1.default.createElement("div", { className: CARD_LIST }, items.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))))),
             !sel.on && (react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u306B\u5165\u308C\u308B", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.SlidersHorizontal, { size: 26 }))),
             react_1.default.createElement(SelectBar, { sel: sel, list: list, extraLabel: "\u5916\u3059", onExtra: removeFromFolder }),
@@ -21457,7 +21633,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                     setPickOpen(true);
                 else
                     openSettings(); } })),
-            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", types: folder.builtin ? ["__cond"] : ["__cond", "__rename", "__delete"], labels: { __cond: "集める条件", __rename: "名前を変更", __delete: "このフォルダを削除" }, icons: { __cond: react_1.default.createElement(lucide_react_1.Tag, { size: 22 }), __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
+            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", types: ["__cond", "__rename", "__delete"], labels: { __cond: "集める条件", __rename: "名前を変更", __delete: "このフォルダを削除" }, icons: { __cond: react_1.default.createElement(lucide_react_1.Tag, { size: 22 }), __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
                     setMenuOpen(false);
                     if (k === "__cond")
                         openSettings();
@@ -21921,7 +22097,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp }) {
 const HELP_SECTIONS = [
     {
         title: "記録する",
-        body: "右下の＋から、メモ・チェックリスト・リンク・スケジュールを書けます。\nメモには絵を4枚まで入れられます。\n右上の星を押すと印が付き、「印つき」のフォルダに集まります。",
+        body: "右下の＋から、メモ・チェックリスト・リンク・スケジュールを書けます。\nメモには絵を4枚まで入れられます。\n右上の星を押すと印が付き、みつける画面の「印つき」でまとめて見られます。",
     },
     {
         title: "Today",
@@ -21937,7 +22113,7 @@ const HELP_SECTIONS = [
     },
     {
         title: "フォルダ",
-        body: "「印つき」ははじめから入っていて、星を付けた記録が集まります。\nそのほかは右下の＋から作り、タグ・種類・期間で自動で集められます。\n手で選んで入れることもできます。",
+        body: "右下の＋から作り、タグ・種類・期間で自動で集められます。\n手で選んで入れることもできます。\n星の印が付いた記録だけを集めることもできます。",
     },
     {
         title: "記録の置き場所",
@@ -21993,9 +22169,16 @@ html { scrollbar-gutter: stable; }
   /* 下の帯は幅いっぱいに広げず、真ん中へ寄せる */
   .ft-tabbar-wrap > div { max-width: 720px; }
 }
+/* ＋の左どなりに置くボタン。**＋と別々に場所を決めないこと。**
+   片方だけ動かすと重なる。＋は right:20 で幅56、あいだを12あけて 20+56+12＝88。
+   **この行を media の下に書かないこと。** あとに書くと、横長のときの寄せ方を打ち消す。
+   **ft-fab を付け回さないこと。** あれは「＋」を指す名前として、あちこちで当てにされている */
+.ft-fab-side { right: 88px; animation: ft-fab-in 0.44s cubic-bezier(0.3,1.2,0.4,1) 0.06s backwards; }
+
 @media (min-width: 820px) {
   /* 右下の＋は、中身の右はしに合わせる（画面のすみだと遠い） */
   .ft-fab { right: calc(50% - 340px); }
+  .ft-fab-side { right: calc(50% - 272px); }
 }
 
 /* どの画面でも、下の帯（タブ）が同じ高さに来るようにする。
@@ -22009,6 +22192,12 @@ html { scrollbar-gutter: stable; }
    ・opacity-40 … 効かない欄（終日のときの時刻）をうすくする
    ・pointer-events-auto … 画像の拡大窓で、上下の文字だけを押せるようにする */
 .border-transparent { border-color: transparent; }
+/* やることの札で使うもの。**足し忘れると、区切り線が消えて1かたまりに見える** */
+.divide-y > * + * { border-top-width: 1px; border-top-style: solid; }
+.divide-neutral-100 > * + * { border-top-color: #F5F5F5; }
+.space-y-1 > * + * { margin-top: .25rem; }
+.mt-5 { margin-top: 1.25rem; }
+.-mr-0\.5 { margin-right: -.125rem; }
 .text-rose-600 { color: #E11D48; }
 .items-baseline { align-items: baseline; }
 .items-stretch { align-items: stretch; }
@@ -22460,10 +22649,15 @@ function AppMain() {
             setRecordsState(rs.map(migrateRecord).filter(Boolean));
             setPlansState(ps.map(migratePlan).filter(Boolean));
             setKindsState(ks.filter((k) => k && k.id));
-            /* 「印つき」は、はじめから置いておく。**消えたままにしないこと** */
-            const loadedFolders = fs.map(migrateFolder).filter(Boolean);
-            setFoldersState(loadedFolders.some((f) => f.id === STAR_FOLDER_ID)
-                ? loadedFolders : [starFolder(), ...loadedFolders]);
+            /* 前に入れておいた「印つき」は、ここで取りのぞく。
+               **もう一度足し直さないこと。** 消しても消しても出てくる、と見える。
+               **画面から消すだけで終わらせないこと。** 端末にも残らないよう、
+               取りのぞいたときは、その場で書き戻しておく */
+            const allFolders = fs.map(migrateFolder).filter(Boolean);
+            const keptFolders = allFolders.filter((f) => !isRetiredStarFolder(f));
+            setFoldersState(keptFolders);
+            if (keptFolders.length !== allFolders.length)
+                saveList(FOLDER_KEY, keptFolders);
             try {
                 setTagMasterState(normalizeTags(JSON.parse(tg || "[]")));
             }
@@ -22678,8 +22872,9 @@ function AppMain() {
         setRecords(rs);
         setPlans(Array.isArray(obj.plans) ? obj.plans.map(migratePlan).filter(Boolean) : []);
         setKinds(Array.isArray(obj.kinds) ? obj.kinds.filter((k) => k && k.id) : []);
-        const fs2 = Array.isArray(obj.folders) ? obj.folders.map(migrateFolder).filter(Boolean) : [];
-        setFolders(fs2.some((f) => f.id === STAR_FOLDER_ID) ? fs2 : [starFolder(), ...fs2]);
+        const fs2 = Array.isArray(obj.folders)
+            ? obj.folders.map(migrateFolder).filter(Boolean).filter((f) => !isRetiredStarFolder(f)) : [];
+        setFolders(fs2);
         setTagMaster(Array.isArray(obj.tags) ? obj.tags : []);
         /* 読み込んだものは、もう書き出し済み。促さないよう「最後に書き出した日」を今にする */
         const nextPrefs = obj.prefs && typeof obj.prefs === "object"
