@@ -17462,7 +17462,12 @@ function compareName(a, b) {
 function compareCreated(a, b) {
     return String((a && a.createdAt) || "").localeCompare(String((b && b.createdAt) || ""));
 }
-const sortItems = (list, mode) => list.slice().sort(mode === "created" ? compareCreated : compareName);
+/* 並べかえ。**固定したものを、まっ先に出すこと**（記録の並びと同じ考え方） */
+const sortItems = (list, mode) => list.slice().sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned)
+        return a.pinned ? -1 : 1;
+    return mode === "created" ? compareCreated(a, b) : compareName(a, b);
+});
 /* 大事な記録に付ける印。淡い色でそろえる */
 const MARKS = [
     { key: "star", label: "星", icon: react_1.default.createElement(lucide_react_1.Star, { size: 15 }), color: "#EFCB86" },
@@ -17481,8 +17486,9 @@ const DEFAULT_PREFS = {
     fontSize: "s",
     typeColor: { ...DEFAULT_TYPE_COLOR },
     typeName: {}, // 記録の種類の呼び名を変えたいとき
-    sortPlan: "name", // 計画・カテゴリの並び（"name" ＝ 名前順／"created" ＝ 作成順）
-    sortFolder: "name", // フォルダの並び
+    /* 並び順。**画面ごとに別々に覚えないこと。** 表示設定でひとつだけ決める
+       （"name" ＝ 名前順／"created" ＝ 作成順） */
+    sortOrder: "name",
     showWeekNumbers: false,
     weekStart: 0, // 0＝日曜はじまり
     lastBackup: null,
@@ -17858,15 +17864,15 @@ function stepLeftLabel(left) {
    フォルダ
    ・tags … このタグが付いた記録を自動で集める（どれかに当てはまれば入る）
    ・types … 集める記録の種類を絞りたいとき
-   ・picked … 手で選んで入れた記録
+   ・picked … 手動で選んで入れた記録
    ============================================================ */
 function emptyFolder(name) {
-    /* picked ＝ 手で入れた記録。**「手で外した」を持たないこと。**
+    /* picked ＝ 手動で入れた記録。**「手動で外した」を持たないこと。**
        条件で入ったものを1件だけ外せると、なぜ入らないのかが後から分からなくなる。
-       外すのは手で入れたぶんだけ（picked から抜く）。条件のぶんは条件を変えて外す */
+       外すのは手動で入れたぶんだけ（picked から抜く）。条件のぶんは条件を変えて外す */
     /* from / to ＝ 集める期間（空なら、いつのものでも集める） */
     return { id: uid(), name: name || "", tags: [], types: [], from: "", to: "", marked: false,
-        picked: [], createdAt: new Date().toISOString() };
+        picked: [], pinned: false, createdAt: new Date().toISOString() };
 }
 /* **はじめから入っているフォルダは、もう作らないこと。**
    「印つき」を消せない形で置いていたが、要らない人には邪魔なだけだった。
@@ -17891,16 +17897,16 @@ function migrateFolder(f) {
             : [],
         from: typeof f.from === "string" ? f.from : "",
         to: typeof f.to === "string" ? f.to : "",
-        marked: !!f.marked,
+        marked: !!f.marked, pinned: !!f.pinned,
         picked: Array.isArray(f.picked) ? f.picked.filter((x) => typeof x === "string") : [],
         excluded: undefined,
         id: f.id || uid(),
     };
 }
-/* フォルダに入る記録を集める。自動で集めたものと、手で選んだものを合わせる */
+/* フォルダに入る記録を集める。自動で集めたものと、手動で選んだものを合わせる */
 /* 集める条件が入っているか。
    **フォルダを2種類に分けて持たないこと。** ひとつのフォルダで
-   「条件で自動的に集める」と「手で入れる」の両方ができる（片方だけでもよい） */
+   「条件で自動的に集める」と「手動で入れる」の両方ができる（片方だけでもよい） */
 function folderHasCond(f) {
     return !!(f && (normalizeTags(f.tags).length || (f.types || []).length || f.marked || f.from || f.to));
 }
@@ -17932,7 +17938,7 @@ function folderRecords(folder, records) {
        「メモだけ集める」といった使い方ができなくなる */
     const hasCond = tags.length > 0 || types.length > 0 || folder.marked;
     return records.filter((r) => {
-        /* 期間は、手で入れた記録にも効かせる */
+        /* 期間は、手動で入れた記録にも効かせる */
         if (folder.from && (r.date || "") < folder.from)
             return false;
         if (folder.to && (r.date || "") > folder.to)
@@ -19244,23 +19250,24 @@ function FilterPill({ on, onClick, children, color }) {
    **みつける・フォルダの条件・フォルダの手入れで、同じものを使うこと。**
    別々に書くと、少しずつ並びがずれていく。
    上から ① キーワード ② 種類と印つき ③ タグ ④ 期間（左に名前、右に日付ふたつ） */
-function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, mark, onMark, from, to, onFrom, onTo }) {
+function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, mark, onMark, from, to, onFrom, onTo, extra }) {
     const N = useTypeNames();
     return (react_1.default.createElement(react_1.default.Fragment, null,
         q !== undefined && (react_1.default.createElement(TextInput, { value: q, onChange: (e) => onQ(e.target.value), placeholder: "\u30AD\u30FC\u30EF\u30FC\u30C9\u3067\u691C\u7D22", onKeyDown: (e) => { if (e.key === "Enter" && onEnter)
                 onEnter(); } })),
-        react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" },
-            TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: types.includes(t), onClick: () => onToggleType(t) },
-                typeIcon(t, 14),
-                " ",
-                N[t] || TYPE_LABELS[t]))),
+        react_1.default.createElement("div", { className: "flex gap-1.5" }, TYPES.map((t) => (react_1.default.createElement("button", { key: t, type: "button", onClick: () => onToggleType(t), "aria-pressed": types.includes(t), className: "flex-1 min-w-0 text-[13px] font-bold px-1 min-h-[44px] rounded-full border ft-tap inline-flex items-center justify-center gap-1 "
+                + (types.includes(t) ? "border-th-800 bg-th-800 text-white" : "border-neutral-200 bg-white text-neutral-600") },
+            react_1.default.createElement("span", { className: "shrink-0" }, typeIcon(t, 14)),
+            react_1.default.createElement("span", { className: "truncate" }, N[t] || TYPE_LABELS[t]))))),
+        react_1.default.createElement("div", { className: "flex gap-1.5" },
+            react_1.default.createElement("button", { type: "button", onClick: onOpenTags, className: BTN_SECONDARY + " flex-1 min-w-0 " + BTN_H + " text-[14px]" },
+                react_1.default.createElement(lucide_react_1.Tag, { size: 15 }),
+                " \u30BF\u30B0\u3067\u7D5E\u308A\u8FBC\u3080",
+                tags.length ? `（${tags.length}）` : ""),
             react_1.default.createElement(FilterPill, { on: !!mark, onClick: onMark },
                 react_1.default.createElement(lucide_react_1.Star, { size: 14 }),
-                " \u5370\u3064\u304D")),
-        react_1.default.createElement("button", { type: "button", onClick: onOpenTags, className: BTN_SECONDARY + " w-full " + BTN_H + " text-[14.5px]" },
-            react_1.default.createElement(lucide_react_1.Tag, { size: 15 }),
-            " \u30BF\u30B0\u3067\u7D5E\u308A\u8FBC\u3080",
-            tags.length ? `（${tags.length}）` : ""),
+                " \u5370\u3064\u304D"),
+            extra),
         tags.length > 0 && react_1.default.createElement(TagChips, { tags: tags }),
         react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
             react_1.default.createElement("span", { className: "text-[13.5px] font-bold text-neutral-500 shrink-0 w-[34px]" }, "\u671F\u9593"),
@@ -21113,6 +21120,16 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
     /* **開くだけで終わらせないこと。** 下のほうで押しても、欄は画面の外（上）にあるので
        何も起きていないように見える。いっしょに画面のてっぺんまで戻す */
     const barRef = (0, react_1.useRef)(null);
+    /* 指で触った時点で開く。ただし**キーボードや読み上げからの click も拾うこと。**
+       両方来たときに2度動かないよう、直前に触ったかどうかを覚えておく */
+    const tappedRef = (0, react_1.useRef)(0);
+    const onBarDown = () => { tappedRef.current = Date.now(); toggleOpen(); };
+    const onBarClick = (e) => {
+        e.preventDefault();
+        if (Date.now() - tappedRef.current < 700)
+            return;
+        toggleOpen();
+    };
     const toggleOpen = () => {
         const next = !open;
         setOpen(next);
@@ -21206,7 +21223,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u307F\u3064\u3051\u308B" }),
         react_1.default.createElement("div", { ref: barRef, className: "px-5 pt-3 pb-2 sticky bg-app max-w-2xl mx-auto w-full", style: { top: "calc(env(safe-area-inset-top) + 66px)", zIndex: 20 } },
-            react_1.default.createElement("button", { type: "button", onClick: toggleOpen, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
+            react_1.default.createElement("button", { type: "button", onPointerDown: onBarDown, onClick: onBarClick, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
                     + (hasCriteria ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
                 react_1.default.createElement(lucide_react_1.Search, { size: 17, className: hasCriteria ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
                 react_1.default.createElement("span", { className: "flex-1 min-w-0" }, hasCriteria
@@ -21271,18 +21288,22 @@ function PlanCard({ plan, records, onOpen, onPin }) {
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                 react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, p.name || "（名前なし）"),
                 react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500 mt-1" }, done ? `${fmtDate(p.doneAt)} にやり遂げた` : (steps.length ? `${doneSteps}/${steps.length} 達成・` : "") + `記録 ${recs}件`)),
-            onPin && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onPin(p); }, "aria-label": p.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!p.pinned, className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: p.pinned
-                    ? { background: c.soft, color: c.deep }
-                    : { background: "#F3F3F5", color: "#9A9AA0" } },
-                react_1.default.createElement("span", { key: p.pinned ? "on" : "off", className: "flex " + (p.pinned ? "ft-mark" : "") },
-                    react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: p.pinned ? "currentColor" : "none" })))),
+            onPin && react_1.default.createElement(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } }),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })),
         !done && next && left !== null && left >= 0 && (react_1.default.createElement("div", { className: "mt-2.5 flex items-center gap-2" },
             next.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: stepColor.mid }, fill: "currentColor" }),
             react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[13px] text-neutral-600 truncate" }, next.title),
             react_1.default.createElement("span", { className: "text-[14.5px] font-bold tabular-nums shrink-0", style: { color: stepColor.deep } }, stepLeftLabel(left))))));
 }
-function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, sort, onSort }) {
+/* 上に固定する押しピン。記録・計画・カテゴリ・フォルダで同じものを使う。
+   **札ごとに書き写さないこと。** 見た目と当たりの大きさがずれる */
+function PinButton({ on, onClick, color }) {
+    const c = color || { soft: "var(--th-100)", deep: "var(--th-900)" };
+    return (react_1.default.createElement("button", { type: "button", onClick: onClick, "aria-label": on ? "固定を解除" : "上に固定", "aria-pressed": !!on, className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: on ? { background: c.soft, color: c.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
+        react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") },
+            react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: on ? "currentColor" : "none" }))));
+}
+function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, onPinKind, sort, onSort }) {
     /* カテゴリも計画のなかま。**カテゴリごとに色を持たせないこと** */
     const planColor = useTypeColor(PLAN_TYPE);
     /* カテゴリは名前の順。**作った順にしないこと。**
@@ -21317,7 +21338,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
             kinds.length > 0 && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, sortedKinds.map((k) => {
                 const c = planColor;
                 const n = (grouped.get(k.id) || []).length;
-                return (react_1.default.createElement("button", { key: k.id, type: "button", onClick: () => onOpenKind(k), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft" },
+                return (react_1.default.createElement("div", { key: k.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(k), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer" },
                     react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: c.soft, color: c.deep } },
                         react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -21326,6 +21347,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
                             "\u8A08\u753B ",
                             n,
                             "\u4EF6")),
+                    react_1.default.createElement(PinButton, { on: k.pinned, onClick: (e) => { e.stopPropagation(); onPinKind(k); } }),
                     react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })));
             }))),
             (grouped.get("__none") || []).length > 0 && (react_1.default.createElement("div", null,
@@ -21334,7 +21356,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
             plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 text-center py-6" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093")))));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
-function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan }) {
+function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort }) {
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
@@ -21343,20 +21365,24 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
     const [addOpen, setAddOpen] = (0, react_1.useState)(false);
     const [renameOpen, setRenameOpen] = (0, react_1.useState)(false);
     const [delOpen, setDelOpen] = (0, react_1.useState)(false);
-    const mine = plans.filter((p) => p.kindId === kind.id).slice().sort((a, b) => {
+    /* 計画の一覧と同じ並び。**この画面だけ別にしないこと** */
+    const mine = (0, react_1.useMemo)(() => sortItems(plans.filter((p) => p.kindId === kind.id), sort)
+        .sort((a, b) => {
         const da = !!a.doneAt, db = !!b.doneAt;
         if (da !== db)
             return da ? 1 : -1;
         if (!!a.pinned !== !!b.pinned)
             return a.pinned ? -1 : 1;
         return 0;
-    });
+    }), [plans, kind.id, sort]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: kind.name, onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 max-w-2xl mx-auto w-full pad-fab" },
+                mine.length > 1 && (react_1.default.createElement("div", { className: "flex justify-end mb-1" },
+                    react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
                 react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" },
                     mine.map((p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan }))),
                     mine.length === 0 && react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-3" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))),
@@ -21656,16 +21682,16 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
 /* ============================================================
    フォルダ
    ・タグから自動で集める（例：「ゲーム」に「fgo」「ツイステ」タグの記録）
-   ・任意の記録を手で入れることもできる。どちらも同時に使える
+   ・任意の記録を手動で入れることもできる。どちらも同時に使える
    ============================================================ */
 /* ============================================================
    フォルダに記録を入れる
-   上のタブで「自動で集める」と「手で入れる」を行き来する。
+   上のタブで「自動で集める」と「手動で入れる」を行き来する。
    **別々の入口に分けないこと。** どちらもこのフォルダの集め方なので、
    ひとつの画面で並べて見せたほうが、違いが分かる。
-   手で入れるほうは、みつける画面と同じ道具（言葉・種類・タグ・印・期間）を使う
+   手動で入れるほうは、みつける画面と同じ道具（言葉・種類・タグ・印・期間）を使う
    ============================================================ */
-const FOLDER_TABS = [{ key: "auto", label: "自動で集める" }, { key: "manual", label: "手で入れる" }];
+const FOLDER_TABS = [{ key: "auto", label: "自動で集める" }, { key: "manual", label: "手動で入れる" }];
 function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, onSave }) {
     const [closing, close] = useClosing(onCancel, 200);
     const [tab, setTab] = (0, react_1.useState)(initialTab || "auto");
@@ -21681,7 +21707,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
     const setC = (patch) => setCond((d) => ({ ...d, ...patch }));
     const toggleCondType = (t) => setC({ types: cond.types.includes(t) ? cond.types.filter((x) => x !== t) : [...cond.types, t] });
     const condOn = folderHasCond(cond);
-    /* 手で入れるぶん */
+    /* 手動で入れるぶん */
     const [picked, setPicked] = (0, react_1.useState)(() => new Set(folder.picked || []));
     const [q, setQ] = (0, react_1.useState)("");
     const [fTypes, setFTypes] = (0, react_1.useState)([]);
@@ -21690,7 +21716,12 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
     const [fTagOpen, setFTagOpen] = (0, react_1.useState)(false);
     const [fFrom, setFFrom] = (0, react_1.useState)("");
     const [fTo, setFTo] = (0, react_1.useState)("");
-    /* 条件だけで入るもの。手で選ぶ必要がないので、そう見せる */
+    /* このフォルダに手動で入れたものだけを見る */
+    const [onlyPicked, setOnlyPicked] = (0, react_1.useState)(false);
+    /* 条件の欄を開いているか。**送ったら閉じて、記録を広く見せること** */
+    const [fOpen, setFOpen] = (0, react_1.useState)(true);
+    const listRef = (0, react_1.useRef)(null);
+    /* 条件だけで入るもの。手動で選ぶ必要がないので、そう見せる */
     const autoSet = (0, react_1.useMemo)(() => {
         if (!condOn)
             return new Set();
@@ -21702,6 +21733,8 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
         return records.slice()
             .sort((a, b) => (b.date || "").localeCompare(a.date || "") || compareTimeline(a, b))
             .filter((r) => {
+            if (onlyPicked && !picked.has(r.id))
+                return false;
             if (fTypes.length && !fTypes.includes(r.type))
                 return false;
             if (fMark && !r.mark)
@@ -21723,10 +21756,49 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
             return true;
         })
             .slice(0, 300);
-    }, [records, q, fTypes, fTags, fMark, fFrom, fTo]);
+    }, [records, q, fTypes, fTags, fMark, fFrom, fTo, onlyPicked, picked]);
+    const fHas = !!(q.trim() || fTypes.length || fTags.length || fMark || fFrom || fTo || onlyPicked);
+    const fSummary = [
+        q.trim() ? `「${q.trim()}」` : "",
+        fTypes.map((t) => N[t] || TYPE_LABELS[t]).join("・"),
+        fTags.map((t) => "#" + t).join(" "),
+        fMark ? "印つき" : "",
+        onlyPicked ? "手動で入れた記録" : "",
+        (fFrom || fTo) ? `${fFrom ? shortDate(fFrom) : "はじめ"}〜${fTo ? shortDate(fTo) : "いま"}` : "",
+    ].filter(Boolean).join("・");
     const toggleFType = (t) => setFTypes((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
     const toggle = (id) => setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
     const allShown = shown.length > 0 && shown.every((r) => picked.has(r.id));
+    const runSearch = () => {
+        setFOpen(false);
+        if (listRef.current)
+            listRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    const clearF = () => {
+        setQ("");
+        setFTypes([]);
+        setFTags([]);
+        setFMark(false);
+        setFFrom("");
+        setFTo("");
+        setOnlyPicked(false);
+        setFOpen(true);
+    };
+    /* **click を待たないこと**（みつける画面と同じ理由） */
+    const fTapRef = (0, react_1.useRef)(0);
+    const onFDown = () => { fTapRef.current = Date.now(); toggleF(); };
+    const onFClick = (e) => { e.preventDefault(); if (Date.now() - fTapRef.current < 700)
+        return; toggleF(); };
+    const toggleF = () => {
+        const next = !fOpen;
+        setFOpen(next);
+        if (next && listRef.current) {
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (listRef.current)
+                    listRef.current.scrollTo({ top: 0, behavior: "smooth" });
+            }));
+        }
+    };
     const pickAllShown = () => setPicked((s) => {
         const n = new Set(s);
         shown.forEach((r) => (allShown ? n.delete(r.id) : n.add(r.id)));
@@ -21735,11 +21807,11 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
     const save = () => onSave({ ...cond, picked: Array.from(picked) });
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
-        react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
+        react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-tall "
                 + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
             react_1.default.createElement("div", { className: "flex items-center gap-1 px-4 py-3 border-b border-neutral-200 shrink-0" },
                 react_1.default.createElement("span", { className: "font-display text-[15.5px] text-neutral-900 tracking-wide flex-1" }, "\u8A18\u9332\u3092\u5165\u308C\u308B"),
-                react_1.default.createElement(HelpTip, { label: "\u8A18\u9332\u3092\u5165\u308C\u308B", text: "自動で集めたぶんは、条件を変えるまで外せません。\n手で入れたぶんは、いつでも外せます。" }),
+                react_1.default.createElement(HelpTip, { label: "\u8A18\u9332\u3092\u5165\u308C\u308B", text: "自動で集めたぶんは、条件を変えるまで外せません。\n手動で入れたぶんは、いつでも外せます。" }),
                 react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.X, { size: 24 }))),
             react_1.default.createElement("div", { className: "px-4 pt-3 shrink-0" },
@@ -21758,33 +21830,52 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                         "\u4EF6")),
                 condOn && (react_1.default.createElement("button", { type: "button", onClick: () => setCond({ tags: [], types: [], from: "", to: "", marked: false }), className: BTN_SECONDARY + " w-full " + BTN_H + " text-[14px]" }, "\u6761\u4EF6\u3092\u3059\u3079\u3066\u5916\u3059")))),
             tab === "manual" && (react_1.default.createElement(react_1.default.Fragment, null,
-                react_1.default.createElement("div", { className: "px-4 pt-3 shrink-0 space-y-2.5" },
-                    react_1.default.createElement(FilterFields, { q: q, onQ: setQ, types: fTypes, onToggleType: toggleFType, tags: fTags, onOpenTags: () => setFTagOpen(true), mark: fMark, onMark: () => setFMark((v) => !v), from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo }),
-                    react_1.default.createElement("div", { className: "flex items-center gap-2" },
-                        react_1.default.createElement("button", { type: "button", onClick: pickAllShown, className: "flex items-center gap-2 min-h-[44px] pr-2 ft-tap" },
-                            react_1.default.createElement("span", { className: "w-6 h-6 rounded-lg border-[1.5px] flex items-center justify-center", style: allShown ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#D4D4D4" } }, allShown && react_1.default.createElement("span", { className: "flex text-white" },
-                                react_1.default.createElement(lucide_react_1.Check, { size: 15, strokeWidth: 3.5, className: "thick" }))),
-                            react_1.default.createElement("span", { className: "text-[13.5px] font-bold text-neutral-600" }, "\u5168\u9078\u629E")),
-                        react_1.default.createElement("span", { className: "flex-1 text-right text-[12.5px] text-neutral-500 tabular-nums" },
-                            shown.length,
-                            "\u4EF6\u4E2D ",
-                            picked.size,
-                            "\u4EF6\u3092\u5165\u308C\u308B"))),
-                react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-3 space-y-1.5" },
-                    shown.map((r) => {
-                        const on = picked.has(r.id);
-                        const auto = autoSet.has(r.id);
-                        const c = colorOf(colorMap[r.type]);
-                        return (react_1.default.createElement("button", { key: r.id, type: "button", onClick: () => toggle(r.id), className: "w-full flex items-center gap-2.5 rounded-xl border-2 px-3 min-h-[52px] text-left ft-tap ft-tap-card "
-                                + (on ? "bg-th-50" : "bg-white hover:bg-neutral-50"), style: { borderColor: on ? "var(--th-800)" : "#E5E5E5" } },
-                            react_1.default.createElement("span", { className: "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0", style: on ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4" } }, on && react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick text-white" })),
-                            react_1.default.createElement("span", { className: "w-7 h-7 rounded-lg flex items-center justify-center shrink-0", style: { background: c.soft, color: c.deep } }, typeIcon(r.type, 14)),
-                            react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                                react_1.default.createElement("span", { className: "block text-[14.5px] font-bold text-neutral-900 truncate" }, recordTitle(r, N)),
-                                react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500" }, fmtDate(r.date))),
-                            auto && (react_1.default.createElement("span", { className: "text-[11px] font-bold rounded-md px-1.5 py-[2px] bg-th-50 text-th-900 shrink-0" }, "\u6761\u4EF6\u3067\u6E08"))));
-                    }),
-                    shown.length === 0 && react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 py-8 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093")))),
+                react_1.default.createElement("div", { ref: listRef, className: "ft-sheet-body overflow-y-auto" },
+                    react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 sticky top-0 bg-white z-10 space-y-2" },
+                        react_1.default.createElement("button", { type: "button", onPointerDown: onFDown, onClick: onFClick, "aria-expanded": fOpen, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[46px] text-left ft-tap ft-tap-card "
+                                + (fHas ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
+                            react_1.default.createElement(lucide_react_1.Search, { size: 17, className: fHas ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
+                            react_1.default.createElement("span", { className: "flex-1 min-w-0 truncate text-[14px]" }, fHas ? react_1.default.createElement("span", { className: "font-bold text-th-900" }, fSummary)
+                                : react_1.default.createElement("span", { className: "text-neutral-400" }, fOpen ? "条件をえらんで検索" : "検索する")),
+                            react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (fOpen ? "rotate-180" : "") },
+                                react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 }))),
+                        react_1.default.createElement("div", { className: "flex items-center gap-2" },
+                            react_1.default.createElement("button", { type: "button", onClick: pickAllShown, className: "flex items-center gap-2 min-h-[44px] pr-2 ft-tap", style: { marginLeft: 14 } },
+                                react_1.default.createElement("span", { className: "w-5 h-5 rounded-full border-2 flex items-center justify-center", style: allShown ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4" } }, allShown && react_1.default.createElement("span", { className: "flex text-white" },
+                                    react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
+                                react_1.default.createElement("span", { className: "text-[13.5px] font-bold text-neutral-600" }, "\u5168\u9078\u629E")),
+                            react_1.default.createElement("span", { className: "flex-1 text-right text-[12.5px] text-neutral-500 tabular-nums" },
+                                shown.length,
+                                "\u4EF6\u4E2D ",
+                                picked.size,
+                                "\u4EF6\u3092\u5165\u308C\u308B"))),
+                    react_1.default.createElement("div", { className: "px-4 pb-2 space-y-2.5 " + (fOpen ? "" : "hidden") },
+                        react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: runSearch, types: fTypes, onToggleType: toggleFType, tags: fTags, onOpenTags: () => setFTagOpen(true), mark: fMark, onMark: () => setFMark((v) => !v), from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo, extra: (react_1.default.createElement(FilterPill, { on: onlyPicked, onClick: () => setOnlyPicked((v) => !v) },
+                                react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3, className: "thick" }),
+                                " \u624B\u52D5")) }),
+                        react_1.default.createElement("div", { className: "flex gap-2" },
+                            fHas && (react_1.default.createElement("button", { type: "button", onClick: clearF, className: BTN_SECONDARY + " btn-h-lg px-4 text-[14.5px] shrink-0" }, "\u89E3\u9664")),
+                            react_1.default.createElement("button", { type: "button", onClick: runSearch, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[15.5px]" },
+                                react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
+                                " \u691C\u7D22\u3059\u308B"))),
+                    react_1.default.createElement("div", { className: "px-4 pb-3 space-y-1.5" },
+                        shown.map((r) => {
+                            const on = picked.has(r.id);
+                            const auto = autoSet.has(r.id);
+                            const c = colorOf(colorMap[r.type]);
+                            return (react_1.default.createElement("button", { key: r.id, type: "button", onClick: () => toggle(r.id), className: "w-full flex items-start gap-2.5 rounded-xl border-2 px-3 py-2.5 min-h-[52px] text-left ft-tap ft-tap-card "
+                                    + (on ? "bg-th-50" : "bg-white hover:bg-neutral-50"), style: { borderColor: on ? "var(--th-800)" : "#E5E5E5" } },
+                                react_1.default.createElement("span", { className: "w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5", style: on ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4" } }, on && react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick text-white" })),
+                                react_1.default.createElement("span", { className: "w-7 h-7 rounded-lg flex items-center justify-center shrink-0", style: { background: c.soft, color: c.deep } }, typeIcon(r.type, 14)),
+                                react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+                                    react_1.default.createElement("span", { className: "block text-[14.5px] font-bold text-neutral-900 break-words" }, recordTitle(r, N)),
+                                    restOfText(r) && react_1.default.createElement("span", { className: "block text-[13px] text-neutral-600 truncate mt-0.5" }, restOfText(r)),
+                                    react_1.default.createElement("span", { className: "flex items-center gap-1.5 mt-1 flex-wrap" },
+                                        react_1.default.createElement("span", { className: "text-[12px] text-neutral-500" }, fmtDate(r.date)),
+                                        normalizeTags(r.tags).slice(0, 3).map((t) => (react_1.default.createElement("span", { key: t, className: "text-[11.5px] rounded-md px-1.5 py-[2px] bg-neutral-100 text-neutral-600" }, t))),
+                                        auto && react_1.default.createElement("span", { className: "text-[11px] font-bold rounded-md px-1.5 py-[2px] bg-th-50 text-th-900" }, "\u6761\u4EF6\u3067\u6E08")))));
+                        }),
+                        shown.length === 0 && react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 py-8 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))))),
             react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: save, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " text-[14.5px]" },
@@ -21797,7 +21888,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
     /* このフォルダから外すための選ぶしくみ。
        **記録そのものを消せるようにしないこと。** ここはフォルダの中身を出し入れする場所で、
        記録を消す場所ではない（消したいときは、その記録をひらいて消す）。
-       外せるのは**手で入れたぶんだけ**。条件で入っているものは、条件を変えないかぎり残る */
+       外せるのは**手動で入れたぶんだけ**。条件で入っているものは、条件を変えないかぎり残る */
     const sel = useSelectMode(null, true);
     const removeFromFolder = (ids) => {
         const set = new Set(ids);
@@ -21815,7 +21906,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
     const list = (0, react_1.useMemo)(() => folderRecords(folder, records).sort(compareTimeline), [folder, records]);
     const hasCond = folderHasCond(folder);
     const condText = folderCondText(folder, N);
-    /* 手で入れたぶん。**これだけが外せる** */
+    /* 手動で入れたぶん。**これだけが外せる** */
     const pickedSet = (0, react_1.useMemo)(() => new Set(folder.picked || []), [folder.picked]);
     const pickedList = (0, react_1.useMemo)(() => list.filter((r) => pickedSet.has(r.id)), [list, pickedSet]);
     /* 日ごとにまとめる。Todayと同じ並び方にそろえてある */
@@ -21848,7 +21939,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                         react_1.default.createElement("span", { className: "flex items-center gap-1.5 mb-0.5" },
                             react_1.default.createElement("span", { className: pickedList.length ? "flex text-th-800" : "flex text-neutral-400" },
                                 react_1.default.createElement(lucide_react_1.Search, { size: 14 })),
-                            react_1.default.createElement("span", { className: "text-[12.5px] font-bold " + (pickedList.length ? "text-th-900" : "text-neutral-500") }, "\u624B\u3067\u5165\u308C\u308B")),
+                            react_1.default.createElement("span", { className: "text-[12.5px] font-bold " + (pickedList.length ? "text-th-900" : "text-neutral-500") }, "\u624B\u52D5\u3067\u5165\u308C\u308B")),
                         react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 truncate tabular-nums" }, pickedList.length ? `${pickedList.length}件` : "さがして選ぶ"))),
                 list.length > 0 && (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
                     pickedList.length > 0 && react_1.default.createElement(SelectButton, { sel: sel }),
@@ -21874,7 +21965,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
             renameOpen && (react_1.default.createElement(NameDialog, { title: "\u540D\u524D\u3092\u5909\u66F4", label: "\u30D5\u30A9\u30EB\u30C0\u306E\u540D\u524D", initial: folder.name, confirmLabel: "\u4FDD\u5B58", onCancel: () => setRenameOpen(false), onConfirm: (n) => { onChange({ ...folder, name: n }); setRenameOpen(false); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(folder.id); } })))));
 }
-function FolderScreen({ folders, records, onOpen, sort, onSort }) {
+function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
     const N = useTypeNames();
     /* 名前順か作成順。名前順のときは「01.」「02.」を数として見る */
     const sorted = (0, react_1.useMemo)(() => sortItems(folders, sort), [folders, sort]);
@@ -21888,7 +21979,7 @@ function FolderScreen({ folders, records, onOpen, sort, onSort }) {
                 const auto = folderHasCond(f);
                 const picked = (f.picked || []).length;
                 const cond = folderCondText(f, N);
-                return (react_1.default.createElement("button", { key: f.id, type: "button", onClick: () => onOpen(f), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft" },
+                return (react_1.default.createElement("div", { key: f.id, role: "button", tabIndex: 0, onClick: () => onOpen(f), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer" },
                     react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
                         react_1.default.createElement(lucide_react_1.Folder, { size: 26 })),
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -21902,11 +21993,12 @@ function FolderScreen({ folders, records, onOpen, sort, onSort }) {
                                 " \u81EA\u52D5")),
                             picked > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-neutral-100 text-neutral-600" },
                                 react_1.default.createElement(lucide_react_1.Check, { size: 11, strokeWidth: 3, className: "thick" }),
-                                " \u624B\u3067",
+                                " \u624B\u52D5\u3067",
                                 picked,
                                 "\u4EF6")),
                             auto && cond && react_1.default.createElement("span", { className: "text-[11.5px] text-neutral-400 truncate" }, cond),
                             !auto && picked === 0 && react_1.default.createElement("span", { className: "text-[11.5px] text-neutral-400" }, "\u307E\u3060\u7A7A\u3067\u3059"))),
+                    react_1.default.createElement(PinButton, { on: f.pinned, onClick: (e) => { e.stopPropagation(); onPin(f); } }),
                     react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })));
             }),
             folders.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 text-center py-6" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093")))));
@@ -22000,7 +22092,13 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                                 + (f.key === "s" ? "text-[15px] " : f.key === "m" ? "text-[17.5px] " : "text-[21px] ")
                                 + (draft.fontSize === f.key ? "border-th-800 bg-th-50 text-th-900" : "border-neutral-200 bg-white text-neutral-600") }, f.label))))),
                     react_1.default.createElement(SheetRow, { label: "\u753B\u9762\u306E\u52D5\u304D", last: true },
-                        react_1.default.createElement(Switch, { on: draft.motion !== false, onChange: (v) => set({ motion: v }), label: "\u753B\u9762\u306E\u52D5\u304D" })))),
+                        react_1.default.createElement(Switch, { on: draft.motion !== false, onChange: (v) => set({ motion: v }), label: "\u753B\u9762\u306E\u52D5\u304D" }))),
+                react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900 mb-2" }, "\u4E26\u3073\u9806"),
+                react_1.default.createElement(RowCard, { className: "mb-5" },
+                    react_1.default.createElement("div", { className: "px-4 py-3" },
+                        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-900 mb-2" }, "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA"),
+                        react_1.default.createElement("div", { className: "flex gap-2.5" }, [{ key: "name", label: "名前順" }, { key: "created", label: "作成順" }].map((o) => (react_1.default.createElement("button", { key: o.key, type: "button", onClick: () => set({ sortOrder: o.key }), "aria-pressed": (draft.sortOrder || "name") === o.key, className: "flex-1 h-[52px] rounded-xl border flex items-center justify-center font-bold text-[15px] ft-tap ft-tap-card "
+                                + ((draft.sortOrder || "name") === o.key ? "border-th-800 bg-th-50 text-th-900" : "border-neutral-200 bg-white text-neutral-600") }, o.label))))))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: leave, className: BTN_SECONDARY + " btn-h-lg px-5 text-[15.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: () => { onSave(draft); close(); }, disabled: !dirty, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[16px]" },
@@ -22340,7 +22438,7 @@ const HELP_SECTIONS = [
     },
     {
         title: "フォルダ",
-        body: "右下の＋から作り、タグ・種類・期間で自動で集められます。\n手で選んで入れることもできます。\n星の印が付いた記録だけを集めることもできます。",
+        body: "右下の＋から作り、条件を決めると記録が自動で集まります。\n手動で選んで入れることもできます。",
     },
     {
         title: "記録の置き場所",
@@ -22536,7 +22634,10 @@ button:active { transition-duration: 60ms; }
 .ft-rise { animation: ft-rise 0.28s cubic-bezier(0.22,1,0.36,1) backwards; }
 /* タブの入れ物そのものは、透明度だけで切り替える。
    ここで位置を動かすと、中の sticky なヘッダがぶれてしまう */
-.ft-tabswap { animation: ft-fade-in 0.2s ease-out backwards; }
+/* **画面を切り替えるときに、まるごと透かさないこと。**
+   見出しの帯に敷いた写真まで白く飛ぶ。中身の札は ft-seq で出てくるので、
+   ここでは何もしない */
+.ft-tabswap { }
 
 @keyframes ft-tabpop { 0% { transform: scale(1); } 34% { transform: scale(1.24); } 100% { transform: scale(1); } }
 .ft-tabpop { animation: ft-tabpop 0.38s cubic-bezier(0.34,1.3,0.5,1) backwards; }
@@ -22623,9 +22724,13 @@ button:active { transition-duration: 60ms; }
    margin: 0 も必ず付けること。space-y-* の中に置くと外側の余白が足され、その分だけ下へずれる */
 .ft-sheet-wrap { position: fixed; left: 0; right: 0; top: 0; height: 100vh; margin: 0; }
 .ft-sheet-box  { max-height: 82vh; }
+/* 記録をさがす紙は、ほぼ画面いっぱい。**中身の量で高さを変えないこと。**
+   どちらのタブを出しても、同じ大きさで開く */
+.ft-sheet-tall { height: 92vh; max-height: 92vh; }
 @supports (height: 100dvh) {
   .ft-sheet-wrap { height: 100dvh; }
   .ft-sheet-box  { max-height: 82dvh; }
+  .ft-sheet-tall { height: 92dvh; max-height: 92dvh; }
 }
 /* 中の「一覧」の場所。**flex-1 を使わないこと。**
    flex-1 は基準の高さが0なので、まわりに余りが無いと高さ0までつぶれる */
@@ -23025,7 +23130,7 @@ function AppMain() {
         setEditing(null);
         tell("削除しました");
     };
-    /* えらんだぶんをまとめて削除。フォルダに手で入れてあった控えも一緒に外す */
+    /* えらんだぶんをまとめて削除。フォルダに手動で入れてあった控えも一緒に外す */
     const deleteMany = (ids) => {
         if (!ids || !ids.length)
             return;
@@ -23090,7 +23195,9 @@ function AppMain() {
     };
     /* --- 計画 --- */
     /* **色を持たせないこと。** 計画も種類も、色は表示設定でひとつだけ決める */
-    const addKind = (name) => setKinds([...kinds, { id: uid(), name }]);
+    const addKind = (name) => setKinds([...kinds, { id: uid(), name, pinned: false, createdAt: new Date().toISOString() }]);
+    const togglePinKind = (k) => setKinds(kinds.map((x) => (x.id === k.id ? { ...x, pinned: !x.pinned } : x)));
+    const togglePinFolder = (f) => setFolders(folders.map((x) => (x.id === f.id ? { ...x, pinned: !x.pinned } : x)));
     const renameKind = (id, name) => setKinds(kinds.map((k) => (k.id === id ? { ...k, name } : k)));
     const deleteKind = (id) => {
         setKinds(kinds.filter((k) => k.id !== id));
@@ -23234,13 +23341,13 @@ function AppMain() {
                                 + ("ft-font-" + (prefs.fontSize || "s")) },
                             react_1.default.createElement("style", null, GLOBAL_CSS),
                             react_1.default.createElement("style", null, `:root{${Object.entries(theme.vars).map(([k, v]) => `--th-${k}:${v}`).join(";")}}`),
-                            !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-tabswap ft-page" },
-                                react_1.default.createElement("div", { className: "max-w-lg lg:max-w-3xl mx-auto ft-rise" },
+                            !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page" },
+                                react_1.default.createElement("div", { className: "max-w-lg lg:max-w-3xl mx-auto" },
                                     tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
                                         react_1.default.createElement(TodayScreen, { records: records, plans: plans, onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
                                     tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
-                                    tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k) => setKindOpen(k.id), onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), sort: prefs.sortPlan, onSort: (v) => savePrefs({ ...prefs, sortPlan: v }) })),
-                                    tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortFolder, onSort: (v) => savePrefs({ ...prefs, sortFolder: v }), onOpen: (f) => setFolderOpen(f.id) }))))),
+                                    tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k) => setKindOpen(k.id), onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
+                                    tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id) }))))),
                             loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                             loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
                             react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, onClose: () => setMenuOpen(false), items: menuItems, footer: react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 leading-relaxed" }, "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u4FDD\u5B58\u3055\u308C\u307E\u3059\u3002\u3068\u304D\u3069\u304D\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7\u3092\u66F8\u304D\u51FA\u3057\u3066\u304A\u3044\u3066\u304F\u3060\u3055\u3044\u3002") }),
@@ -23264,7 +23371,7 @@ function AppMain() {
                             addFolderOpen && (react_1.default.createElement(NameDialog, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddFolderOpen(false), onConfirm: (n) => { addFolder(n); setAddFolderOpen(false); } })),
                             editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
                             dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                            kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
+                            kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
                             planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, kinds: kinds, onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
                                     if (type) {
                                         setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
