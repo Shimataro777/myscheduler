@@ -17416,6 +17416,11 @@ const COLORS = [
     { key: "slate", label: "はいいろ", deep: "#6B7783", mid: "#9CA7B2", soft: "#F7F8FA", line: "#DFE4E9" },
 ];
 const colorOf = (key) => COLORS.find((c) => c.key === key) || COLORS[0];
+/* 画面の基調の色を、計画の色として使う。
+   **「みどり」を決め打ちしないこと。** 画面が青いのに計画だけ緑で出てくる。
+   THEMES の名前は COLORS にも同じものがあるので、そのまま読みかえられる。
+   見つからないときだけ、いちばん上の色に落とす */
+const planColorForTheme = (themeKey) => (COLORS.find((c) => c.key === themeKey) || COLORS[0]).key;
 const DEFAULT_TYPE_COLOR = {
     memo: "slate", media: "violet", checklist: "teal", link: "sky", schedule: "rose",
 };
@@ -21783,7 +21788,7 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                 react_1.default.createElement(RowCard, null,
                     react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-100" },
                         react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-900 mb-2" }, "\u6587\u5B57\u306E\u5927\u304D\u3055"),
-                        react_1.default.createElement("div", { className: "flex gap-2.5" }, FONT_SIZES.map((f) => (react_1.default.createElement("button", { key: f.key, type: "button", onClick: () => set({ fontSize: f.key }), "aria-pressed": draft.fontSize === f.key, className: "flex-1 h-[64px] rounded-2xl border flex items-center justify-center font-bold ft-tap ft-tap-card "
+                        react_1.default.createElement("div", { className: "flex gap-2.5" }, FONT_SIZES.map((f) => (react_1.default.createElement("button", { key: f.key, type: "button", onClick: () => set({ fontSize: f.key }), "aria-pressed": draft.fontSize === f.key, className: "flex-1 h-[52px] rounded-xl border flex items-center justify-center font-bold ft-tap ft-tap-card "
                                 + (f.key === "s" ? "text-[15px] " : f.key === "m" ? "text-[17.5px] " : "text-[21px] ")
                                 + (draft.fontSize === f.key ? "border-th-800 bg-th-50 text-th-900" : "border-neutral-200 bg-white text-neutral-600") }, f.label))))),
                     react_1.default.createElement(SheetRow, { label: "\u753B\u9762\u306E\u52D5\u304D", last: true },
@@ -22819,7 +22824,9 @@ function AppMain() {
         tell("新しいチェックリストへ移しました");
     };
     /* --- 計画 --- */
-    const addKind = (name) => setKinds([...kinds, { id: uid(), name, color: COLORS[kinds.length % COLORS.length].key }]);
+    /* 新しい種類も、はじめは画面の基調の色。**順ぐりに色を配らないこと。**
+       作るたびに違う色になり、どれが何の色なのか分からなくなる */
+    const addKind = (name) => setKinds([...kinds, { id: uid(), name, color: planColorForTheme(prefs.theme) }]);
     const renameKind = (id, name) => setKinds(kinds.map((k) => (k.id === id ? { ...k, name } : k)));
     const deleteKind = (id) => {
         setKinds(kinds.filter((k) => k.id !== id));
@@ -22827,7 +22834,11 @@ function AppMain() {
     };
     const addPlan = (kindId, name) => {
         const kind = kinds.find((k) => k.id === kindId);
-        const p = { ...emptyPlan(kindId), name: name || "新しい計画", color: (kind && kind.color) || "teal" };
+        /* 種類に色が決まっていれば、そろえる。決まっていなければ画面の基調の色 */
+        const p = {
+            ...emptyPlan(kindId), name: name || "新しい計画",
+            color: (kind && kind.color) || planColorForTheme(prefs.theme),
+        };
         setPlans([...plans, p]);
         setPlanOpen(p.id);
     };
