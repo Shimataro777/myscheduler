@@ -19240,6 +19240,34 @@ function FilterPill({ on, onClick, children, color }) {
     return (react_1.default.createElement("button", { type: "button", onClick: onClick, "aria-pressed": on, style: style, className: "text-[13.5px] font-bold px-3.5 min-h-[44px] rounded-full border ft-tap inline-flex items-center gap-1.5 "
             + (on ? (color ? "" : "border-th-800 bg-th-800 text-white") : "border-neutral-200 bg-white text-neutral-600") }, children));
 }
+/* しぼりこみの欄。
+   **みつける・フォルダの条件・フォルダの手入れで、同じものを使うこと。**
+   別々に書くと、少しずつ並びがずれていく。
+   上から ① キーワード ② 種類と印つき ③ タグ ④ 期間（左に名前、右に日付ふたつ） */
+function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, mark, onMark, from, to, onFrom, onTo }) {
+    const N = useTypeNames();
+    return (react_1.default.createElement(react_1.default.Fragment, null,
+        q !== undefined && (react_1.default.createElement(TextInput, { value: q, onChange: (e) => onQ(e.target.value), placeholder: "\u30AD\u30FC\u30EF\u30FC\u30C9\u3067\u691C\u7D22", onKeyDown: (e) => { if (e.key === "Enter" && onEnter)
+                onEnter(); } })),
+        react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" },
+            TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: types.includes(t), onClick: () => onToggleType(t) },
+                typeIcon(t, 14),
+                " ",
+                N[t] || TYPE_LABELS[t]))),
+            react_1.default.createElement(FilterPill, { on: !!mark, onClick: onMark },
+                react_1.default.createElement(lucide_react_1.Star, { size: 14 }),
+                " \u5370\u3064\u304D")),
+        react_1.default.createElement("button", { type: "button", onClick: onOpenTags, className: BTN_SECONDARY + " w-full " + BTN_H + " text-[14.5px]" },
+            react_1.default.createElement(lucide_react_1.Tag, { size: 15 }),
+            " \u30BF\u30B0\u3067\u7D5E\u308A\u8FBC\u3080",
+            tags.length ? `（${tags.length}）` : ""),
+        tags.length > 0 && react_1.default.createElement(TagChips, { tags: tags }),
+        react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
+            react_1.default.createElement("span", { className: "text-[13.5px] font-bold text-neutral-500 shrink-0 w-[34px]" }, "\u671F\u9593"),
+            react_1.default.createElement(DateInput, { value: from, onChange: (e) => onFrom(e.target.value), placeholder: "\u306F\u3058\u3081", className: "flex-1 min-w-0", allowEmpty: true }),
+            react_1.default.createElement("span", { className: "text-[13px] text-neutral-400 shrink-0" }, "\u301C"),
+            react_1.default.createElement(DateInput, { value: to, onChange: (e) => onTo(e.target.value), placeholder: "\u304A\u308F\u308A", className: "flex-1 min-w-0", allowEmpty: true }))));
+}
 /* ============================================================
    確かめるダイアログ（消すときなど）
    ============================================================ */
@@ -21149,7 +21177,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
         return out.join("・");
     }, [applied, N]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
-        react_1.default.createElement(ScreenHeader, { title: "\u307F\u3064\u3051\u308B", right: react_1.default.createElement(HelpTip, { label: "\u307F\u3064\u3051\u308B", text: "言葉・種類・タグ・印・期間で記録をさがせます。\n\n種類は「どれか」、タグは「すべて含む」で絞り込みます。\n\n条件を決めて「検索する」を押すと探します。上の帯はいつも残るので、結果を見ながらでも条件に戻れます。" }) }),
+        react_1.default.createElement(ScreenHeader, { title: "\u307F\u3064\u3051\u308B" }),
         react_1.default.createElement("div", { className: "px-5 pt-3 pb-2 sticky bg-app max-w-2xl mx-auto w-full", style: { top: "calc(env(safe-area-inset-top) + 66px)", zIndex: 20 } },
             react_1.default.createElement("button", { type: "button", onClick: () => setOpen((v) => !v), "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
                     + (hasCriteria ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
@@ -21162,34 +21190,12 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
                     react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
         react_1.default.createElement("div", { className: "px-5 max-w-2xl mx-auto w-full" },
             react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (open ? "" : "hidden") },
+                react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: search, types: types, onToggleType: toggleType, tags: tags, onOpenTags: () => setTagOpen(true), mark: markOnly, onMark: () => setMarkOnly((v) => !v), from: from, to: to, onFrom: setFrom, onTo: setTo }),
                 react_1.default.createElement("div", { className: "flex gap-2" },
-                    react_1.default.createElement("div", { className: "flex-1 min-w-0" },
-                        react_1.default.createElement(TextInput, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\u30AD\u30FC\u30EF\u30FC\u30C9\u3067\u691C\u7D22", onKeyDown: (e) => { if (e.key === "Enter")
-                                search(); } })),
-                    hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " " + BTN_H + " px-3.5 text-[14.5px] shrink-0" }, "\u89E3\u9664"))),
-                react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" }, TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: types.includes(t), onClick: () => toggleType(t) },
-                    typeIcon(t, 14),
-                    " ",
-                    N[t] || TYPE_LABELS[t])))),
-                react_1.default.createElement("button", { type: "button", onClick: () => setTagOpen(true), className: BTN_SECONDARY + " w-full " + BTN_H + " text-[14.5px]" },
-                    react_1.default.createElement(lucide_react_1.Tag, { size: 15 }),
-                    " \u30BF\u30B0\u3067\u7D5E\u308A\u8FBC\u3080",
-                    tags.length ? `（${tags.length}）` : ""),
-                react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5 items-center" },
-                    react_1.default.createElement(FilterPill, { on: markOnly, onClick: () => setMarkOnly((v) => !v) },
-                        react_1.default.createElement(lucide_react_1.Star, { size: 14 }),
-                        " \u5370\u3064\u304D"),
-                    react_1.default.createElement(FilterPill, { on: rangeOpen || !!from || !!to, onClick: () => setRangeOpen((v) => !v) },
-                        react_1.default.createElement(lucide_react_1.CalendarDays, { size: 14 }),
-                        " \u671F\u9593")),
-                tags.length > 0 && react_1.default.createElement(TagChips, { tags: tags }),
-                rangeOpen && (react_1.default.createElement("div", { className: "flex items-center gap-2 flex-wrap ft-open" },
-                    react_1.default.createElement(DateInput, { value: from, onChange: (e) => setFrom(e.target.value), placeholder: "\u306F\u3058\u3081", className: "w-[150px]", allowEmpty: true }),
-                    react_1.default.createElement("span", { className: "text-[13.5px] text-neutral-500" }, "\u301C"),
-                    react_1.default.createElement(DateInput, { value: to, onChange: (e) => setTo(e.target.value), placeholder: "\u304A\u308F\u308A", className: "w-[150px]", allowEmpty: true }))),
-                react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " w-full btn-h-lg text-[15.5px]" },
-                    react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
-                    " \u691C\u7D22\u3059\u308B")),
+                    hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 text-[14.5px] shrink-0" }, "\u89E3\u9664")),
+                    react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[15.5px]" },
+                        react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
+                        " \u691C\u7D22\u3059\u308B"))),
             !hasCriteria ? (recent.length === 0 ? (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 text-center py-10" }, "\u8A18\u9332\u304C\u3042\u308A\u307E\u305B\u3093")) : (react_1.default.createElement(react_1.default.Fragment, null,
                 react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
                     react_1.default.createElement(SelectButton, { sel: sel }),
@@ -21277,7 +21283,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
     }, [plans, kinds]);
     const renderPlan = (p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan }));
     return (react_1.default.createElement("div", { className: "pad-fab" },
-        react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B", right: react_1.default.createElement(HelpTip, { label: "\u8A08\u753B", text: "続けたいことや、いつか終えたいことを置く場所です。\n\nカテゴリ … 計画をまとめる入れもの。無くても使えます。\n計画 … その中に「やること」と記録を入れます。\nやること … 期限を付けると「あと◯日」が出ます。大事なものは上に固定できます。" }) }),
+        react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
         react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full space-y-4" },
             (kinds.length + plans.length) > 1 && (react_1.default.createElement("div", { className: "flex justify-end -mb-2" },
                 react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
@@ -21563,7 +21569,6 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                         react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500" }, fmtDate(plan.doneAt))))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u8A18\u9332"),
-                    react_1.default.createElement(HelpTip, { label: "\u8A18\u9332", text: "\u53F3\u4E0B\u306E\uFF0B\u304B\u3089\u3001\u3053\u306E\u8A08\u753B\u306B\u3064\u3044\u3066\u306E\u30E1\u30E2\u30FB\u5199\u771F\u30FB\u3084\u308B\u3053\u3068\uFF082\u6BB5\u306E\u30C1\u30A7\u30C3\u30AF\u30EA\u30B9\u30C8\uFF09\u306A\u3069\u3092\u66F8\u3051\u307E\u3059\u3002\u5927\u4E8B\u306A\u3082\u306E\u306F\u62BC\u3057\u30D4\u30F3\u3067\u4E0A\u306B\u56FA\u5B9A\u3067\u304D\u307E\u3059\u3002" }),
                     planRecords.length > 0 && react_1.default.createElement(SelectButton, { sel: sel }),
                     react_1.default.createElement("span", { className: "flex-1" })),
                 pinned.length > 0 && (react_1.default.createElement("div", { className: "mb-4" },
@@ -21656,7 +21661,8 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
     const [fTags, setFTags] = (0, react_1.useState)([]);
     const [fMark, setFMark] = (0, react_1.useState)(false);
     const [fTagOpen, setFTagOpen] = (0, react_1.useState)(false);
-    const [onlyPicked, setOnlyPicked] = (0, react_1.useState)(false);
+    const [fFrom, setFFrom] = (0, react_1.useState)("");
+    const [fTo, setFTo] = (0, react_1.useState)("");
     /* 条件だけで入るもの。手で選ぶ必要がないので、そう見せる */
     const autoSet = (0, react_1.useMemo)(() => {
         if (!condOn)
@@ -21669,11 +21675,13 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
         return records.slice()
             .sort((a, b) => (b.date || "").localeCompare(a.date || "") || compareTimeline(a, b))
             .filter((r) => {
-            if (onlyPicked && !picked.has(r.id))
-                return false;
             if (fTypes.length && !fTypes.includes(r.type))
                 return false;
             if (fMark && !r.mark)
+                return false;
+            if (fFrom && (r.date || "") < fFrom)
+                return false;
+            if (fTo && (r.date || "") > fTo)
                 return false;
             if (wanted.length) {
                 const has = normalizeTags(r.tags).map((t) => t.toLowerCase());
@@ -21688,9 +21696,15 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
             return true;
         })
             .slice(0, 300);
-    }, [records, q, fTypes, fTags, fMark, onlyPicked, picked]);
+    }, [records, q, fTypes, fTags, fMark, fFrom, fTo]);
     const toggleFType = (t) => setFTypes((p) => (p.includes(t) ? p.filter((x) => x !== t) : [...p, t]));
     const toggle = (id) => setPicked((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    const allShown = shown.length > 0 && shown.every((r) => picked.has(r.id));
+    const pickAllShown = () => setPicked((s) => {
+        const n = new Set(s);
+        shown.forEach((r) => (allShown ? n.delete(r.id) : n.add(r.id)));
+        return n;
+    });
     const save = () => onSave({ ...cond, picked: Array.from(picked) });
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
@@ -21698,7 +21712,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                 + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
             react_1.default.createElement("div", { className: "flex items-center gap-1 px-4 py-3 border-b border-neutral-200 shrink-0" },
                 react_1.default.createElement("span", { className: "font-display text-[15.5px] text-neutral-900 tracking-wide flex-1" }, "\u8A18\u9332\u3092\u5165\u308C\u308B"),
-                react_1.default.createElement(HelpTip, { label: "\u8A18\u9332\u3092\u5165\u308C\u308B", text: "自動で集める … 条件にあてはまる記録がひとりでに入ります。あとから書いた記録も入ります。外すには条件を変えます。\n\n手で入れる … 一件ずつ選んで入れます。いつでも外せます。\n\n両方あわせて使えます。" }),
+                react_1.default.createElement(HelpTip, { label: "\u8A18\u9332\u3092\u5165\u308C\u308B", text: "自動で集めたぶんは、条件を変えるまで外せません。\n手で入れたぶんは、いつでも外せます。" }),
                 react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.X, { size: 24 }))),
             react_1.default.createElement("div", { className: "px-4 pt-3 shrink-0" },
@@ -21709,52 +21723,26 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                     t.key === "auto" && condOn && react_1.default.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-th-800", "aria-hidden": "true" }),
                     t.key === "manual" && picked.size > 0 && react_1.default.createElement("span", { className: "text-[12px] tabular-nums" }, picked.size)))))),
             tab === "auto" && (react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-3 space-y-2.5" },
-                react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-500" }, condOn ? "あてはまる記録がひとりでに入ります。" : "条件を決めると、あてはまる記録がひとりでに入ります。"),
-                react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" }, TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: cond.types.includes(t), onClick: () => toggleCondType(t) },
-                    typeIcon(t, 14),
-                    " ",
-                    N[t] || TYPE_LABELS[t])))),
-                react_1.default.createElement("button", { type: "button", onClick: () => setCondTagOpen(true), className: BTN_SECONDARY + " w-full " + BTN_H + " text-[14.5px]" },
-                    react_1.default.createElement(lucide_react_1.Tag, { size: 15 }),
-                    " \u30BF\u30B0\u3067\u7D5E\u308A\u8FBC\u3080",
-                    cond.tags.length ? `（${cond.tags.length}）` : ""),
-                react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5 items-center" },
-                    react_1.default.createElement(FilterPill, { on: cond.marked, onClick: () => setC({ marked: !cond.marked }) },
-                        react_1.default.createElement(lucide_react_1.Star, { size: 14 }),
-                        " \u5370\u3064\u304D"),
-                    react_1.default.createElement(FilterPill, { on: rangeOpen || !!cond.from || !!cond.to, onClick: () => setRangeOpen((v) => !v) },
-                        react_1.default.createElement(lucide_react_1.CalendarDays, { size: 14 }),
-                        " \u671F\u9593")),
-                cond.tags.length > 0 && react_1.default.createElement(TagChips, { tags: cond.tags }),
-                rangeOpen && (react_1.default.createElement("div", { className: "flex items-center gap-2 flex-wrap ft-open" },
-                    react_1.default.createElement(DateInput, { value: cond.from, onChange: (e) => setC({ from: e.target.value }), placeholder: "\u306F\u3058\u3081", className: "w-[150px]", allowEmpty: true }),
-                    react_1.default.createElement("span", { className: "text-[13.5px] text-neutral-500" }, "\u301C"),
-                    react_1.default.createElement(DateInput, { value: cond.to, onChange: (e) => setC({ to: e.target.value }), placeholder: "\u304A\u308F\u308A", className: "w-[150px]", allowEmpty: true }))),
+                react_1.default.createElement(FilterFields, { types: cond.types, onToggleType: toggleCondType, tags: cond.tags, onOpenTags: () => setCondTagOpen(true), mark: cond.marked, onMark: () => setC({ marked: !cond.marked }), from: cond.from, to: cond.to, onFrom: (v) => setC({ from: v }), onTo: (v) => setC({ to: v }) }),
                 react_1.default.createElement("div", { className: "rounded-xl bg-neutral-100 px-3.5 py-2.5 flex items-center gap-2" },
-                    react_1.default.createElement("span", { className: "text-[13px] text-neutral-600 flex-1" }, "\u3044\u307E\u6761\u4EF6\u3067\u5165\u308B\u3082\u306E"),
+                    react_1.default.createElement("span", { className: "text-[13px] text-neutral-600 flex-1" }, "\u3053\u306E\u6761\u4EF6\u3067\u5165\u308B\u8A18\u9332"),
                     react_1.default.createElement("span", { className: "text-[15px] font-bold tabular-nums text-neutral-900" },
                         autoSet.size,
                         "\u4EF6")),
                 condOn && (react_1.default.createElement("button", { type: "button", onClick: () => setCond({ tags: [], types: [], from: "", to: "", marked: false }), className: BTN_SECONDARY + " w-full " + BTN_H + " text-[14px]" }, "\u6761\u4EF6\u3092\u3059\u3079\u3066\u5916\u3059")))),
             tab === "manual" && (react_1.default.createElement(react_1.default.Fragment, null,
-                react_1.default.createElement("div", { className: "px-4 pt-3 shrink-0 space-y-2" },
-                    react_1.default.createElement(TextInput, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\u30AD\u30FC\u30EF\u30FC\u30C9\u3067\u691C\u7D22" }),
-                    react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" },
-                        TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: fTypes.includes(t), onClick: () => toggleFType(t) },
-                            typeIcon(t, 14),
-                            " ",
-                            N[t] || TYPE_LABELS[t]))),
-                        react_1.default.createElement(FilterPill, { on: fTags.length > 0, onClick: () => setFTagOpen(true) },
-                            react_1.default.createElement(lucide_react_1.Tag, { size: 14 }),
-                            " \u30BF\u30B0",
-                            fTags.length ? `（${fTags.length}）` : ""),
-                        react_1.default.createElement(FilterPill, { on: fMark, onClick: () => setFMark((v) => !v) },
-                            react_1.default.createElement(lucide_react_1.Star, { size: 14 }),
-                            " \u5370\u3064\u304D"),
-                        react_1.default.createElement(FilterPill, { on: onlyPicked, onClick: () => setOnlyPicked((v) => !v) },
-                            react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3, className: "thick" }),
-                            " \u5165\u308C\u305F\u3076\u3093",
-                            picked.size ? `（${picked.size}）` : ""))),
+                react_1.default.createElement("div", { className: "px-4 pt-3 shrink-0 space-y-2.5" },
+                    react_1.default.createElement(FilterFields, { q: q, onQ: setQ, types: fTypes, onToggleType: toggleFType, tags: fTags, onOpenTags: () => setFTagOpen(true), mark: fMark, onMark: () => setFMark((v) => !v), from: fFrom, to: fTo, onFrom: setFFrom, onTo: setFTo }),
+                    react_1.default.createElement("div", { className: "flex items-center gap-2" },
+                        react_1.default.createElement("button", { type: "button", onClick: pickAllShown, className: "flex items-center gap-2 min-h-[44px] pr-2 ft-tap" },
+                            react_1.default.createElement("span", { className: "w-6 h-6 rounded-lg border-[1.5px] flex items-center justify-center", style: allShown ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#D4D4D4" } }, allShown && react_1.default.createElement("span", { className: "flex text-white" },
+                                react_1.default.createElement(lucide_react_1.Check, { size: 15, strokeWidth: 3.5, className: "thick" }))),
+                            react_1.default.createElement("span", { className: "text-[13.5px] font-bold text-neutral-600" }, "\u5168\u9078\u629E")),
+                        react_1.default.createElement("span", { className: "flex-1 text-right text-[12.5px] text-neutral-500 tabular-nums" },
+                            shown.length,
+                            "\u4EF6\u4E2D ",
+                            picked.size,
+                            "\u4EF6\u3092\u5165\u308C\u308B"))),
                 react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-3 space-y-1.5" },
                     shown.map((r) => {
                         const on = picked.has(r.id);
@@ -21868,7 +21856,7 @@ function FolderScreen({ folders, records, onOpen, sort, onSort }) {
     /* 名前順か作成順。名前順のときは「01.」「02.」を数として見る */
     const sorted = (0, react_1.useMemo)(() => sortItems(folders, sort), [folders, sort]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
-        react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0", right: react_1.default.createElement(HelpTip, { label: "\u30D5\u30A9\u30EB\u30C0", text: "音楽のプレイリストのようなものです。集め方は2とおりあり、混ぜても使えます。\n\n自動で集める … タグ・種類・期間・印で条件を決めると、あてはまる記録がひとりでに入ります。あとから書いた記録も入ります。外すには条件を変えます。\n\n手で入れる … 一件ずつ選んで入れます。いつでも外せます。\n\nフォルダから外しても、記録そのものは消えません。" }) }),
+        react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
         react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full" }, folders.length > 1 && (react_1.default.createElement("div", { className: "flex justify-end mb-1" },
             react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })))),
         react_1.default.createElement("div", { className: "px-5 max-w-2xl mx-auto w-full space-y-2.5 ft-seq" },
@@ -22013,7 +22001,7 @@ function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onC
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
-            react_1.default.createElement(OverlayHeader, { title: "\u30BF\u30B0\u306E\u7DE8\u96C6", onBack: close, hideMenu: true, right: react_1.default.createElement(HelpTip, { label: "\u30BF\u30B0\u306E\u7DE8\u96C6", text: "名前を変えると、その名前が付いた記録もまとめて変わります。\n\n上下の矢印で並べかえられます。ここで決めた順は、タグをえらぶときにもそのまま出ます。よく使うタグを上にしておくと選びやすくなります。\n\n削除しても、記録そのものは消えません。" }) }),
+            react_1.default.createElement(OverlayHeader, { title: "\u30BF\u30B0\u306E\u7DE8\u96C6", onBack: close, hideMenu: true }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full pb-16" },
                 react_1.default.createElement("div", { className: "flex gap-2 mb-4" },
                     react_1.default.createElement("div", { className: "flex-1 min-w-0" },
@@ -22233,7 +22221,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp }) {
                 react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft p-4 mb-7" },
                     react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                         react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-neutral-900" }, "\u3044\u307E\u306E\u8A18\u9332"),
-                        react_1.default.createElement(HelpTip, { label: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", text: "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u306B\u3060\u3051\u5165\u3063\u3066\u3044\u307E\u3059\u3002\u30D6\u30E9\u30A6\u30B6\u306E\u5C65\u6B74\u3092\u6D88\u3057\u305F\u308A\u3001\u7AEF\u672B\u3092\u66FF\u3048\u305F\u308A\u3059\u308B\u3068\u5931\u308F\u308C\u307E\u3059\u3002\u3068\u304D\u3069\u304D\u66F8\u304D\u51FA\u3057\u3066\u3001\u30D5\u30A1\u30A4\u30EB\u3068\u3057\u3066\u6B8B\u3057\u3066\u304A\u3044\u3066\u304F\u3060\u3055\u3044\u3002" })),
+                        react_1.default.createElement(HelpTip, { label: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", text: "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u3042\u308A\u307E\u3059\u3002\u5C65\u6B74\u3092\u6D88\u3057\u305F\u308A\u7AEF\u672B\u3092\u66FF\u3048\u308B\u3068\u5931\u308F\u308C\u307E\u3059\u3002" })),
                     react_1.default.createElement("div", { className: "flex items-baseline gap-3 flex-wrap" },
                         react_1.default.createElement("span", { className: "text-[12.5px] text-neutral-500 tabular-nums" },
                             "\u8A18\u9332 ",
@@ -22253,7 +22241,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp }) {
                         String(data.prefs.lastBackup).slice(0, 10)))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u66F8\u304D\u51FA\u3059"),
-                    react_1.default.createElement(HelpTip, { label: "\u66F8\u304D\u51FA\u3059", text: "\u300C\u5199\u771F\u3082\u3075\u304F\u3081\u308B\u300D\u3092\u5165\u308C\u308B\u3068\u3001\u3053\u308C\u3060\u3051\u3067\u5143\u3069\u304A\u308A\u306B\u623B\u305B\u307E\u3059\uFF08\u305D\u306E\u3076\u3093\u91CD\u304F\u306A\u308A\u307E\u3059\uFF09\u3002\u5207\u308B\u3068\u8EFD\u3044\u304B\u308F\u308A\u306B\u3001\u623B\u3057\u3066\u3082\u5199\u771F\u306F\u51FA\u307E\u305B\u3093\u3002" })),
+                    react_1.default.createElement(HelpTip, { label: "\u66F8\u304D\u51FA\u3059", text: "\u300C\u5199\u771F\u3082\u3075\u304F\u3081\u308B\u300D\u3092\u5207\u308B\u3068\u8EFD\u304F\u306A\u308A\u307E\u3059\u304C\u3001\u623B\u3057\u3066\u3082\u5199\u771F\u306F\u51FA\u307E\u305B\u3093\u3002" })),
                 react_1.default.createElement(RowCard, { className: "mb-4" },
                     react_1.default.createElement(SheetRow, { label: "\u5199\u771F\u3082\u3075\u304F\u3081\u308B" },
                         react_1.default.createElement(Switch, { on: withPhotos, onChange: setWithPhotos, label: "\u5199\u771F\u3082\u3075\u304F\u3081\u308B" })),
@@ -22284,7 +22272,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp }) {
                         " \u6587\u5B57\u3067\u30B3\u30D4\u30FC\u3059\u308B")),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u8AAD\u307F\u8FBC\u3080"),
-                    react_1.default.createElement(HelpTip, { label: "\u8AAD\u307F\u8FBC\u3080", text: "\u8AAD\u307F\u8FBC\u3080\u3068\u3001\u3044\u307E\u306E\u8A18\u9332\u306F\u3059\u3079\u3066\u7F6E\u304D\u63DB\u308F\u308A\u307E\u3059\u3002\u30ED\u30C3\u30AF\u3057\u305F\u30D5\u30A1\u30A4\u30EB\u306F\u3001\u958B\u304F\u3068\u304D\u306B\u5408\u8A00\u8449\u3092\u805E\u304D\u307E\u3059\u3002" })),
+                    react_1.default.createElement(HelpTip, { label: "\u8AAD\u307F\u8FBC\u3080", text: "\u3044\u307E\u306E\u8A18\u9332\u306F\u3059\u3079\u3066\u7F6E\u304D\u63DB\u308F\u308A\u307E\u3059\u3002" })),
                 react_1.default.createElement("input", { ref: fileRef, type: "file", className: "hidden", onChange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f)
                         readFile(f); } }),
                 react_1.default.createElement("div", { className: "space-y-3" },
@@ -22413,7 +22401,8 @@ html { scrollbar-gutter: stable; }
 .divide-neutral-100 > * + * { border-top-color: #F5F5F5; }
 .space-y-1 > * + * { margin-top: .25rem; }
 .mt-5 { margin-top: 1.25rem; }
-.-mr-0\.5 { margin-right: -.125rem; }
+.-mr-0\\.5 { margin-right: -.125rem; }
+.w-\\[34px\\] { width: 34px; }
 /* 「あと◯日」の札と、フォルダの集め方の小さな札で使う */
 .leading-tight { line-height: 1.25; }
 .py-\\[2px\\] { padding-top: 2px; padding-bottom: 2px; }
@@ -22422,14 +22411,14 @@ html { scrollbar-gutter: stable; }
 /* 新しく使うようになったもの */
 .-mb-2 { margin-bottom: -.5rem; }
 .flex-\\[1\\.6\\] { flex: 1.6 1 0%; }
-.h-1\.5 { height: .375rem; }
-.w-1\.5 { width: .375rem; }
+.h-1\\.5 { height: .375rem; }
+.w-1\\.5 { width: .375rem; }
 .min-h-\\[48px\\] { min-height: 48px; }
 .min-h-\\[52px\\] { min-height: 52px; }
 .p-1 { padding: .25rem; }
 .pl-2 { padding-left: .5rem; }
-.pr-1\.5 { padding-right: .375rem; }
-.pr-2\.5 { padding-right: .625rem; }
+.pr-1\\.5 { padding-right: .375rem; }
+.pr-2\\.5 { padding-right: .625rem; }
 .pt-2 { padding-top: .5rem; }
 .disabled\:opacity-30:disabled { opacity: .3; }
 .text-rose-600 { color: #E11D48; }
