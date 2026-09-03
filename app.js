@@ -17388,9 +17388,20 @@ const TYPES = ["memo", "checklist", "schedule"];
 /* 週ぜんたいのマスに入れられるのは、この3つだけ。
    **1つのマスに何種類も入れないこと。** 小さいマスに並ぶと読めない */
 const SCOPED_TYPES = ["memo", "checklist"];
+/* 計画の「やること」。記録ではないが、**しるしと色は記録と同じ決め方にすること。**
+   計画ごとに色が変わると、同じものなのに画面ごとに違って見える。
+   色は表示設定の「記録の色」からひとつだけ決める */
+const STEP_TYPE = "step";
+/* 計画。**計画ごとに色を持たせないこと。**
+   計画の数だけ色がばらけると、「この色は計画のこと」と読めなくなる。
+   同じ色でも、名前で見分けられる */
+const PLAN_TYPE = "plan";
+/* 表示設定で色を決められるもの。記録の3種類＋計画＋やること */
+const COLORED_TYPES = [...TYPES, PLAN_TYPE, STEP_TYPE];
 const TYPE_LABELS = {
     memo: "メモ", media: "画像", checklist: "チェックリスト",
     link: "リンク", schedule: "スケジュール", // link は古い記録の読み込みだけで使う
+    plan: "計画", step: "やること",
 };
 const TYPE_ICON = {
     memo: react_1.default.createElement(lucide_react_1.StickyNote, { size: 22 }),
@@ -17398,6 +17409,9 @@ const TYPE_ICON = {
     checklist: react_1.default.createElement(lucide_react_1.ListChecks, { size: 22 }),
     link: react_1.default.createElement(lucide_react_1.Link, { size: 22 }),
     schedule: react_1.default.createElement(lucide_react_1.CalendarClock, { size: 22 }),
+    plan: react_1.default.createElement(lucide_react_1.Target, { size: 22 }),
+    /* チェックリストの ListChecks と取り違えないよう、別のしるしにする */
+    step: react_1.default.createElement(lucide_react_1.ListTodo, { size: 22 }),
 };
 const typeIcon = (t, size = 18) => react_1.default.cloneElement(TYPE_ICON[t] || TYPE_ICON.memo, { size });
 /* 色見本。**色の数値を画面の部品に直接書かないこと。**
@@ -17406,34 +17420,36 @@ const COLORS = [
     /* deep ＝ 字やしるしの色／mid ＝ 帯や線／soft ＝ 下じき／line ＝ ふちどり。
        **どれも濃くしすぎないこと。** 記録がいくつも並ぶので、
        一つひとつが強いと画面ぜんたいが騒がしくなる */
-    { key: "teal", label: "みどり", deep: "#2E9E80", mid: "#5FCBAE", soft: "#F2FBF8", line: "#CDEDE2" },
+    { key: "teal", label: "あさぎ", deep: "#2E9E80", mid: "#5FCBAE", soft: "#F2FBF8", line: "#CDEDE2" },
     { key: "sky", label: "そら", deep: "#3E96C8", mid: "#77C0E4", soft: "#F2F9FD", line: "#CDE7F6" },
-    { key: "indigo", label: "あお", deep: "#6272C7", mid: "#93A1E0", soft: "#F4F6FD", line: "#D8DEF6" },
+    { key: "indigo", label: "ききょう", deep: "#6272C7", mid: "#93A1E0", soft: "#F4F6FD", line: "#D8DEF6" },
     { key: "violet", label: "ふじ", deep: "#8A7BC8", mid: "#B3A6E3", soft: "#F7F5FD", line: "#E2DBF7" },
     { key: "rose", label: "さくら", deep: "#D4788D", mid: "#EFA3B4", soft: "#FEF4F6", line: "#F8D9E0" },
     { key: "amber", label: "やまぶき", deep: "#C08F3C", mid: "#E5BE72", soft: "#FDF8EF", line: "#F3E3C4" },
-    { key: "green", label: "わかくさ", deep: "#5AA05C", mid: "#8FC98F", soft: "#F4FAF4", line: "#D5EBD5" },
+    { key: "green", label: "みどり", deep: "#5AA05C", mid: "#8FC98F", soft: "#F4FAF4", line: "#D5EBD5" },
     { key: "slate", label: "はいいろ", deep: "#6B7783", mid: "#9CA7B2", soft: "#F7F8FA", line: "#DFE4E9" },
 ];
 const colorOf = (key) => COLORS.find((c) => c.key === key) || COLORS[0];
-/* 画面の基調の色を、計画の色として使う。
-   **「みどり」を決め打ちしないこと。** 画面が青いのに計画だけ緑で出てくる。
-   THEMES の名前は COLORS にも同じものがあるので、そのまま読みかえられる。
-   見つからないときだけ、いちばん上の色に落とす */
-const planColorForTheme = (themeKey) => (COLORS.find((c) => c.key === themeKey) || COLORS[0]).key;
 const DEFAULT_TYPE_COLOR = {
     memo: "slate", media: "violet", checklist: "teal", link: "sky", schedule: "rose",
+    plan: "green", step: "indigo",
 };
 /* テーマ色（画面ぜんたいの基調）。--th-* を差し替えると配色が一括で変わる */
 const THEMES = [
     /* 画面の基調も淡く。**濃く沈んだ色にしないこと** */
-    { key: "teal", label: "みどり", swatch: "#6FC7AC", vars: { 50: "#F4FBF8", 100: "#E4F5EE", 200: "#C6EBDD", 300: "#A2DEC9", 600: "#7FD0B7", 700: "#6FC7AC", 800: "#57B79B", 900: "#479B83", 950: "#3B8370" } },
+    { key: "teal", label: "あさぎ", swatch: "#6FC7AC", vars: { 50: "#F4FBF8", 100: "#E4F5EE", 200: "#C6EBDD", 300: "#A2DEC9", 600: "#7FD0B7", 700: "#6FC7AC", 800: "#57B79B", 900: "#479B83", 950: "#3B8370" } },
     { key: "sky", label: "そら", swatch: "#87C4E4", vars: { 50: "#F4FAFD", 100: "#E5F2FA", 200: "#C9E5F5", 300: "#A5D3EC", 600: "#96CBE8", 700: "#87C4E4", 800: "#6FAFD2", 900: "#5C95B4", 950: "#4A7E9B" } },
     { key: "rose", label: "さくら", swatch: "#F0A6B4", vars: { 50: "#FEF6F7", 100: "#FCEAEE", 200: "#F8D3DA", 300: "#F4BBC6", 600: "#F2AFBC", 700: "#F0A6B4", 800: "#DC8F9E", 900: "#C07786", 950: "#A55F6D" } },
     { key: "amber", label: "やまぶき", swatch: "#EFCB86", vars: { 50: "#FEFBF3", 100: "#FCF4E2", 200: "#F8E7C2", 300: "#F3D89F", 600: "#F1D191", 700: "#EFCB86", 800: "#D9B26B", 900: "#B99457", 950: "#9A7A42" } },
     { key: "violet", label: "ふじ", swatch: "#BCA9DF", vars: { 50: "#F9F7FD", 100: "#F1ECFA", 200: "#E2D8F3", 300: "#CFC0EA", 600: "#C5B3E3", 700: "#BCA9DF", 800: "#A492CB", 900: "#8B79AF", 950: "#74628F" } },
     { key: "slate", label: "はいいろ", swatch: "#9BA6B2", vars: { 50: "#F8F9FA", 100: "#F0F2F5", 200: "#E0E4E9", 300: "#C9D0D8", 600: "#A7B1BC", 700: "#9BA6B2", 800: "#86919D", 900: "#6F7984", 950: "#5B646E" } },
 ];
+/* 画面の基調の色を、しるしに使える形（deep/mid/soft/line）にして返す。
+   **色の数値を部品に直に書かないこと。** 基調を変えたときに置いていかれる */
+function themeColorOf(themeKey) {
+    const th = THEMES.find((t) => t.key === themeKey) || THEMES[0];
+    return { key: th.key, label: th.label, deep: th.vars[900], mid: th.vars[700], soft: th.vars[50], line: th.vars[200] };
+}
 /* 大事な記録に付ける印。淡い色でそろえる */
 const MARKS = [
     { key: "star", label: "星", icon: react_1.default.createElement(lucide_react_1.Star, { size: 15 }), color: "#EFCB86" },
@@ -17482,9 +17498,14 @@ const ColorContext = react_1.default.createContext(DEFAULT_TYPE_COLOR);
 /* 札の中から使う受け渡し（持ち越しなど）。
    画面をいくつも通して手渡すと数が増えて追えなくなるので、ここでまとめる */
 const RecordActionsContext = react_1.default.createContext(null);
+/* 表示設定で色を決めていないもの（並びかえ・削除など、__ で始まる操作）は、
+   **みどりで出さないこと。** いままで colorOf(undefined) が一覧の先頭を返していたので、
+   画面を何色にしていても、そこだけ緑になっていた。画面の基調の色にそろえる */
 function useTypeColor(type) {
     const map = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
-    return colorOf(map[type] || DEFAULT_TYPE_COLOR[type]);
+    const prefs = react_1.default.useContext(PrefsContext);
+    const key = map[type] || DEFAULT_TYPE_COLOR[type];
+    return key ? colorOf(key) : themeColorOf(prefs && prefs.theme);
 }
 /* ============================================================
    記録
@@ -17731,7 +17752,9 @@ function repeatsOn(r, date) {
    ============================================================ */
 function emptyPlan(kindId) {
     return {
-        id: uid(), kindId: kindId || null, name: "", color: "teal", note: "",
+        /* **色を持たないこと。** 計画の色は表示設定でひとつだけ決める。
+           古い記録に残っている color は、読み込むときに落とす */
+        id: uid(), kindId: kindId || null, name: "", note: "",
         steps: [], // 2段のチェックリスト {id,title,dueDate,done,items:[{id,text,done}]}
         pinned: false, // 上に固定（いちばん上に出す）
         doneAt: "", // やり遂げた日（空なら、まだ進行中）
@@ -17758,6 +17781,8 @@ function migratePlan(p) {
         pinned: !!p.pinned,
         doneAt: typeof p.doneAt === "string" ? p.doneAt : "",
         id: p.id || uid(),
+        /* 計画ごとに持っていた色は、もう使わない（表示設定でひとつだけ決める） */
+        color: undefined,
     };
 }
 /* 週・月ぜんたいに付けた記録の繰り返し。
@@ -18849,7 +18874,12 @@ function WheelColumn({ items, value, onChange, minWidth = 72 }) {
                     color: isActive ? "var(--th-800)" : "#404040",
                     fontSize: isActive ? "17px" : "16px",
                     whiteSpace: "nowrap",
-                } }, it.label));
+                } },
+                it.swatch && (react_1.default.createElement("span", { className: "rounded-full shrink-0", "aria-hidden": "true", style: {
+                        width: 16, height: 16, marginRight: 9, background: it.swatch,
+                        boxShadow: "inset 0 0 0 1px rgba(0,0,0,.08)",
+                    } })),
+                it.label));
         }))));
 }
 /* zIndex＝重なり順。ほかの小窓の上にさらに重ねるときは大きい数を渡すこと */
@@ -19403,7 +19433,9 @@ function LinkedText({ text, className }) {
     if (last < src.length)
         parts.push({ t: src.slice(last) });
     return (react_1.default.createElement("span", { className: "whitespace-pre-line break-words " + (className || "") }, parts.map((p, i) => p.url
-        ? react_1.default.createElement("a", { key: i, href: p.url, target: "_blank", rel: "noopener noreferrer", className: "ft-link text-sky-700 font-bold" }, p.t)
+        /* **住所だけ太字にしないこと。** そこだけ浮いて、本文が読みにくくなる。
+           字体も大きさも太さも本文のまま、色だけで「押せる」と伝える */
+        ? react_1.default.createElement("a", { key: i, href: p.url, target: "_blank", rel: "noopener noreferrer", className: "ft-link text-sky-700" }, p.t)
         : react_1.default.createElement(react_1.default.Fragment, { key: i }, p.t))));
 }
 /* ============================================================
@@ -19776,9 +19808,10 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
    ＋を押したあとの「記録の種類」
    **ここは順に現れさせないこと。** 開いた瞬間から選べるほうがよい
    ============================================================ */
-function TypeRow({ t, onPick, label, icon }) {
+function TypeRow({ t, onPick, label, icon, colorKey }) {
     const N = useTypeNames();
-    const color = useTypeColor(t);
+    /* しるしは変えたいが色はほかにそろえたい、というときに colorKey で借りる */
+    const color = useTypeColor(colorKey || t);
     const [pressed, go] = useTapThen(() => onPick(t));
     return (react_1.default.createElement("button", { type: "button", onClick: go, className: "w-full flex items-center gap-3 px-3 py-3 min-h-[64px] rounded-xl text-left ft-tap ft-tap-card "
             + (pressed ? "bg-neutral-200 ft-tap-pressed" : "hover:bg-neutral-50") },
@@ -19786,7 +19819,7 @@ function TypeRow({ t, onPick, label, icon }) {
         react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[15.5px] font-bold text-neutral-900" }, label || N[t] || TYPE_LABELS[t]),
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" })));
 }
-function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons }) {
+function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons, colorKeys }) {
     const [closing, close] = useClosing(onCancel, 240);
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center", style: { zIndex: 2147483000 }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/40 " + (closing ? "anim-fade-out" : "anim-fade") }),
@@ -19796,7 +19829,7 @@ function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TY
                 react_1.default.createElement("span", { className: "font-display text-[15.5px] text-neutral-900" }, title),
                 react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100" },
                     react_1.default.createElement(lucide_react_1.X, { size: 28 }))),
-            react_1.default.createElement("div", { className: "p-2" }, types.map((t) => (react_1.default.createElement(TypeRow, { key: t, t: t, onPick: onPick, label: labels ? labels[t] : null, icon: icons ? icons[t] : null })))))));
+            react_1.default.createElement("div", { className: "p-2" }, types.map((t) => (react_1.default.createElement(TypeRow, { key: t, t: t, onPick: onPick, colorKey: colorKeys ? colorKeys[t] : null, label: labels ? labels[t] : null, icon: icons ? icons[t] : null })))))));
 }
 /* 前回、保存しないまま閉じられた記録を知らせるカード */
 function DraftCard({ draft, onResume, onDiscard }) {
@@ -20708,7 +20741,10 @@ const SPANS = [{ key: "day", label: "日" }, { key: "week", label: "週" }, { ke
 const DUE_SHOWN = 2;
 function PlanDueCard({ plan, list, onOpen }) {
     const [open, setOpen] = (0, react_1.useState)(false);
-    const color = colorOf(plan.color);
+    /* 名前の帯は「計画」の色、中のやることは「やること」の色。
+       **どちらも表示設定から取ること。** 計画ごとに色を持たせない */
+    const color = useTypeColor(PLAN_TYPE);
+    const stepColor = useTypeColor(STEP_TYPE);
     const shown = open ? list : list.slice(0, DUE_SHOWN);
     const rest = list.length - DUE_SHOWN;
     return (react_1.default.createElement("div", { className: "flex-1 min-w-0 rounded-[14px] bg-white border border-neutral-200 overflow-hidden" },
@@ -20721,9 +20757,9 @@ function PlanDueCard({ plan, list, onOpen }) {
                 "\u4EF6"),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 17, className: "shrink-0", style: { color: color.mid } })),
         react_1.default.createElement("div", { className: "divide-y divide-neutral-100" }, shown.map(({ step, left }) => (react_1.default.createElement("button", { key: step.id, type: "button", onClick: onOpen, className: "w-full flex items-center gap-2 px-3.5 min-h-[46px] py-2 text-left ft-tap ft-tap-card" },
-            step.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: color.mid }, fill: "currentColor" }),
+            step.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: stepColor.mid }, fill: "currentColor" }),
             react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[14.5px] font-bold text-neutral-900 truncate" }, step.title || "（名前なし）"),
-            react_1.default.createElement("span", { className: "text-[13px] font-bold tabular-nums shrink-0", style: { color: left <= 3 ? color.deep : "#737373" } }, stepLeftLabel(left)))))),
+            react_1.default.createElement("span", { className: "text-[13px] font-bold tabular-nums shrink-0", style: { color: left <= 3 ? stepColor.deep : "#737373" } }, stepLeftLabel(left)))))),
         rest > 0 && (react_1.default.createElement("button", { type: "button", onClick: () => setOpen((v) => !v), "aria-expanded": open, className: "w-full flex items-center justify-center gap-1 min-h-[42px] text-[13px] font-bold text-neutral-500 border-t border-neutral-100 ft-tap" },
             open ? "とじる" : `他${rest}件を表示`,
             react_1.default.createElement("span", { className: "flex " + (open ? "rotate-180" : "") },
@@ -20819,7 +20855,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         react_1.default.createElement("div", { className: "px-5 pt-3 pb-2 sticky bg-app", style: { top: "calc(env(safe-area-inset-top) + 66px)", zIndex: 20 } },
             react_1.default.createElement("div", { className: "flex gap-1 p-[3px] rounded-full bg-th-50" }, SPANS.map((s) => (react_1.default.createElement("button", { key: s.key, type: "button", onClick: () => { setDir(0); setSpan(s.key); }, "aria-pressed": span === s.key, style: { minHeight: 44 }, className: "flex-1 rounded-full text-[14px] font-bold flex items-center justify-center ft-tap "
                     + (span === s.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") },
-                react_1.default.createElement("span", { key: span === s.key ? "on" : "off", className: "inline-block " + (span === s.key ? "ft-tabpop" : "") }, s.label)))))),
+                react_1.default.createElement("span", { className: "inline-block" }, s.label)))))),
         react_1.default.createElement("div", { className: "px-5" },
             react_1.default.createElement(MonthNavHeader, { className: "mb-1 mt-1", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
             span === "day" && (react_1.default.createElement("div", { className: "flex items-center gap-1 mt-1 mb-3" },
@@ -21092,19 +21128,16 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
    やめたくなったときに戻せない */
 function PlanSettingsSheet({ plan, kinds, onCancel, onSave }) {
     const [d, setD] = (0, react_1.useState)(plan);
-    return (react_1.default.createElement(SheetDialog, { title: "\u540D\u524D\u30FB\u7A2E\u985E\u30FB\u8272", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
+    return (react_1.default.createElement(SheetDialog, { title: "\u540D\u524D\u30FB\u7A2E\u985E", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
         react_1.default.createElement("div", { className: "mb-3" },
             react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setD({ ...d, name: e.target.value }), placeholder: "\u8A08\u753B\u306E\u540D\u524D" })),
-        react_1.default.createElement("div", { className: "mb-3" },
-            react_1.default.createElement(DrumSelect, { value: d.kindId || "", onChange: (v) => setD({ ...d, kindId: v || null }), options: kinds.map((k) => ({ value: k.id, label: k.name })), placeholder: "\u7A2E\u985E\u306A\u3057", title: "\u7A2E\u985E\u3092\u9078\u3076" })),
-        react_1.default.createElement(RowCard, null,
-            react_1.default.createElement(SheetRow, { label: "\u8272", last: true },
-                react_1.default.createElement(ColorSelect, { value: d.color, title: "\u8A08\u753B\u306E\u8272", options: COLORS, onChange: (v) => setD({ ...d, color: v }) })))));
+        react_1.default.createElement(DrumSelect, { value: d.kindId || "", onChange: (v) => setD({ ...d, kindId: v || null }), options: kinds.map((k) => ({ value: k.id, label: k.name })), placeholder: "\u7A2E\u985E\u306A\u3057", title: "\u7A2E\u985E\u3092\u9078\u3076" })));
 }
 /* 計画の札。一覧でも、種類の中でも同じものを使う */
 function PlanCard({ plan, records, onOpen, onPin }) {
     const p = plan;
-    const c = colorOf(p.color);
+    const c = useTypeColor(PLAN_TYPE);
+    const stepColor = useTypeColor(STEP_TYPE);
     const steps = p.steps || [];
     const doneSteps = steps.filter((g) => stepDone(g)).length;
     const recs = records.filter((r) => r.planId === p.id).length;
@@ -21126,11 +21159,13 @@ function PlanCard({ plan, records, onOpen, onPin }) {
                     react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: p.pinned ? "currentColor" : "none" })))),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })),
         !done && next && left !== null && left >= 0 && (react_1.default.createElement("div", { className: "mt-2.5 flex items-center gap-2" },
-            next.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: c.mid }, fill: "currentColor" }),
+            next.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: stepColor.mid }, fill: "currentColor" }),
             react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[13px] text-neutral-600 truncate" }, next.title),
-            react_1.default.createElement("span", { className: "text-[14.5px] font-bold tabular-nums shrink-0", style: { color: c.deep } }, stepLeftLabel(left))))));
+            react_1.default.createElement("span", { className: "text-[14.5px] font-bold tabular-nums shrink-0", style: { color: stepColor.deep } }, stepLeftLabel(left))))));
 }
 function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan }) {
+    /* 種類も計画のなかま。**種類ごとに色を持たせないこと** */
+    const planColor = useTypeColor(PLAN_TYPE);
     /* 並び順：上に固定したもの → ふつうのもの → やり遂げたもの */
     const sortPlans = (list) => list.slice().sort((a, b) => {
         const da = !!a.doneAt, db = !!b.doneAt;
@@ -21155,7 +21190,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan }
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
         react_1.default.createElement("div", { className: "px-5 pt-4 max-w-2xl mx-auto w-full space-y-5" },
             kinds.length > 0 && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, kinds.map((k) => {
-                const c = colorOf(k.color);
+                const c = planColor;
                 const n = (grouped.get(k.id) || []).length;
                 return (react_1.default.createElement("button", { key: k.id, type: "button", onClick: () => onOpenKind(k), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft" },
                     react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: c.soft, color: c.deep } },
@@ -21202,7 +21237,7 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
                     mine.length === 0 && react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-3" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))),
             react_1.default.createElement("button", { type: "button", onClick: () => onAddPlan(kind), "aria-label": "\u8A08\u753B\u3092\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white card-soft flex items-center justify-center ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 30 })),
-            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u7A2E\u985E\u306E\u8A2D\u5B9A", types: ["__rename", "__delete"], labels: { __rename: "名前を変更", __delete: "この種類を削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => { setMenuOpen(false); if (k === "__rename")
+            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u7A2E\u985E\u306E\u8A2D\u5B9A", types: ["__rename", "__delete"], labels: { __rename: "名前を変更", __delete: "この種類を削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, colorKeys: { __rename: PLAN_TYPE, __delete: PLAN_TYPE }, onCancel: () => setMenuOpen(false), onPick: (k) => { setMenuOpen(false); if (k === "__rename")
                     setRenameOpen(true);
                 else
                     setDelOpen(true); } })),
@@ -21218,7 +21253,10 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
    **その場で書き換えられるようにしないこと。** 前は題も期日もいつでも直せて、
    ×ひとつで消えてしまった。記録の札と同じで、見るときは読むだけ、
    直すときは鉛筆から開く（消すのも、そのなかの「削除」＋確かめの窓を通す） */
-function StepCard({ step, color, onChange, onEdit, onPin }) {
+/* **計画の色を持ち込まないこと。** 同じ「やること」なのに、計画ごとに色が変わって見える。
+   色は表示設定でひとつだけ決める（`useTypeColor(STEP_TYPE)`） */
+function StepCard({ step, onChange, onEdit, onPin }) {
+    const color = useTypeColor(STEP_TYPE);
     const items = step.items || [];
     const doneCount = items.filter((i) => i.done).length;
     const left = stepLeft(step);
@@ -21270,7 +21308,8 @@ function StepCard({ step, color, onChange, onEdit, onPin }) {
    ・足もとは 左から「キャンセル・削除・保存」。**削除を本文に埋めないこと**
    ・書きかけで閉じようとしたら、いちど確かめる
    ・削除も、確かめの窓をひとつ越えてから */
-function StepForm({ initial, color, onSave, onCancel, onDelete }) {
+function StepForm({ initial, onSave, onCancel, onDelete }) {
+    const color = useTypeColor(STEP_TYPE);
     const [step, setStep] = (0, react_1.useState)(initial);
     const [add, setAdd] = (0, react_1.useState)("");
     const [dirty, setDirty] = (0, react_1.useState)(false);
@@ -21354,7 +21393,8 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
     const [addOpen, setAddOpen] = (0, react_1.useState)(false);
     const [stepEdit, setStepEdit] = (0, react_1.useState)(null); // 書いているやること {step, isNew}
     const [doneOpen, setDoneOpen] = (0, react_1.useState)(false); // 済んだやることをひらいているか
-    const color = colorOf(plan.color);
+    const color = useTypeColor(PLAN_TYPE);
+    const stepColor = useTypeColor(STEP_TYPE);
     const today = todayStr();
     const planRecords = (0, react_1.useMemo)(() => records.filter((r) => r.planId === plan.id).sort(compareTimeline), [records, plan.id]);
     const pinned = (0, react_1.useMemo)(() => planRecords.filter((r) => r.pinned), [planRecords]);
@@ -21406,11 +21446,11 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                         react_1.default.createElement("span", { className: "flex-[2] pb-1.5" },
                             react_1.default.createElement(ProgressBar, { ratio: steps.length ? doneSteps / steps.length : 0, color: color.mid }))))),
                 react_1.default.createElement("div", { className: "mb-5" },
-                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, openSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, color: color, onChange: setStep, onEdit: () => editStep(s), onPin: (x) => setStep({ ...x, pinned: !x.pinned }) })))),
+                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, openSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, onChange: setStep, onEdit: () => editStep(s), onPin: (x) => setStep({ ...x, pinned: !x.pinned }) })))),
                     closedSteps.length > 0 && (react_1.default.createElement("div", { className: "-mx-5" },
                         react_1.default.createElement("div", { className: "px-4" },
                             react_1.default.createElement("button", { type: "button", onClick: () => setDoneOpen((v) => !v), "aria-expanded": doneOpen, className: "w-full flex items-center gap-2 rounded-[14px] border border-neutral-200 bg-white px-3.5 min-h-[46px] text-left ft-tap ft-tap-card" },
-                                react_1.default.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0", style: { background: color.deep, color: "#FFFFFF" } },
+                                react_1.default.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0", style: { background: stepColor.deep, color: "#FFFFFF" } },
                                     react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })),
                                 react_1.default.createElement("span", { className: "flex-1 text-[14px] font-bold text-neutral-500" },
                                     "\u3084\u308A\u7D42\u3048\u305F ",
@@ -21418,7 +21458,7 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                                     "\u4EF6"),
                                 react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (doneOpen ? "rotate-180" : "") },
                                     react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
-                        doneOpen && (react_1.default.createElement("div", { className: "ft-seq pt-2.5" }, closedSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, color: color, onChange: setStep, onEdit: () => editStep(s) })))))))),
+                        doneOpen && (react_1.default.createElement("div", { className: "ft-seq pt-2.5" }, closedSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, onChange: setStep, onEdit: () => editStep(s) })))))))),
                 plan.doneAt && (react_1.default.createElement("div", { className: "rounded-2xl p-4 mb-5 flex items-center gap-3", style: { background: color.soft } },
                     react_1.default.createElement("span", { className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0", style: { background: color.deep, color: "#FFFFFF" } },
                         react_1.default.createElement(lucide_react_1.Check, { size: 22, strokeWidth: 3, className: "thick" })),
@@ -21440,10 +21480,10 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
             react_1.default.createElement(SelectBar, { sel: sel, list: planRecords }),
             !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 })),
-            stepEdit && (react_1.default.createElement(StepForm, { initial: stepEdit.step, color: color, onCancel: () => setStepEdit(null), onSave: saveStep, onDelete: stepEdit.isNew ? null : () => { delStep(stepEdit.step.id); setStepEdit(null); } })),
-            addOpen && (react_1.default.createElement(TypePickSheet, { title: "\u306A\u306B\u3092\u8FFD\u52A0\u3057\u307E\u3059\u304B", types: ["__step", ...TYPES], labels: { __step: "やること" }, icons: { __step: react_1.default.createElement(lucide_react_1.ListChecks, { size: 22 }) }, onCancel: () => setAddOpen(false), onPick: (k) => {
+            stepEdit && (react_1.default.createElement(StepForm, { initial: stepEdit.step, onCancel: () => setStepEdit(null), onSave: saveStep, onDelete: stepEdit.isNew ? null : () => { delStep(stepEdit.step.id); setStepEdit(null); } })),
+            addOpen && (react_1.default.createElement(TypePickSheet, { title: "\u306A\u306B\u3092\u8FFD\u52A0\u3057\u307E\u3059\u304B", types: [STEP_TYPE, ...TYPES], onCancel: () => setAddOpen(false), onPick: (k) => {
                     setAddOpen(false);
-                    if (k === "__step") {
+                    if (k === STEP_TYPE) {
                         addStep();
                         return;
                     }
@@ -21451,11 +21491,13 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                 } })),
             menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", types: plan.doneAt ? ["__undone", "__edit", "__delete"] : ["__done", "__edit", "__delete"], labels: {
                     __done: "この計画をやり遂げた", __undone: "やり遂げたのを取り消す",
-                    __edit: "名前・種類・色を変更", __delete: "この計画を削除",
+                    __edit: "名前・種類を変更", __delete: "この計画を削除",
                 }, icons: {
                     __done: react_1.default.createElement(lucide_react_1.Check, { size: 22 }), __undone: react_1.default.createElement(lucide_react_1.RotateCcw, { size: 22 }),
                     __edit: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }),
-                }, onCancel: () => setMenuOpen(false), onPick: (k) => {
+                }, 
+                /* 計画にかかわるものは、表示設定の「計画の色」でそろえる */
+                colorKeys: { __done: PLAN_TYPE, __undone: PLAN_TYPE, __edit: PLAN_TYPE, __delete: PLAN_TYPE }, onCancel: () => setMenuOpen(false), onPick: (k) => {
                     setMenuOpen(false);
                     if (k === "__done")
                         setDoneAsk(true);
@@ -21713,12 +21755,12 @@ function ColorSelect({ value, options, onChange, title }) {
     const [tmp, setTmp] = (0, react_1.useState)(value);
     const cur = options.find((c) => c.key === value) || options[0];
     return (react_1.default.createElement(react_1.default.Fragment, null,
-        react_1.default.createElement("button", { type: "button", onClick: () => { setTmp(value); setOpen(true); }, style: { width: 132 }, className: "min-h-[46px] pl-3 pr-2 rounded-xl bg-neutral-100 flex items-center gap-2 shrink-0 ft-tap ft-tap-card" },
+        react_1.default.createElement("button", { type: "button", onClick: () => { setTmp(value); setOpen(true); }, style: { width: 150 }, className: "min-h-[46px] pl-3 pr-2 rounded-xl bg-neutral-100 flex items-center gap-2 shrink-0 ft-tap ft-tap-card" },
             react_1.default.createElement("span", { className: "w-6 h-6 rounded-full shrink-0", style: { background: cur.mid } }),
             react_1.default.createElement("span", { className: "text-[14.5px] text-neutral-900 flex-1 min-w-0 truncate text-left" }, cur.label),
             react_1.default.createElement(lucide_react_1.ChevronDown, { size: 17, className: "text-neutral-400 shrink-0" })),
         open && (react_1.default.createElement(WheelSheet, { title: title, onClose: () => setOpen(false), onConfirm: () => { onChange(tmp); setOpen(false); } },
-            react_1.default.createElement(WheelColumn, { items: options.map((c) => ({ value: c.key, label: c.label })), value: tmp, onChange: setTmp, minWidth: 160 })))));
+            react_1.default.createElement(WheelColumn, { items: options.map((c) => ({ value: c.key, label: c.label, swatch: c.mid })), value: tmp, onChange: setTmp, minWidth: 180 })))));
 }
 function SettingsScreen({ prefs, onSave, onClose }) {
     const headRef = (0, react_1.useRef)(null);
@@ -21742,9 +21784,9 @@ function SettingsScreen({ prefs, onSave, onClose }) {
             react_1.default.createElement(OverlayHeader, { title: "\u8868\u793A\u8A2D\u5B9A", onBack: leave, hideMenu: true }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full pb-16" },
                 react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u8A18\u9332\u306E\u8272"),
-                react_1.default.createElement(RowCard, { className: "mb-5" }, TYPES.map((t, i) => {
+                react_1.default.createElement(RowCard, { className: "mb-5" }, COLORED_TYPES.map((t, i) => {
                     const cur = colorOf(draft.typeColor[t]);
-                    return (react_1.default.createElement("div", { key: t, className: "flex items-center gap-2.5 px-4 py-2 min-h-[64px] " + (i === TYPES.length - 1 ? "" : "border-b border-neutral-100") },
+                    return (react_1.default.createElement("div", { key: t, className: "flex items-center gap-2.5 px-4 py-2 min-h-[64px] " + (i === COLORED_TYPES.length - 1 ? "" : "border-b border-neutral-100") },
                         react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { background: cur.soft, color: cur.deep } }, typeIcon(t, 17)),
                         react_1.default.createElement("span", { className: "text-[15.5px] text-neutral-900 flex-1 min-w-0 truncate" }, TYPE_LABELS[t]),
                         react_1.default.createElement(ColorSelect, { value: draft.typeColor[t], title: TYPE_LABELS[t] + "の色", options: COLORS, onChange: (v) => set({ typeColor: { ...draft.typeColor, [t]: v } }) })));
@@ -22824,21 +22866,15 @@ function AppMain() {
         tell("新しいチェックリストへ移しました");
     };
     /* --- 計画 --- */
-    /* 新しい種類も、はじめは画面の基調の色。**順ぐりに色を配らないこと。**
-       作るたびに違う色になり、どれが何の色なのか分からなくなる */
-    const addKind = (name) => setKinds([...kinds, { id: uid(), name, color: planColorForTheme(prefs.theme) }]);
+    /* **色を持たせないこと。** 計画も種類も、色は表示設定でひとつだけ決める */
+    const addKind = (name) => setKinds([...kinds, { id: uid(), name }]);
     const renameKind = (id, name) => setKinds(kinds.map((k) => (k.id === id ? { ...k, name } : k)));
     const deleteKind = (id) => {
         setKinds(kinds.filter((k) => k.id !== id));
         setPlans(plans.map((p) => (p.kindId === id ? { ...p, kindId: null } : p)));
     };
     const addPlan = (kindId, name) => {
-        const kind = kinds.find((k) => k.id === kindId);
-        /* 種類に色が決まっていれば、そろえる。決まっていなければ画面の基調の色 */
-        const p = {
-            ...emptyPlan(kindId), name: name || "新しい計画",
-            color: (kind && kind.color) || planColorForTheme(prefs.theme),
-        };
+        const p = { ...emptyPlan(kindId), name: name || "新しい計画" };
         setPlans([...plans, p]);
         setPlanOpen(p.id);
     };
@@ -22993,7 +23029,7 @@ function AppMain() {
                                     addScoped(a.scope, a.dateKey);
                                 } })),
                             typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: scoped ? SCOPED_TYPES : TYPES })),
-                            planPick && (react_1.default.createElement(TypePickSheet, { title: "\u8FFD\u52A0\u3059\u308B\u3082\u306E", types: ["__plan", "__kind"], labels: { __plan: "計画", __kind: "計画の種類" }, icons: { __plan: react_1.default.createElement(lucide_react_1.Target, { size: 22 }), __kind: react_1.default.createElement(lucide_react_1.Layers, { size: 22 }) }, onCancel: () => setPlanPick(false), onPick: (k) => { setPlanPick(false); if (k === "__plan")
+                            planPick && (react_1.default.createElement(TypePickSheet, { title: "\u8FFD\u52A0\u3059\u308B\u3082\u306E", types: [PLAN_TYPE, "__kind"], labels: { __kind: "計画の種類" }, icons: { __kind: react_1.default.createElement(lucide_react_1.Layers, { size: 22 }) }, colorKeys: { __kind: PLAN_TYPE }, onCancel: () => setPlanPick(false), onPick: (k) => { setPlanPick(false); if (k === PLAN_TYPE)
                                     setAddPlanOpen(true);
                                 else
                                     setAddKindOpen(true); } })),
