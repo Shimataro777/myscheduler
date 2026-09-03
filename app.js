@@ -21110,6 +21110,33 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
     /* しぼりこみの欄を開いているか。**閉じても、帯はいつも上に残すこと。**
        下まで見ていった先で、検索に戻る道が無くなるのがいちばん困る */
     const [open, setOpen] = (0, react_1.useState)(true);
+    /* **開くだけで終わらせないこと。** 下のほうで押しても、欄は画面の外（上）にあるので
+       何も起きていないように見える。いっしょに画面のてっぺんまで戻す */
+    const barRef = (0, react_1.useRef)(null);
+    const toggleOpen = () => {
+        const next = !open;
+        setOpen(next);
+        if (!next)
+            return;
+        const go = () => {
+            let el = barRef.current && barRef.current.parentElement;
+            while (el) {
+                if (el.scrollHeight > el.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(el).overflowY)) {
+                    el.scrollTo({ top: 0, behavior: "smooth" });
+                    return;
+                }
+                el = el.parentElement;
+            }
+            try {
+                window.scrollTo({ top: 0, behavior: "smooth" });
+            }
+            catch (e) {
+                window.scrollTo(0, 0);
+            }
+        };
+        /* 欄が開いて高さが決まってから動かす */
+        requestAnimationFrame(() => requestAnimationFrame(go));
+    };
     const colorMap = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
     /* **打つそばから探し始めないこと。**
        打っている途中の字で結果が入れ替わり、目が落ち着かない。
@@ -21178,8 +21205,8 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
     }, [applied, N]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u307F\u3064\u3051\u308B" }),
-        react_1.default.createElement("div", { className: "px-5 pt-3 pb-2 sticky bg-app max-w-2xl mx-auto w-full", style: { top: "calc(env(safe-area-inset-top) + 66px)", zIndex: 20 } },
-            react_1.default.createElement("button", { type: "button", onClick: () => setOpen((v) => !v), "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
+        react_1.default.createElement("div", { ref: barRef, className: "px-5 pt-3 pb-2 sticky bg-app max-w-2xl mx-auto w-full", style: { top: "calc(env(safe-area-inset-top) + 66px)", zIndex: 20 } },
+            react_1.default.createElement("button", { type: "button", onClick: toggleOpen, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
                     + (hasCriteria ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
                 react_1.default.createElement(lucide_react_1.Search, { size: 17, className: hasCriteria ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
                 react_1.default.createElement("span", { className: "flex-1 min-w-0" }, hasCriteria
@@ -21828,11 +21855,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                     react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-500 flex-1 text-right tabular-nums" },
                         list.length,
                         "\u4EF6"))),
-                byDate.length === 0 ? (react_1.default.createElement("div", { className: "py-6 text-center" },
-                    react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 mb-3" }, "\u307E\u3060\u8A18\u9332\u304C\u5165\u3063\u3066\u3044\u307E\u305B\u3093"),
-                    react_1.default.createElement("button", { type: "button", onClick: () => setSetup("manual"), className: BTN_SECONDARY + " " + BTN_H + " px-4 text-[14px]" },
-                        react_1.default.createElement(lucide_react_1.Search, { size: 15 }),
-                        " \u8A18\u9332\u3092\u3055\u304C\u3057\u3066\u5165\u308C\u308B"))) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, items]) => (react_1.default.createElement("div", { key: d },
+                byDate.length === 0 ? (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-6 text-center" }, "\u307E\u3060\u8A18\u9332\u304C\u5165\u3063\u3066\u3044\u307E\u305B\u3093")) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, items]) => (react_1.default.createElement("div", { key: d },
                     react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1.5 tabular-nums" }, d ? fmtDate(d) : ""),
                     react_1.default.createElement("div", { className: CARD_LIST }, items.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selectable: pickedSet.has(r.id), selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))))),
             !sel.on && (react_1.default.createElement("button", { type: "button", onClick: () => setSetup("manual"), "aria-label": "\u8A18\u9332\u3092\u3055\u304C\u3057\u3066\u5165\u308C\u308B", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
