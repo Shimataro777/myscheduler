@@ -21061,7 +21061,10 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
     }, [plans]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "Today" }),
-        react_1.default.createElement("div", { className: "px-5 pt-3 pb-2 sticky bg-app", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 66px))", zIndex: 20 } },
+        react_1.default.createElement("div", { className: "px-5 pt-3 pb-2 sticky bg-app", style: {
+                top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 66px))", zIndex: 20,
+                willChange: "transform", transform: "translateZ(0)",
+            } },
             react_1.default.createElement("div", { className: "flex gap-1 p-[3px] rounded-full bg-th-50" }, SPANS.map((s) => (react_1.default.createElement("button", { key: s.key, type: "button", onClick: () => { setDir(0); setSpan(s.key); }, "aria-pressed": span === s.key, style: { minHeight: 44 }, className: "flex-1 rounded-full text-[14px] font-bold flex items-center justify-center ft-tap "
                     + (span === s.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") },
                 react_1.default.createElement("span", { className: "inline-block" }, s.label)))))),
@@ -21382,9 +21385,9 @@ function PlanCard({ plan, records, onOpen, onPin }) {
     const steps = p.steps || [];
     const doneSteps = steps.filter((g) => stepDone(g)).length;
     const recs = records.filter((r) => r.planId === p.id).length;
-    /* つぎに出すやることは、計画の画面といちばん上を合わせる（固定 → 期日順） */
-    const next = steps.filter((g) => !stepDone(g) && g.dueDate).sort(compareSteps)[0];
-    const left = next ? daysBetween(todayStr(), next.dueDate) : null;
+    /* **つぎの1件だけにしないこと。** ここは計画のあらまし。
+       期限のあるやることは、ぜんぶ出す（縦に伸びてもよい） */
+    const dues = (0, react_1.useMemo)(() => steps.filter((g) => !stepDone(g) && g.dueDate).sort(compareSteps), [steps]);
     const done = !!p.doneAt;
     return (react_1.default.createElement("div", { onClick: onOpen, role: "button", tabIndex: 0, onKeyDown: (e) => { if (e.key === "Enter")
             onOpen(); }, className: "w-full rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: done ? { background: c.soft } : undefined },
@@ -21395,10 +21398,13 @@ function PlanCard({ plan, records, onOpen, onPin }) {
                 react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500 mt-1" }, done ? `${fmtDate(p.doneAt)} にやり遂げた` : (steps.length ? `${doneSteps}/${steps.length} 達成・` : "") + `記録 ${recs}件`)),
             onPin && react_1.default.createElement(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } }),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })),
-        !done && next && left !== null && left >= 0 && (react_1.default.createElement("div", { className: "mt-2.5 flex items-center gap-2" },
-            next.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: stepColor.mid }, fill: "currentColor" }),
-            react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[13px] text-neutral-600 truncate" }, next.title),
-            react_1.default.createElement("span", { className: "text-[14.5px] font-bold tabular-nums shrink-0", style: { color: stepColor.deep } }, stepLeftLabel(left))))));
+        !done && dues.length > 0 && (react_1.default.createElement("div", { className: "mt-2.5 space-y-1.5" }, dues.map((g) => {
+            const l = daysBetween(todayStr(), g.dueDate);
+            return (react_1.default.createElement("div", { key: g.id, className: "flex items-center gap-2" },
+                g.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: stepColor.mid }, fill: "currentColor" }),
+                react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[13px] text-neutral-600 truncate" }, g.title || "（名前なし）"),
+                react_1.default.createElement("span", { className: "text-[13.5px] font-bold tabular-nums shrink-0", style: { color: l < 0 ? "#BE123C" : l <= 3 ? stepColor.deep : "#737373" } }, stepLeftLabel(l))));
+        })))));
 }
 /* 上に固定する押しピン。記録・計画・カテゴリ・フォルダで同じものを使う。
    **札ごとに書き写さないこと。** 見た目と当たりの大きさがずれる */
@@ -21435,29 +21441,37 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
         return m;
     }, [plans, kinds]);
     const renderPlan = (p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan }));
+    /* カテゴリと「カテゴリなしの計画」を、ひとつの列にまぜる。
+       固定したもの → ふつう → やり遂げたもの、の順は変えない */
+    const mixed = (0, react_1.useMemo)(() => {
+        const rows = [
+            ...sortedKinds.map((k) => ({ kind: k, pinned: !!k.pinned, done: false, name: k.name, createdAt: k.createdAt })),
+            ...(grouped.get("__none") || []).map((p) => ({ plan: p, pinned: !!p.pinned, done: !!p.doneAt, name: p.name, createdAt: p.createdAt })),
+        ];
+        return sortItems(rows, sort).sort((a, b) => {
+            if (a.done !== b.done)
+                return a.done ? 1 : -1;
+            if (a.pinned !== b.pinned)
+                return a.pinned ? -1 : 1;
+            return 0;
+        });
+    }, [sortedKinds, grouped, sort]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
         react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full space-y-4" },
             (kinds.length + plans.length) > 1 && (react_1.default.createElement("div", { className: "flex justify-end -mb-2" },
                 react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
-            kinds.length > 0 && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, sortedKinds.map((k) => {
-                const c = planColor;
-                const n = (grouped.get(k.id) || []).length;
-                return (react_1.default.createElement("div", { key: k.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(k), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer" },
-                    react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: c.soft, color: c.deep } },
-                        react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
-                    react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                        react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, k.name),
-                        react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500 mt-1" },
-                            "\u8A08\u753B ",
-                            n,
-                            "\u4EF6")),
-                    react_1.default.createElement(PinButton, { on: k.pinned, onClick: (e) => { e.stopPropagation(); onPinKind(k); } }),
-                    react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })));
-            }))),
-            (grouped.get("__none") || []).length > 0 && (react_1.default.createElement("div", null,
-                kinds.length > 0 && react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u30AB\u30C6\u30B4\u30EA\u306A\u3057"),
-                react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, sortPlans(grouped.get("__none") || []).map(renderPlan)))),
+            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: planColor.soft, border: `1px solid ${planColor.line}` } },
+                react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: planColor.deep } },
+                    react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
+                react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+                    react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, it.kind.name),
+                    react_1.default.createElement("span", { className: "block text-[13px] mt-1", style: { color: planColor.deep } },
+                        "\u30AB\u30C6\u30B4\u30EA\u30FB\u8A08\u753B ",
+                        (grouped.get(it.kind.id) || []).length,
+                        "\u4EF6")),
+                react_1.default.createElement(PinButton, { on: it.kind.pinned, color: planColor, onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
+                react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "shrink-0", style: { color: planColor.mid } }))) : renderPlan(it.plan)))),
             plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 text-center py-6" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093")))));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
@@ -21568,26 +21582,13 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
 function StepForm({ initial, onSave, onCancel, onDelete }) {
     const color = useTypeColor(STEP_TYPE);
     const [step, setStep] = (0, react_1.useState)(initial);
-    const [add, setAdd] = (0, react_1.useState)("");
     const [dirty, setDirty] = (0, react_1.useState)(false);
     const [confirmDel, setConfirmDel] = (0, react_1.useState)(false);
     const [confirmLeave, setConfirmLeave] = (0, react_1.useState)(false);
     const items = step.items || [];
     const set = (patch) => { setStep((s) => ({ ...s, ...patch })); setDirty(true); };
-    const { dragId, setRow, handleProps } = useReorder(items, (v) => set({ items: v }));
-    const addItem = () => {
-        const t = add.trim();
-        if (!t)
-            return;
-        set({ items: [...items, { id: uid(), text: t, done: false }] });
-        setAdd("");
-    };
-    /* 書きかけの1行を、捨てずに入れてから保存する */
-    const finish = () => {
-        const t = add.trim();
-        onSave(t ? { ...step, items: [...items, { id: uid(), text: t, done: false }] } : step);
-    };
-    const cancel = () => { if (dirty || add.trim())
+    const finish = () => onSave(step);
+    const cancel = () => { if (dirty)
         setConfirmLeave(true);
     else
         onCancel(); };
@@ -21611,21 +21612,7 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
                     react_1.default.createElement(SheetRow, { label: "\u4E0A\u306B\u56FA\u5B9A", last: true },
                         react_1.default.createElement(Switch, { on: !!step.pinned, label: "\u4E0A\u306B\u56FA\u5B9A", onChange: (v) => set({ pinned: v }) }))),
                 react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1.5" }, "\u305D\u306E\u305F\u3081\u306B\u3084\u308B\u3053\u3068"),
-                react_1.default.createElement("div", { className: "space-y-1" },
-                    items.map((it) => (react_1.default.createElement("div", { key: it.id, ref: setRow(it.id), className: "flex items-start gap-1 rounded-xl " + (dragId === it.id ? "bg-th-50" : "") },
-                        react_1.default.createElement("button", { type: "button", onClick: () => set({ items: items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)) }), className: "flex-1 min-w-0 flex items-start gap-2.5 text-left px-1.5 py-2.5 min-h-[46px] rounded-xl ft-tap" },
-                            react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick text-white" })),
-                            react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text)),
-                        react_1.default.createElement("button", { type: "button", onClick: () => set({ items: items.filter((x) => x.id !== it.id) }), "aria-label": "\u3053\u306E\u884C\u3092\u5916\u3059", className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-full text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
-                            react_1.default.createElement(lucide_react_1.X, { size: 16 })),
-                        items.length > 1 && react_1.default.createElement(DragHandle, { ...handleProps(it.id) })))),
-                    react_1.default.createElement("div", { className: "flex items-start gap-1" },
-                        react_1.default.createElement("span", { className: "w-7 shrink-0 flex items-center justify-center text-neutral-300 pt-3" },
-                            react_1.default.createElement(lucide_react_1.Plus, { size: 15 })),
-                        react_1.default.createElement(TextArea, { bare: true, value: add, onChange: (e) => setAdd(e.target.value), placeholder: "\u3072\u3068\u3064\u66F8\u304F", minRows: 1, className: "flex-1 min-w-0 py-2.5 placeholder-neutral-300", onKeyDown: (e) => { if (e.key === "Enter") {
-                                e.preventDefault();
-                                addItem();
-                            } }, onBlur: addItem })))),
+                react_1.default.createElement(ChecklistEditor, { items: items, onChange: (v) => set({ items: v }) })),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: cancel, className: BTN_SECONDARY + " flex-1 btn-h-lg text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 onDelete && (react_1.default.createElement("button", { type: "button", onClick: () => setConfirmDel(true), className: BTN_DANGER_SOFT + " flex-1 btn-h-lg text-[14.5px]" }, "\u524A\u9664")),
