@@ -17383,7 +17383,9 @@ const MAX_IMAGES = 4; // メモに入れられる絵の数。**増やさない�
 /* **リンクを種類として持たないこと。** メモの本文に住所を書けば、
    そのまま押して開ける（LinkedText が拾う）ので、分ける意味がない。
    古いリンクの記録は、読み込むときにメモへ移す */
-const TYPES = ["memo", "checklist", "schedule"];
+/* **並びを表示順にそろえること。** 追加のとき・しぼりこみ・色の設定、
+   どこでも スケジュール → リスト → メモ の順で出る */
+const TYPES = ["schedule", "checklist", "memo"];
 /* 週や月ぜんたいに付けられる種類。予定は日に付くものなので入れない */
 /* 週ぜんたいのマスに入れられるのは、この3つだけ。
    **1つのマスに何種類も入れないこと。** 小さいマスに並ぶと読めない */
@@ -17704,6 +17706,9 @@ function timeRank(r) {
         return 0;
     return Number(r.time.slice(0, 2)) * 60 + Number(r.time.slice(3, 5));
 }
+/* 同じ時刻がならんだときの順。予定 → リスト → メモ */
+const TYPE_RANK = { schedule: 0, checklist: 1, memo: 2 };
+const typeRank = (r) => (TYPE_RANK[r.type] === undefined ? 3 : TYPE_RANK[r.type]);
 /* 並び順。**固定したものを、まっ先に出すこと。**
    そのあとは groupRank の順。同じ組の中では、終日が先・時刻のあるものは時間順 */
 function compareTimeline(a, b) {
@@ -17715,6 +17720,10 @@ function compareTimeline(a, b) {
     const ra = timeRank(a), rb = timeRank(b);
     if (ra !== rb)
         return ra - rb;
+    /* **同じ時刻を書いた順にしないこと。** 予定・リスト・メモの順にそろえる */
+    const ta = typeRank(a), tb = typeRank(b);
+    if (ta !== tb)
+        return ta - tb;
     return (a.createdAt || "").localeCompare(b.createdAt || "");
 }
 /* チェックリストの達成度 */
@@ -21067,7 +21076,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder })))),
         upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "mb-1" }, upcoming.map(({ plan, list }) => (react_1.default.createElement("div", { key: plan.id, className: CARD_SLOT },
             react_1.default.createElement(PlanDueCard, { plan: plan, list: list, onOpen: () => onOpenPlan(plan) })))))),
-        react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { touchAction: "pan-y", minHeight: "60vh" } },
+        react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
             react_1.default.createElement("div", { key: span === "day" ? span + date : span, className: span === "day" ? pageCls : "" },
                 span === "day" && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin })),
                 span === "week" && (react_1.default.createElement(react_1.default.Fragment, null,
@@ -21334,7 +21343,6 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
                 react_1.default.createElement("span", { className: "flex-1 min-w-0" }, hasCriteria
                     ? react_1.default.createElement("span", { className: "block text-[14px] font-bold text-th-900 truncate" }, summary || "条件で検索中")
                     : react_1.default.createElement("span", { className: "block text-[14px] text-neutral-400 truncate" }, open ? "条件をえらんで検索" : "検索する")),
-                hasCriteria && (react_1.default.createElement("span", { onClick: (e) => { e.stopPropagation(); clear(); }, role: "button", tabIndex: 0, className: "text-[12.5px] font-bold text-neutral-500 px-2 py-1 rounded-lg bg-white border border-neutral-200 shrink-0" }, "\u89E3\u9664")),
                 react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (open ? "rotate-180" : "") },
                     react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
         react_1.default.createElement("div", { className: "px-4 max-w-2xl mx-auto w-full" },
@@ -21935,7 +21943,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                         t.label,
                         t.key === "auto" && condOn && react_1.default.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-th-800", "aria-hidden": "true" }),
                         t.key === "manual" && picked.size > 0 && react_1.default.createElement("span", { className: "text-[12px] tabular-nums" }, picked.size)))))),
-                react_1.default.createElement("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto px-4 py-3", style: { touchAction: "pan-y" }, onPointerDown: onDown, onPointerUp: onUp }, tab === "auto" ? (react_1.default.createElement(react_1.default.Fragment, null,
+                react_1.default.createElement("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto overflow-x-hidden px-4 py-3", style: { touchAction: "pan-y" }, onPointerDown: onDown, onPointerUp: onUp }, tab === "auto" ? (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4" },
                         react_1.default.createElement(FilterFields, { types: cond.types, onToggleType: toggleCondType, tags: cond.tags, onOpenTags: () => setCondTagOpen(true), mark: cond.marked, onMark: () => setC({ marked: !cond.marked }), from: cond.from, to: cond.to, onFrom: (v) => setC({ from: v }), onTo: (v) => setC({ to: v }) }),
                         condOn && (react_1.default.createElement("button", { type: "button", onClick: () => setCond({ tags: [], types: [], from: "", to: "", marked: false }), className: BTN_SECONDARY + " w-full btn-h-lg text-[14.5px]" }, "\u6761\u4EF6\u3092\u3059\u3079\u3066\u5916\u3059"))),
@@ -21970,7 +21978,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                                 "\u4EF6\u4E2D ",
                                 results.filter((r) => picked.has(r.id)).length,
                                 "\u4EF6")),
-                        react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, selectMode: true, selected: picked.has(r.id), onSelect: (x) => toggle(x.id) }))))))))),
+                        react_1.default.createElement("div", { className: "-mx-4 ft-seq pt-1" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, selectMode: true, selected: picked.has(r.id), onSelect: (x) => toggle(x.id) }))))))))),
                 react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
                     react_1.default.createElement("button", { type: "button", onClick: tryClose, className: BTN_SECONDARY + " flex-1 " + BTN_H + " text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                     react_1.default.createElement("button", { type: "button", onClick: save, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " text-[14.5px]" },
@@ -22085,10 +22093,10 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
                         react_1.default.createElement(lucide_react_1.Folder, { size: 26 })),
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                         react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, f.name || "（名前なし）"),
-                        react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500 mt-1 tabular-nums" },
-                            n,
-                            "\u4EF6"),
                         react_1.default.createElement("span", { className: "flex items-center gap-1.5 mt-1.5 flex-wrap" },
+                            react_1.default.createElement("span", { className: "text-[13px] font-bold text-neutral-500 tabular-nums" },
+                                n,
+                                "\u4EF6"),
                             auto && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-th-50 text-th-900" },
                                 react_1.default.createElement(lucide_react_1.Filter, { size: 11 }),
                                 " \u81EA\u52D5")),
@@ -22195,7 +22203,7 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                     react_1.default.createElement(SheetRow, { label: "\u753B\u9762\u306E\u52D5\u304D", last: true },
                         react_1.default.createElement(Switch, { on: draft.motion !== false, onChange: (v) => set({ motion: v }), label: "\u753B\u9762\u306E\u52D5\u304D" }))),
                 react_1.default.createElement("div", { className: "h-5", "aria-hidden": "true" }),
-                react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900 mb-2" }, "\u4E26\u3073\u9806"),
+                react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u4E26\u3073\u9806"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
                     react_1.default.createElement(SheetRow, { label: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA" },
                         react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA", className: "w-[124px]", noEmpty: true })),
@@ -22632,6 +22640,7 @@ html, body { overscroll-behavior-y: none; }
 .w-\\[34px\\] { width: 34px; }
 .w-\\[124px\\] { width: 124px; }
 .h-5 { height: 1.25rem; }
+.overflow-x-hidden { overflow-x: hidden; }
 /* 「あと◯日」の札と、フォルダの集め方の小さな札で使う */
 .leading-tight { line-height: 1.25; }
 .py-\\[2px\\] { padding-top: 2px; padding-bottom: 2px; }
