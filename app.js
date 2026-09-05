@@ -18670,37 +18670,45 @@ function useSwipePages(onPrev, onNext) {
     (0, react_1.useEffect)(() => {
         const el = areaRef.current;
         if (!el)
-            return;
-        let startX = 0, startY = 0, startT = 0, tracking = false, decided = 0;
-        const down = (e) => {
-            if (e.pointerType === "mouse")
-                return; // 指のときだけ
-            tracking = true;
-            decided = 0;
-            startX = e.clientX;
-            startY = e.clientY;
-            startT = performance.now();
+            return undefined;
+        /* **pointer で受けないこと。** 画面を送りはじめると、ブラウザが指を取り上げて
+           pointercancel を投げるので、払ったつもりが届かない。
+           touch なら、送っているあいだも最後まで届く。
+           touch-action にも触らない（触ると縦の慣性が他の画面と変わる） */
+        let sx = 0, sy = 0, st = 0, on = false, maxY = 0;
+        const start = (e) => {
+            if (e.touches.length !== 1) {
+                on = false;
+                return;
+            }
+            on = true;
+            maxY = 0;
+            sx = e.touches[0].clientX;
+            sy = e.touches[0].clientY;
+            st = performance.now();
         };
         const move = (e) => {
-            if (!tracking || decided === -1)
+            if (!on || e.touches.length !== 1)
                 return;
-            const dx = e.clientX - startX, dy = e.clientY - startY;
-            if (!decided) {
-                if (Math.abs(dx) < 10 && Math.abs(dy) < 10)
-                    return;
-                decided = Math.abs(dx) > Math.abs(dy) * 1.4 ? 1 : -1; // 横向きだけ受ける
-            }
+            maxY = Math.max(maxY, Math.abs(e.touches[0].clientY - sy));
         };
-        const up = (e) => {
-            if (!tracking)
+        const end = (e) => {
+            if (!on)
                 return;
-            tracking = false;
-            if (decided !== 1)
+            on = false;
+            const t = e.changedTouches && e.changedTouches[0];
+            if (!t)
                 return;
-            const dx = e.clientX - startX;
-            const dt = Math.max(1, performance.now() - startT);
-            const far = Math.abs(dx) > Math.min(90, (el.offsetWidth || 360) * 0.22);
-            const fast = Math.abs(dx) / dt > 0.35 && Math.abs(dx) > 40;
+            const dx = t.clientX - sx;
+            const dt = Math.max(1, performance.now() - st);
+            /* **判定をきつくしないこと。** 軽く払っただけで送れるのが気持ちよい。
+               横に45px、または速ければ30pxで送る。ただし縦に大きく動いていたら送らない */
+            if (Math.abs(dx) < 30)
+                return;
+            if (maxY > Math.abs(dx) * 0.9)
+                return;
+            const far = Math.abs(dx) > 45;
+            const fast = Math.abs(dx) / dt > 0.25;
             if (!far && !fast)
                 return;
             if (dx > 0) {
@@ -18712,14 +18720,14 @@ function useSwipePages(onPrev, onNext) {
                 nextRef.current && nextRef.current();
             }
         };
-        el.addEventListener("pointerdown", down, { passive: true });
-        el.addEventListener("pointermove", move, { passive: true });
-        el.addEventListener("pointerup", up, { passive: true });
-        el.addEventListener("pointercancel", () => { tracking = false; }, { passive: true });
+        el.addEventListener("touchstart", start, { passive: true });
+        el.addEventListener("touchmove", move, { passive: true });
+        el.addEventListener("touchend", end, { passive: true });
+        el.addEventListener("touchcancel", () => { on = false; }, { passive: true });
         return () => {
-            el.removeEventListener("pointerdown", down);
-            el.removeEventListener("pointermove", move);
-            el.removeEventListener("pointerup", up);
+            el.removeEventListener("touchstart", start);
+            el.removeEventListener("touchmove", move);
+            el.removeEventListener("touchend", end);
         };
     }, []);
     /* 送った向きから入ってくるようにする（紙送りと同じ調子） */
@@ -21061,10 +21069,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
     }, [plans]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "Today" }),
-        react_1.default.createElement("div", { className: "px-5 pt-3 pb-2 sticky bg-app", style: {
-                top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 66px))", zIndex: 20,
-                willChange: "transform", transform: "translateZ(0)",
-            } },
+        react_1.default.createElement("div", { className: "px-5 pt-3 pb-2 sticky bg-app", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 66px))", zIndex: 20 } },
             react_1.default.createElement("div", { className: "flex gap-1 p-[3px] rounded-full bg-th-50" }, SPANS.map((s) => (react_1.default.createElement("button", { key: s.key, type: "button", onClick: () => { setDir(0); setSpan(s.key); }, "aria-pressed": span === s.key, style: { minHeight: 44 }, className: "flex-1 rounded-full text-[14px] font-bold flex items-center justify-center ft-tap "
                     + (span === s.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") },
                 react_1.default.createElement("span", { className: "inline-block" }, s.label)))))),
@@ -21458,9 +21463,8 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
     }, [sortedKinds, grouped, sort]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
-        react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full space-y-4" },
-            (kinds.length + plans.length) > 1 && (react_1.default.createElement("div", { className: "flex justify-end -mb-2" },
-                react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
+        react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full space-y-2.5" },
+            react_1.default.createElement("div", { className: "flex justify-end" }, (kinds.length + plans.length) > 1 && react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })),
             react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: planColor.soft, border: `1px solid ${planColor.line}` } },
                 react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: planColor.deep } },
                     react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
@@ -21500,8 +21504,7 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
             react_1.default.createElement(OverlayHeader, { title: kind.name, onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 max-w-2xl mx-auto w-full pad-fab" },
-                mine.length > 1 && (react_1.default.createElement("div", { className: "flex justify-end mb-1" },
-                    react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
+                react_1.default.createElement("div", { className: "flex justify-end mb-2.5" }, mine.length > 1 && react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })),
                 react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" },
                     mine.map((p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan }))),
                     mine.length === 0 && react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-3" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))),
@@ -21627,7 +21630,7 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
    ①やること（2段のチェックリスト） ②日々の記録
    がひと続きに見える。**ここを細かく分けすぎないこと。**
    画面が増えるほど、書く気持ちが遠のく */
-function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, onDeleteMany }) {
+function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
     const sel = useSelectMode(onDeleteMany);
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
@@ -21642,7 +21645,7 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
     const color = useTypeColor(PLAN_TYPE);
     const stepColor = useTypeColor(STEP_TYPE);
     const today = todayStr();
-    const planRecords = (0, react_1.useMemo)(() => records.filter((r) => r.planId === plan.id).sort(compareTimeline), [records, plan.id]);
+    const planRecords = (0, react_1.useMemo)(() => sortRecords(records.filter((r) => r.planId === plan.id), order), [records, plan.id, order]);
     const pinned = (0, react_1.useMemo)(() => planRecords.filter((r) => r.pinned), [planRecords]);
     const byDate = (0, react_1.useMemo)(() => {
         const m = new Map();
@@ -21652,7 +21655,10 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                 m.set(k, []);
             m.get(k).push(r);
         });
-        return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+        /* **ここで日付を並べ直さないこと。** planRecords がすでに
+           えらんだ向き（新しい順・古い順）にそろえてある。
+           ここで新しい順に固定すると、切り替えても何も変わらない */
+        return [...m.entries()];
     }, [planRecords]);
     /* 2段のチェックリスト */
     const steps = plan.steps || [];
@@ -21717,6 +21723,7 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u8A18\u9332"),
                     react_1.default.createElement("span", { className: "flex-1" }),
+                    planRecords.length > 0 && !sel.on && react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
                     planRecords.length > 0 && (sel.on
                         ? react_1.default.createElement(react_1.default.Fragment, null,
                             react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(planRecords), className: "h-9 px-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, sel.allOf(planRecords) ? "すべて解除" : "すべて選択"),
@@ -22067,9 +22074,9 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
     const sorted = (0, react_1.useMemo)(() => sortItems(folders, sort), [folders, sort]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
-        react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full" }, folders.length > 1 && (react_1.default.createElement("div", { className: "flex justify-end mb-1" },
-            react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })))),
-        react_1.default.createElement("div", { className: "px-5 max-w-2xl mx-auto w-full space-y-2.5 ft-seq" },
+        react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full space-y-2.5" },
+            react_1.default.createElement("div", { className: "flex justify-end" }, folders.length > 1 && react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
+        react_1.default.createElement("div", { className: "px-5 pt-1 max-w-2xl mx-auto w-full space-y-2.5 ft-seq" },
             sorted.map((f) => {
                 const n = folderRecords(f, records).length;
                 const auto = folderHasCond(f);
@@ -22997,13 +23004,13 @@ const TABS = [
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
 function BottomNav({ active, onChange }) {
-    return (react_1.default.createElement("div", { className: "fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-neutral-100 ft-tabbar-wrap", style: { paddingBottom: "env(safe-area-inset-bottom)" } },
+    return (react_1.default.createElement("div", { className: "fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap", style: { paddingBottom: "env(safe-area-inset-bottom)" } },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
-            return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center justify-center gap-0.5 py-1 relative ft-tap", style: { minHeight: 48 } },
+            return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[56px] relative ft-tap" },
                 isActive && react_1.default.createElement("span", { className: "absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] bg-th-800 rounded-full ft-tabbar" }),
-                react_1.default.createElement(Icon, { key: isActive ? "on" : "off", size: 19, className: isActive ? "text-th-800 ft-tabpop" : "text-neutral-500", strokeWidth: isActive ? 2.5 : 2 }),
-                react_1.default.createElement("span", { className: "text-[10.5px] tracking-tight whitespace-nowrap leading-none " + (isActive ? "text-th-800 font-bold" : "text-neutral-500 font-medium") }, label)));
+                react_1.default.createElement(Icon, { key: isActive ? "on" : "off", size: 21, className: isActive ? "text-th-800 ft-tabpop" : "text-neutral-500", strokeWidth: isActive ? 2.5 : 2 }),
+                react_1.default.createElement("span", { className: "text-[11.5px] tracking-tight whitespace-nowrap " + (isActive ? "text-th-800 font-bold" : "text-neutral-500 font-medium") }, label)));
         }))));
 }
 /* ============================================================
@@ -23478,7 +23485,7 @@ function AppMain() {
                             editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
                             dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
                             kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
-                            planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, kinds: kinds, onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
+                            planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, kinds: kinds, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
                                     if (type) {
                                         setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
                                         return;
