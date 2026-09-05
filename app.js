@@ -17455,6 +17455,13 @@ function themeColorOf(themeKey) {
 /* 名前の並べかえ。**ただの文字くらべにしないこと。**
    「01.」「02.」…「10.」を、10 が 2 より先に来ないように数として見る。
    日本語も読み順（localeCompare の "ja"）にそろえる */
+/* 名前でさがす。**入れた字がどこかに入っていれば拾うこと**（頭からでなくてよい） */
+function matchName(list, q) {
+    const w = String(q || "").trim().toLowerCase();
+    if (!w)
+        return list;
+    return list.filter((x) => String(x.name || "").toLowerCase().includes(w));
+}
 function compareName(a, b) {
     const x = String((a && a.name) || ""), y = String((b && b.name) || "");
     return x.localeCompare(y, "ja", { numeric: true, sensitivity: "base" })
@@ -18392,6 +18399,20 @@ function RowCard({ children, className }) {
 /* 並べかえの切り替え。**大きな部品にしないこと。**
    ふだんは目に入らず、探したいときにだけ気づけばよい。
    名前順と作成順のふたつだけなので、押すたびに入れ替わる */
+/* 一覧の上に貼りつく「さがす」欄。
+   **一覧が増えたときに、目で探させないこと。**
+   フォルダ・計画・カテゴリで同じものを使う。
+   並べかえは同じ行の右はしに置き、下に送っても上に残す */
+function ListSearchBar({ value, onChange, placeholder, right }) {
+    return (react_1.default.createElement("div", { className: "px-5 pt-3 pb-2 sticky bg-app max-w-2xl mx-auto w-full", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 66px))", zIndex: 20 } },
+        react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
+            react_1.default.createElement("div", { className: "flex-1 min-w-0 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
+                react_1.default.createElement(lucide_react_1.Search, { size: 17, className: value ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
+                react_1.default.createElement("input", { value: value, onChange: (e) => onChange(e.target.value), placeholder: placeholder, className: "flex-1 min-w-0 bg-transparent outline-none text-[14.5px] text-neutral-900 placeholder-neutral-400" }),
+                value && (react_1.default.createElement("button", { type: "button", onClick: () => onChange(""), "aria-label": "\u6D88\u3059", className: "w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-neutral-400 ft-tap ft-tap-icon" },
+                    react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
+            right)));
+}
 function SortToggle({ value, onChange, onDark }) {
     const name = value !== "created";
     return (react_1.default.createElement("button", { type: "button", onClick: () => onChange(name ? "created" : "name"), "aria-label": `並べかえ：いま${name ? "名前順" : "作成順"}`, className: "h-9 pl-2 pr-2.5 flex items-center gap-1 rounded-full text-[12.5px] font-bold ft-tap ft-tap-icon "
@@ -18662,7 +18683,22 @@ function useEdgeSwipeBack(onBack, canClose) {
    ============================================================ */
 function useSwipePages(onPrev, onNext) {
     const areaRef = (0, react_1.useRef)(null);
-    const [dir, setDir] = (0, react_1.useState)(0); // 直前に送った向き（現れる動きに使う）
+    const [dir, setDir] = (0, react_1.useState)(0);
+    /* **入ってくる動きのクラスを、貼りっぱなしにしないこと。**
+       animation を持ったままの箱は、iPhone では自分の層に置かれ続ける。
+       その箱が記録をぜんぶ包んでいるので、縦に送ったときの慣性が
+       ほかの画面と変わってしまう。動き終わったら外して、ただの箱に戻す */
+    const offRef = (0, react_1.useRef)(null);
+    const bumpRef = (0, react_1.useRef)(null);
+    bumpRef.current = (v) => {
+        setDir(v);
+        if (offRef.current)
+            clearTimeout(offRef.current);
+        if (v !== 0)
+            offRef.current = setTimeout(() => setDir(0), 340);
+    };
+    (0, react_1.useEffect)(() => () => { if (offRef.current)
+        clearTimeout(offRef.current); }, []); // 直前に送った向き（現れる動きに使う）
     const prevRef = (0, react_1.useRef)(onPrev);
     prevRef.current = onPrev;
     const nextRef = (0, react_1.useRef)(onNext);
@@ -18712,11 +18748,11 @@ function useSwipePages(onPrev, onNext) {
             if (!far && !fast)
                 return;
             if (dx > 0) {
-                setDir(-1);
+                bumpRef.current(-1);
                 prevRef.current && prevRef.current();
             }
             else {
-                setDir(1);
+                bumpRef.current(1);
                 nextRef.current && nextRef.current();
             }
         };
@@ -18732,7 +18768,7 @@ function useSwipePages(onPrev, onNext) {
     }, []);
     /* 送った向きから入ってくるようにする（紙送りと同じ調子） */
     const pageCls = dir === 0 ? "" : dir > 0 ? "ft-page-r" : "ft-page-l";
-    return { areaRef, pageCls, setDir };
+    return { areaRef, pageCls, setDir: bumpRef.current };
 }
 /* ============================================================
    ドラム式（ホイール）ピッカー
@@ -21422,9 +21458,8 @@ function PinButton({ on, onClick, color }) {
 function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, onPinKind, sort, onSort }) {
     /* カテゴリも計画のなかま。**カテゴリごとに色を持たせないこと** */
     const planColor = useTypeColor(PLAN_TYPE);
-    /* カテゴリは名前の順。**作った順にしないこと。**
-       増えてくると、目当てのものがどこにあるか読めなくなる */
-    const sortedKinds = (0, react_1.useMemo)(() => sortItems(kinds, sort), [kinds, sort]);
+    const [q, setQ] = (0, react_1.useState)("");
+    const sortedKinds = (0, react_1.useMemo)(() => sortItems(matchName(kinds, q), sort), [kinds, sort, q]);
     /* 並び順：上に固定したもの → ふつうのもの → やり遂げたもの。
        同じ組の中は、上でえらんだ順（名前順／作成順）にそろえる */
     const sortPlans = (list) => sortItems(list, sort).sort((a, b) => {
@@ -21451,7 +21486,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
     const mixed = (0, react_1.useMemo)(() => {
         const rows = [
             ...sortedKinds.map((k) => ({ kind: k, pinned: !!k.pinned, done: false, name: k.name, createdAt: k.createdAt })),
-            ...(grouped.get("__none") || []).map((p) => ({ plan: p, pinned: !!p.pinned, done: !!p.doneAt, name: p.name, createdAt: p.createdAt })),
+            ...matchName(grouped.get("__none") || [], q).map((p) => ({ plan: p, pinned: !!p.pinned, done: !!p.doneAt, name: p.name, createdAt: p.createdAt })),
         ];
         return sortItems(rows, sort).sort((a, b) => {
             if (a.done !== b.done)
@@ -21460,11 +21495,11 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
                 return a.pinned ? -1 : 1;
             return 0;
         });
-    }, [sortedKinds, grouped, sort]);
+    }, [sortedKinds, grouped, sort, q]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
-        react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full space-y-2.5" },
-            react_1.default.createElement("div", { className: "flex justify-end" }, (kinds.length + plans.length) > 1 && react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })),
+        react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
+        react_1.default.createElement("div", { className: "px-5 pt-1 max-w-2xl mx-auto w-full space-y-2.5" },
             react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: planColor.soft, border: `1px solid ${planColor.line}` } },
                 react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: planColor.deep } },
                     react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
@@ -21480,6 +21515,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
 function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort }) {
+    const [q, setQ] = (0, react_1.useState)("");
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
@@ -21489,7 +21525,7 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
     const [renameOpen, setRenameOpen] = (0, react_1.useState)(false);
     const [delOpen, setDelOpen] = (0, react_1.useState)(false);
     /* 計画の一覧と同じ並び。**この画面だけ別にしないこと** */
-    const mine = (0, react_1.useMemo)(() => sortItems(plans.filter((p) => p.kindId === kind.id), sort)
+    const mine = (0, react_1.useMemo)(() => sortItems(matchName(plans.filter((p) => p.kindId === kind.id), q), sort)
         .sort((a, b) => {
         const da = !!a.doneAt, db = !!b.doneAt;
         if (da !== db)
@@ -21497,17 +21533,24 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
         if (!!a.pinned !== !!b.pinned)
             return a.pinned ? -1 : 1;
         return 0;
-    }), [plans, kind.id, sort]);
+    }), [plans, kind.id, sort, q]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: kind.name, onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 max-w-2xl mx-auto w-full pad-fab" },
-                react_1.default.createElement("div", { className: "flex justify-end mb-2.5" }, mine.length > 1 && react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })),
-                react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" },
+            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto max-w-2xl mx-auto w-full pad-fab" },
+                react_1.default.createElement("div", { className: "sticky bg-app px-5 pt-3 pb-2", style: { top: 0, zIndex: 20 } },
+                    react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
+                        react_1.default.createElement("div", { className: "flex-1 min-w-0 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
+                            react_1.default.createElement(lucide_react_1.Search, { size: 17, className: q ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
+                            react_1.default.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\u8A08\u753B\u3092\u3055\u304C\u3059", className: "flex-1 min-w-0 bg-transparent outline-none text-[14.5px] text-neutral-900 placeholder-neutral-400" }),
+                            q && (react_1.default.createElement("button", { type: "button", onClick: () => setQ(""), "aria-label": "\u6D88\u3059", className: "w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-neutral-400 ft-tap ft-tap-icon" },
+                                react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
+                        react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
+                react_1.default.createElement("div", { className: "px-5 pt-1 pb-4 space-y-2.5 ft-seq ft-spread" },
                     mine.map((p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan }))),
-                    mine.length === 0 && react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-3" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))),
+                    mine.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-8 text-center" }, q ? "見つかりません" : "まだ計画はありません")))),
             react_1.default.createElement("button", { type: "button", onClick: () => onAddPlan(kind), "aria-label": "\u8A08\u753B\u3092\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white card-soft flex items-center justify-center ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 30 })),
             menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30AB\u30C6\u30B4\u30EA\u306E\u8A2D\u5B9A", types: ["__rename", "__delete"], labels: { __rename: "名前を変更", __delete: "このカテゴリを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, colorKeys: { __rename: PLAN_TYPE, __delete: PLAN_TYPE }, onCancel: () => setMenuOpen(false), onPick: (k) => { setMenuOpen(false); if (k === "__rename")
@@ -22070,13 +22113,14 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
 }
 function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
     const N = useTypeNames();
+    const [q, setQ] = (0, react_1.useState)("");
     /* 名前順か作成順。名前順のときは「01.」「02.」を数として見る */
-    const sorted = (0, react_1.useMemo)(() => sortItems(folders, sort), [folders, sort]);
+    const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort), [folders, sort, q]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
-        react_1.default.createElement("div", { className: "px-5 pt-3 max-w-2xl mx-auto w-full space-y-2.5" },
-            react_1.default.createElement("div", { className: "flex justify-end" }, folders.length > 1 && react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
+        react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
         react_1.default.createElement("div", { className: "px-5 pt-1 max-w-2xl mx-auto w-full space-y-2.5 ft-seq" },
+            sorted.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-8 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093")),
             sorted.map((f) => {
                 const n = folderRecords(f, records).length;
                 const auto = folderHasCond(f);
