@@ -22649,13 +22649,12 @@ const GLOBAL_CSS = `
 /* **縦の巻き取り棒（スクロールバー）で幅を変えないこと。**
    記録が増えて転がるようになった瞬間に、見出しの帯だけ細くなって見える */
 html { scrollbar-gutter: stable; }
-/* **画面のはしで跳ね返らせないこと。** iPhone では、跳ね返っているあいだ
-   貼りついた見出しや下タブがいっしょに動いて、画面のまん中まで上がってくる */
-html, body { overscroll-behavior-y: none; }
-.ft-root { overscroll-behavior-y: none; }
-/* 箱の中を送るところ（かぶさる画面など）でも、指を離したあとに
-   すーっと流れるように。**画面ごとに送り心地を変えないこと** */
-.overflow-y-auto { -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+/* **overscroll-behavior を当てないこと。**
+   none にすると、いちばん上や下まで送ったときの跳ね返りが消えて、
+   送り心地がぼてっとする。引き継ぎ元のアプリ（Footprints）も何も当てていない。
+   以前これを当てたのは、跳ね返るあいだ見出しや下タブがいっしょに動くのを
+   止めたかったからだが、それは iPhone のふつうの見え方なので、そのままでよい */
+.overflow-y-auto { -webkit-overflow-scrolling: touch; }
 .ft-root { overflow-anchor: none; }
 
 /* ============================================================
@@ -22729,7 +22728,9 @@ html, body { overscroll-behavior-y: none; }
 .pointer-events-auto { pointer-events: auto; }
 .bg-th-50\\/50 { background-color: color-mix(in srgb, var(--th-50) 50%, transparent); }
 
-.ft-page { min-height: calc(100dvh + 2px); }
+/* 引き継ぎ元と同じ 100vh。**+2px のような小細工を足さないこと**
+   （送れる高さが半端に増えて、跳ね返りの感じが変わる） */
+.ft-page { min-height: 100vh; }
 /* **記録のいちばん下が、右下の＋に隠れないようにすること。**
    ＋は下から96px・高さ56pxなので、そのぶんの逃げをとる */
 .pad-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 168px); }

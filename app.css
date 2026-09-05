@@ -1,7 +1,7 @@
 *,::before,::after{box-sizing:border-box;border:0 solid #E5E5E5;margin:0;padding:0}
 html{scrollbar-gutter:stable}
 html,body,#root{height:100%}
-body{background:#FFFFFF;-webkit-font-smoothing:antialiased;overscroll-behavior-y:none;
+body{background:#FFFFFF;-webkit-font-smoothing:antialiased;
   font-family:'Noto Sans JP',system-ui,sans-serif;color:#171717;line-height:1.5}
 img,svg,video{display:block;max-width:100%}
 button,input,textarea,select{font:inherit;color:inherit;background:transparent}
