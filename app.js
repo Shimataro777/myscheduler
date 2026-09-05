@@ -21459,7 +21459,23 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
     /* カテゴリも計画のなかま。**カテゴリごとに色を持たせないこと** */
     const planColor = useTypeColor(PLAN_TYPE);
     const [q, setQ] = (0, react_1.useState)("");
-    const sortedKinds = (0, react_1.useMemo)(() => sortItems(matchName(kinds, q), sort), [kinds, sort, q]);
+    /* **カテゴリの名前だけで判じないこと。** 中の計画が当たっていれば、
+       そのカテゴリも残す（開けば見つかる、と分かるように件数を添える） */
+    const hits = (0, react_1.useMemo)(() => {
+        const w = q.trim();
+        if (!w)
+            return null;
+        const m = new Map();
+        kinds.forEach((k) => {
+            m.set(k.id, matchName(plans.filter((p) => p.kindId === k.id), w).length);
+        });
+        return m;
+    }, [kinds, plans, q]);
+    const sortedKinds = (0, react_1.useMemo)(() => {
+        const w = q.trim();
+        const list = !w ? kinds : kinds.filter((k) => matchName([k], w).length > 0 || (hits && hits.get(k.id) > 0));
+        return sortItems(list, sort);
+    }, [kinds, sort, q, hits]);
     /* 並び順：上に固定したもの → ふつうのもの → やり遂げたもの。
        同じ組の中は、上でえらんだ順（名前順／作成順）にそろえる */
     const sortPlans = (list) => sortItems(list, sort).sort((a, b) => {
@@ -21500,7 +21516,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
         react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
         react_1.default.createElement("div", { className: "px-5 pt-1 max-w-2xl mx-auto w-full space-y-2.5" },
-            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: planColor.soft, border: `1px solid ${planColor.line}` } },
+            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind, hits && hits.get(it.kind.id) > 0 ? q : ""), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: planColor.soft, border: `1px solid ${planColor.line}` } },
                 react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: planColor.deep } },
                     react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
                 react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -21508,14 +21524,19 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
                     react_1.default.createElement("span", { className: "block text-[13px] mt-1", style: { color: planColor.deep } },
                         "\u30AB\u30C6\u30B4\u30EA\u30FB\u8A08\u753B ",
                         (grouped.get(it.kind.id) || []).length,
-                        "\u4EF6")),
+                        "\u4EF6"),
+                    hits && hits.get(it.kind.id) > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 mt-1.5 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-white", style: { color: planColor.deep } },
+                        react_1.default.createElement(lucide_react_1.Search, { size: 11 }),
+                        " \u3053\u306E\u4E2D\u306B ",
+                        hits.get(it.kind.id),
+                        "\u4EF6"))),
                 react_1.default.createElement(PinButton, { on: it.kind.pinned, color: planColor, onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
                 react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "shrink-0", style: { color: planColor.mid } }))) : renderPlan(it.plan)))),
             plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 text-center py-6" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093")))));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
-function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort }) {
-    const [q, setQ] = (0, react_1.useState)("");
+function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort, initialQ }) {
+    const [q, setQ] = (0, react_1.useState)(initialQ || "");
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
@@ -22120,7 +22141,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
         react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
         react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
         react_1.default.createElement("div", { className: "px-5 pt-1 max-w-2xl mx-auto w-full space-y-2.5 ft-seq" },
-            sorted.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-8 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093")),
+            sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-8 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093")),
             sorted.map((f) => {
                 const n = folderRecords(f, records).length;
                 const auto = folderHasCond(f);
@@ -22632,6 +22653,9 @@ html { scrollbar-gutter: stable; }
    貼りついた見出しや下タブがいっしょに動いて、画面のまん中まで上がってくる */
 html, body { overscroll-behavior-y: none; }
 .ft-root { overscroll-behavior-y: none; }
+/* 箱の中を送るところ（かぶさる画面など）でも、指を離したあとに
+   すーっと流れるように。**画面ごとに送り心地を変えないこと** */
+.overflow-y-auto { -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
 .ft-root { overflow-anchor: none; }
 
 /* ============================================================
@@ -23127,6 +23151,7 @@ function AppMain() {
     const [selecting, setSelecting] = (0, react_1.useState)(false); // えらぶ最中かどうか（＋を隠すため）
     const [viewDate, setViewDate] = (0, react_1.useState)(todayStr()); // Todayでいま見ている日
     const [kindOpen, setKindOpen] = (0, react_1.useState)(null);
+    const [kindQ, setKindQ] = (0, react_1.useState)("");
     const [inPlan, setInPlan] = (0, react_1.useState)(null); // 計画の中で記録を作るとき
     const [inFolder, setInFolder] = (0, react_1.useState)(null); // フォルダの中で記録を作るとき
     const [addPlanOpen, setAddPlanOpen] = (0, react_1.useState)(false);
@@ -23503,7 +23528,7 @@ function AppMain() {
                                     tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
                                         react_1.default.createElement(TodayScreen, { records: records, plans: plans, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
                                     tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
-                                    tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k) => setKindOpen(k.id), onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
+                                    tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k, kq) => { setKindQ(kq || ""); setKindOpen(k.id); }, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
                                     tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id) }))))),
                             loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                             loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
@@ -23528,7 +23553,7 @@ function AppMain() {
                             addFolderOpen && (react_1.default.createElement(NameDialog, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddFolderOpen(false), onConfirm: (n) => { addFolder(n); setAddFolderOpen(false); } })),
                             editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
                             dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                            kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
+                            kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, initialQ: kindQ, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
                             planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, kinds: kinds, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
                                     if (type) {
                                         setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
