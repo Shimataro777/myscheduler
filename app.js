@@ -22735,7 +22735,9 @@ html, body { height: 100%; overflow: hidden; }
 .ft-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 /* **記録のいちばん下が、右下の＋に隠れないようにすること。**
    ＋は下から96px・高さ56pxなので、そのぶんの逃げをとる */
-.pad-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 168px); }
+/* 下タブは、もう送る箱の外（ふつうに置いてある）ので、そのぶんの逃げは要らない。
+   ここで空けるのは、右下の＋にかぶらないぶんだけ */
+.pad-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 104px); }
 
 /* 線は細く。しるしの線が太いと、それだけで画面が固く見える */
 .ft-root svg:not(.thick) { stroke-width: 1.75; }
@@ -23074,7 +23076,7 @@ const TABS = [
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
 function BottomNav({ active, onChange }) {
-    return (react_1.default.createElement("div", { className: "fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap", style: { paddingBottom: "env(safe-area-inset-bottom)" } },
+    return (react_1.default.createElement("div", { className: "shrink-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap", style: { paddingBottom: "env(safe-area-inset-bottom)" } },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
             return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[56px] relative ft-tap" },
