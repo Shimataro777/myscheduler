@@ -19652,6 +19652,69 @@ function Toast({ msg }) {
     return (react_1.default.createElement("div", { className: "fixed left-1/2 -translate-x-1/2 anim-pop pointer-events-none", style: { bottom: "calc(var(--ft-nav-h) + 84px)", zIndex: 2147483250 } },
         react_1.default.createElement("div", { className: "bg-neutral-900 text-white text-[13.5px] font-bold px-4 py-2.5 rounded-full shadow-xl max-w-[86vw] text-center" }, msg)));
 }
+/* URL から「どこのサイトか」を読み取る。
+   **中身を取りに行かないこと。** 通信が要るうえ、たいていのサイトは
+   よそからの読み取りを断るので、待たされたあげく何も出ない。
+   住所そのものから分かることだけを、その場で出す */
+const SITE_NAMES = [
+    [/(^|\.)youtube\.com$|(^|\.)youtu\.be$/, "YouTube"],
+    [/(^|\.)x\.com$|(^|\.)twitter\.com$/, "X"],
+    [/(^|\.)instagram\.com$/, "Instagram"],
+    [/(^|\.)tiktok\.com$/, "TikTok"],
+    [/(^|\.)facebook\.com$/, "Facebook"],
+    [/(^|\.)note\.com$/, "note"],
+    [/(^|\.)amazon\.co\.jp$|(^|\.)amazon\.com$/, "Amazon"],
+    [/(^|\.)rakuten\.co\.jp$/, "楽天"],
+    [/(^|\.)google\.[a-z.]+$/, "Google"],
+    [/(^|\.)maps\.app\.goo\.gl$|(^|\.)goo\.gl$/, "Google マップ"],
+    [/(^|\.)github\.com$/, "GitHub"],
+    [/(^|\.)cookpad\.com$/, "クックパッド"],
+    [/(^|\.)wikipedia\.org$/, "Wikipedia"],
+    [/(^|\.)line\.me$/, "LINE"],
+];
+function linkInfo(url) {
+    try {
+        const u = new URL(url);
+        const host = u.hostname.replace(/^www\./, "");
+        const hit = SITE_NAMES.find(([re]) => re.test(host));
+        /* 道すじの最後の切れはしを、名前の代わりに使う（読める字のときだけ） */
+        const seg = decodeURIComponent(u.pathname).split("/").filter(Boolean).pop() || "";
+        const nice = /^[^.]{2,40}$/.test(seg) && !/^[0-9a-f-]{8,}$/i.test(seg)
+            ? seg.replace(/[-_+]/g, " ") : "";
+        return { host, site: hit ? hit[1] : host, detail: nice, url };
+    }
+    catch (e) {
+        return null;
+    }
+}
+/* 本文に入っている住所を、あとから札で見せる。
+   **本文の字を置き換えないこと。** 書いたとおりが残っているほうが読みやすい。
+   札は「どこのサイトか」を伝えるための添えもの */
+function LinkCards({ text, small }) {
+    const found = (0, react_1.useMemo)(() => {
+        const out = [];
+        const seen = new Set();
+        String(text || "").replace(URL_REGEX, (m) => {
+            if (seen.has(m))
+                return m;
+            seen.add(m);
+            const info = linkInfo(m);
+            if (info)
+                out.push(info);
+            return m;
+        });
+        return out.slice(0, 3);
+    }, [text]);
+    if (!found.length)
+        return null;
+    return (react_1.default.createElement("div", { className: "space-y-1.5 " + (small ? "mt-1.5" : "mt-2") }, found.map((l) => (react_1.default.createElement("a", { key: l.url, href: l.url, target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation(), className: "ft-link flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2 ft-tap ft-tap-card" },
+        react_1.default.createElement("span", { className: "w-7 h-7 rounded-lg bg-neutral-100 text-neutral-500 flex items-center justify-center shrink-0" },
+            react_1.default.createElement(lucide_react_1.Link, { size: 14 })),
+        react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+            react_1.default.createElement("span", { className: "block text-[13px] font-bold text-neutral-800 truncate" }, l.site),
+            react_1.default.createElement("span", { className: "block text-[11.5px] text-neutral-400 truncate" }, l.detail || l.host)),
+        react_1.default.createElement(lucide_react_1.ChevronRight, { size: 16, className: "text-neutral-300 shrink-0" }))))));
+}
 /* 本文のURLを、押せるリンクとして描く。
    **自前で確認を出さないこと・自前のiframeで映さないこと。**
    iPhoneは必ず「このリンクを開きますか？」を出すので二度手間になる */
@@ -20140,7 +20203,8 @@ function CommentBubble({ text, small }) {
             react_1.default.createElement("rect", { x: "2", y: "9.4", width: "22", height: "4.6", fill: "#FFFFFF" }),
             react_1.default.createElement("path", { d: "M2.2 10 L12.1 2.2 A1.3 1.3 0 0 1 13.9 2.2 L23.8 10", fill: "none", stroke: line, strokeWidth: "1.4", strokeLinejoin: "round", strokeLinecap: "round" })),
         react_1.default.createElement("div", { className: "relative z-0 rounded-2xl bg-white " + (small ? "px-3.5 py-2.5" : "px-4 py-3"), style: { border: `1.4px solid ${line}` } },
-            react_1.default.createElement(LinkedText, { text: text, className: (small ? "text-[13px]" : "text-[14px]") + " leading-relaxed text-neutral-700" }))));
+            react_1.default.createElement(LinkedText, { text: text, className: (small ? "text-[13px]" : "text-[14px]") + " leading-relaxed text-neutral-700" }),
+            react_1.default.createElement(LinkCards, { text: text, small: small }))));
 }
 /* 札に出す時刻。**時刻がないときを空にしないこと。**
    何も出ないと「入れ忘れ」に見える。終日だと分かるように「終日」と出す。
@@ -20234,9 +20298,15 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                         react_1.default.createElement(lucide_react_1.Pencil, { size: 16 }))))),
             r.type !== "memo" && recordTitle(r, N) && recordTitle(r, N) !== (N[r.type] || TYPE_LABELS[r.type]) && (react_1.default.createElement("p", { className: "text-[15px] font-bold leading-snug break-words mb-1 "
                     + (allDone ? "text-neutral-400" : "text-neutral-900") }, recordTitle(r, N))),
-            r.type === "memo" && (r.text || "").trim() && (react_1.default.createElement(LinkedText, { text: r.text, className: "text-[14.5px] leading-relaxed text-neutral-800" })),
-            r.type !== "memo" && body && (react_1.default.createElement(LinkedText, { text: body, className: "text-[14.5px] leading-relaxed text-neutral-800 mb-1.5" })),
-            r.type === "schedule" && (r.body || "").trim() && (react_1.default.createElement(LinkedText, { text: r.body, className: "text-[14.5px] leading-relaxed text-neutral-800 mb-1.5" })),
+            r.type === "memo" && (r.text || "").trim() && (react_1.default.createElement(react_1.default.Fragment, null,
+                react_1.default.createElement(LinkedText, { text: r.text, className: "text-[14.5px] leading-relaxed text-neutral-800" }),
+                react_1.default.createElement(LinkCards, { text: r.text }))),
+            r.type !== "memo" && body && (react_1.default.createElement(react_1.default.Fragment, null,
+                react_1.default.createElement(LinkedText, { text: body, className: "text-[14.5px] leading-relaxed text-neutral-800 mb-1.5" }),
+                react_1.default.createElement(LinkCards, { text: body }))),
+            r.type === "schedule" && (r.body || "").trim() && (react_1.default.createElement(react_1.default.Fragment, null,
+                react_1.default.createElement(LinkedText, { text: r.body, className: "text-[14.5px] leading-relaxed text-neutral-800 mb-1.5" }),
+                react_1.default.createElement(LinkCards, { text: r.body }))),
             r.type === "schedule" && r.endDate && r.endDate !== r.date && (react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-500 mb-1.5 tabular-nums" }, scheduleWhen(r))),
             r.type === "schedule" && r.place && (react_1.default.createElement("p", { className: "text-[13px] text-neutral-600 mb-1.5 flex items-center gap-1" },
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14, className: "text-neutral-400" }),
@@ -22724,11 +22794,14 @@ html, body { height: 100%; overflow: hidden; }
 /* **下の帯の厚みは、ここで決め打ちにすること。**
    中身や設定でふくらませない。ホームバーのぶんは、字がかからない程度だけ足す
    （まるごと足すと、字の下に指1本ぶんの白があいて、とても厚く見える） */
-.ft-tabbar-wrap { padding-bottom: env(safe-area-inset-bottom); }
+/* **逃げをそのまま足さないこと。** 端末によっては大きな値が返り、
+   字の下に指1本ぶんの白があいて、帯がとても厚く見える。
+   ホームバーにかからない程度（20px）で頭打ちにする */
+.ft-tabbar-wrap { padding-bottom: min(env(safe-area-inset-bottom), 20px); }
 /* 下の帯の厚み。**右下のボタンや逃げは、必ずこれを見て決めること。**
    数字を書き写すと、帯の厚みを変えたときに置いていかれて、
    ボタンだけ高い場所に浮いたままになる */
-:root { --ft-nav-h: calc(49px + env(safe-area-inset-bottom)); }
+:root { --ft-nav-h: calc(49px + min(env(safe-area-inset-bottom), 20px)); }
 /* ＋の左どなりに置くボタン。**＋と別々に場所を決めないこと。**
    片方だけ動かすと重なる。＋は right:20 で幅56、あいだを12あけて 20+56+12＝88。
    **この行を media の下に書かないこと。** あとに書くと、横長のときの寄せ方を打ち消す。
@@ -22804,7 +22877,7 @@ html, body { height: 100%; overflow: hidden; }
 /* 下タブは、もう送る箱の外（ふつうに置いてある）ので、そのぶんの逃げは要らない。
    ここで空けるのは、右下の＋にかぶらないぶんだけ */
 /* 下タブ（fixed）と、その上にある＋のぶんを空ける */
-.pad-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 132px); }
+.pad-fab { padding-bottom: calc(var(--ft-nav-h) + 84px); }
 
 /* 線は細く。しるしの線が太いと、それだけで画面が固く見える */
 .ft-root svg:not(.thick) { stroke-width: 1.75; }
