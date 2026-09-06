@@ -57,6 +57,7 @@
     out.innerHTML = [
       "<b>この端末の数字</b>",
       "画面の高さ innerHeight … <b>" + px(window.innerHeight) + "</b>",
+      "html の高さ clientHeight … <b>" + px(document.documentElement.clientHeight) + "</b>",
       "screen.height … <b>" + px(window.screen.height) + "</b>",
       "visualViewport … <b>" + (vv ? px(vv.height) : "なし") + "</b>",
       "100vh … <b>" + px(vh) + "</b>",
@@ -76,7 +77,7 @@
   }
   function setVh() {
     var vv = window.visualViewport;
-    var h = Math.max(window.innerHeight || 0, vv ? vv.height : 0);
+    var h = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0, vv ? vv.height : 0);
     if (h > 0) document.documentElement.style.setProperty("--ft-vh", h + "px");
   }
   setVh();

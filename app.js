@@ -18538,9 +18538,11 @@ function useViewportHeight() {
         const put = () => {
             cancelAnimationFrame(raf);
             raf = requestAnimationFrame(() => {
-                /* キーボードが出ているあいだは visualViewport が縮む。
-                   そこに合わせると画面が跳ねるので、**大きいほうを採る** */
-                const h = Math.max(window.innerHeight || 0, vv ? vv.height : 0);
+                /* **innerHeight だけを当てにしないこと。** 端末によっては、上の切り欠きのぶん
+                   （60px前後）を引いた値を返す。すると外わくがそのぶん短くなり、
+                   下タブの下に白があいて、帯がとても厚く見える。
+                   html の高さ（＝画面いっぱい）も測って、いちばん大きいものを採る */
+                const h = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0, vv ? vv.height : 0);
                 if (h > 0)
                     document.documentElement.style.setProperty("--ft-vh", h + "px");
             });
@@ -22713,6 +22715,10 @@ html, body { height: 100%; overflow: hidden; }
    ここが厚くなると、記録を見せる場所がそのぶん減る。
    字も行の高さも、いつも同じにしておく */
 .ft-tabbar-wrap .ft-tabbtn span { font-size: 11px !important; line-height: 1.1; }
+/* **下の帯の厚みは、ここで決め打ちにすること。**
+   中身や設定でふくらませない。ホームバーのぶんは、字がかからない程度だけ足す
+   （まるごと足すと、字の下に指1本ぶんの白があいて、とても厚く見える） */
+.ft-tabbar-wrap { padding-bottom: max(calc(env(safe-area-inset-bottom) - 16px), 0px); }
 /* ＋の左どなりに置くボタン。**＋と別々に場所を決めないこと。**
    片方だけ動かすと重なる。＋は right:20 で幅56、あいだを12あけて 20+56+12＝88。
    **この行を media の下に書かないこと。** あとに書くと、横長のときの寄せ方を打ち消す。
@@ -22779,7 +22785,7 @@ html, body { height: 100%; overflow: hidden; }
    **vh や dvh を書かないこと。** 端末や開き方で見えている高さと食い違い、
    部品ぜんたいが上へ寄って、下のほうに指の届かない空きができる。
    --ft-vh がまだ無いあいだだけ 100vh を使う */
-.ft-shell { height: var(--ft-vh, 100vh); display: flex; flex-direction: column; overflow: hidden; }
+.ft-shell { height: 100%; height: var(--ft-vh, 100%); display: flex; flex-direction: column; overflow: hidden; }
 .ft-page { min-height: 0; }
 /* 中身を送る箱。**跳ね返りはこの中で起こすこと**（見出しと下タブは止まったまま） */
 .ft-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
@@ -23127,7 +23133,7 @@ const TABS = [
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
 function BottomNav({ active, onChange }) {
-    return (react_1.default.createElement("div", { className: "shrink-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap", style: { paddingBottom: "env(safe-area-inset-bottom)" } },
+    return (react_1.default.createElement("div", { className: "shrink-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
             return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-0.5 py-1.5 min-h-[48px] relative ft-tap ft-tabbtn" },
