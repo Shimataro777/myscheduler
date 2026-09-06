@@ -19524,8 +19524,8 @@ function ScreenHeader({ title, right, sub }) {
 }
 /* 重なって出る画面の見出し（戻る＋題＋三本線） */
 function OverlayHeader({ title, onBack, right, hideMenu }) {
-    return (react_1.default.createElement("div", { className: "bg-white border-b border-neutral-100 px-2 pb-2 flex items-center gap-1 shrink-0 relative", style: SAFE_TOP(12) },
-        react_1.default.createElement(TapButton, { onClick: onBack, "aria-label": "\u623B\u308B", className: "w-12 h-12 flex items-center justify-center rounded-xl text-neutral-700 hover:bg-neutral-100 shrink-0" },
+    return (react_1.default.createElement("div", { className: "bg-white border-b border-neutral-100 px-2 flex items-center gap-1 shrink-0 relative", style: { ...SAFE_TOP(18), paddingBottom: 9 } },
+        react_1.default.createElement(TapButton, { onClick: onBack, "aria-label": "\u623B\u308B", className: "w-12 h-11 flex items-center justify-center rounded-xl text-neutral-700 hover:bg-neutral-100 shrink-0" },
             react_1.default.createElement(lucide_react_1.ChevronLeft, { size: 24 })),
         react_1.default.createElement("h2", { className: "font-display text-[17.5px] text-neutral-900 truncate absolute inset-x-14 text-center pointer-events-none" }, title),
         react_1.default.createElement("span", { className: "flex-1" }),
@@ -19625,7 +19625,7 @@ function SideMenu({ open, onClose, items, footer, instant }) {
                 transition: drag !== null ? "none" : "transform 280ms cubic-bezier(0.16,1,0.3,1)",
                 touchAction: "pan-y",
             } },
-            react_1.default.createElement("div", { className: "flex items-center justify-between px-5 pb-4 border-b border-neutral-200 shrink-0", style: SAFE_TOP(16) },
+            react_1.default.createElement("div", { className: "flex items-center justify-between px-5 border-b border-neutral-200 shrink-0 min-h-[44px]", style: { ...SAFE_TOP(18), paddingBottom: 11 } },
                 react_1.default.createElement("span", { className: "font-display text-[16px] text-neutral-900" }, "\u30E1\u30CB\u30E5\u30FC"),
                 react_1.default.createElement("button", { onClick: onClose, "aria-label": "\u9589\u3058\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-600 hover:bg-neutral-100" },
                     react_1.default.createElement(lucide_react_1.X, { size: 28 }))),
@@ -19672,6 +19672,22 @@ const SITE_NAMES = [
     [/(^|\.)wikipedia\.org$/, "Wikipedia"],
     [/(^|\.)line\.me$/, "LINE"],
 ];
+/* 動画の絵（サムネイル）。YouTube は住所から絵の在りかが決まるので、
+   何も問い合わせずに出せる。**よそのサイトの中身を読みに行かないこと** */
+function youtubeId(u) {
+    const h = u.hostname.replace(/^www\./, "");
+    if (/youtu\.be$/.test(h))
+        return u.pathname.slice(1).split("/")[0] || "";
+    if (/youtube\.com$/.test(h)) {
+        const v = u.searchParams.get("v");
+        if (v)
+            return v;
+        const m = u.pathname.match(/\/(shorts|embed|live)\/([^/?#]+)/);
+        if (m)
+            return m[2];
+    }
+    return "";
+}
 function linkInfo(url) {
     try {
         const u = new URL(url);
@@ -19681,11 +19697,35 @@ function linkInfo(url) {
         const seg = decodeURIComponent(u.pathname).split("/").filter(Boolean).pop() || "";
         const nice = /^[^.]{2,40}$/.test(seg) && !/^[0-9a-f-]{8,}$/i.test(seg)
             ? seg.replace(/[-_+]/g, " ") : "";
-        return { host, site: hit ? hit[1] : host, detail: nice, url };
+        const yt = youtubeId(u);
+        return {
+            host, site: hit ? hit[1] : host, detail: nice, url,
+            /* 動画は大きな絵、ほかはサイトのしるし（favicon）。
+               出せなかったら、静かに引っこめる */
+            thumb: yt ? `https://i.ytimg.com/vi/${yt}/mqdefault.jpg` : "",
+            icon: `${u.protocol}//${u.hostname}/favicon.ico`,
+        };
     }
     catch (e) {
         return null;
     }
+}
+/* 住所ひとつぶんの札。絵が取れたら出し、取れなければ静かに引っこめる */
+function LinkCard({ link }) {
+    const [thumbNg, setThumbNg] = (0, react_1.useState)(false);
+    const [iconNg, setIconNg] = (0, react_1.useState)(false);
+    const showThumb = !!link.thumb && !thumbNg;
+    return (react_1.default.createElement("a", { href: link.url, target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation(), className: "ft-link block rounded-xl border border-neutral-200 bg-white overflow-hidden ft-tap ft-tap-card" },
+        showThumb && (react_1.default.createElement("span", { className: "block bg-neutral-100" },
+            react_1.default.createElement("img", { src: link.thumb, alt: "", loading: "lazy", onError: () => setThumbNg(true), className: "block w-full", style: { aspectRatio: "16 / 9", objectFit: "cover" } }))),
+        react_1.default.createElement("span", { className: "flex items-center gap-2 px-2.5 py-2" },
+            react_1.default.createElement("span", { className: "w-7 h-7 rounded-lg bg-neutral-100 text-neutral-500 flex items-center justify-center shrink-0 overflow-hidden" }, iconNg
+                ? react_1.default.createElement(lucide_react_1.Link, { size: 14 })
+                : react_1.default.createElement("img", { src: link.icon, alt: "", loading: "lazy", onError: () => setIconNg(true), className: "w-4 h-4", style: { objectFit: "contain" } })),
+            react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+                react_1.default.createElement("span", { className: "block text-[13px] font-bold text-neutral-800 truncate" }, link.site),
+                react_1.default.createElement("span", { className: "block text-[11.5px] text-neutral-400 truncate" }, link.detail || link.host)),
+            react_1.default.createElement(lucide_react_1.ChevronRight, { size: 16, className: "text-neutral-300 shrink-0" }))));
 }
 /* 本文に入っている住所を、あとから札で見せる。
    **本文の字を置き換えないこと。** 書いたとおりが残っているほうが読みやすい。
@@ -19707,13 +19747,7 @@ function LinkCards({ text, small }) {
     }, [text]);
     if (!found.length)
         return null;
-    return (react_1.default.createElement("div", { className: "space-y-1.5 " + (small ? "mt-1.5" : "mt-2") }, found.map((l) => (react_1.default.createElement("a", { key: l.url, href: l.url, target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation(), className: "ft-link flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-2.5 py-2 ft-tap ft-tap-card" },
-        react_1.default.createElement("span", { className: "w-7 h-7 rounded-lg bg-neutral-100 text-neutral-500 flex items-center justify-center shrink-0" },
-            react_1.default.createElement(lucide_react_1.Link, { size: 14 })),
-        react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-            react_1.default.createElement("span", { className: "block text-[13px] font-bold text-neutral-800 truncate" }, l.site),
-            react_1.default.createElement("span", { className: "block text-[11.5px] text-neutral-400 truncate" }, l.detail || l.host)),
-        react_1.default.createElement(lucide_react_1.ChevronRight, { size: 16, className: "text-neutral-300 shrink-0" }))))));
+    return (react_1.default.createElement("div", { className: "space-y-1.5 " + (small ? "mt-1.5" : "mt-2") }, found.map((l) => (react_1.default.createElement(LinkCard, { key: l.url, link: l })))));
 }
 /* 本文のURLを、押せるリンクとして描く。
    **自前で確認を出さないこと・自前のiframeで映さないこと。**
@@ -20058,7 +20092,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
     };
     return (react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60 },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-white flex flex-col" },
-            react_1.default.createElement("div", { className: "px-3 pb-2 flex items-center gap-1 shrink-0", style: SAFE_TOP(10) },
+            react_1.default.createElement("div", { className: "px-3 pb-2 flex items-center gap-1 shrink-0", style: SAFE_TOP(18) },
                 react_1.default.createElement(TapButton, { onClick: cancel, "aria-label": "\u30AD\u30E3\u30F3\u30BB\u30EB", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 shrink-0" },
                     react_1.default.createElement(lucide_react_1.X, { size: 26 })),
                 react_1.default.createElement("span", { className: "flex-1 min-w-0 flex items-center justify-center gap-1.5" },
@@ -21769,7 +21803,7 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
     const canSave = !!(step.title || "").trim() || items.length > 0;
     return (react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60 },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-white flex flex-col" },
-            react_1.default.createElement("div", { className: "px-3 pb-2 flex items-center gap-1 shrink-0", style: SAFE_TOP(10) },
+            react_1.default.createElement("div", { className: "px-3 pb-2 flex items-center gap-1 shrink-0", style: SAFE_TOP(18) },
                 react_1.default.createElement(TapButton, { onClick: cancel, "aria-label": "\u30AD\u30E3\u30F3\u30BB\u30EB", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 shrink-0" },
                     react_1.default.createElement(lucide_react_1.X, { size: 26 })),
                 react_1.default.createElement("span", { className: "flex-1 min-w-0 flex items-center justify-center gap-1.5" },
@@ -22797,11 +22831,11 @@ html, body { height: 100%; overflow: hidden; }
 /* **逃げをそのまま足さないこと。** 端末によっては大きな値が返り、
    字の下に指1本ぶんの白があいて、帯がとても厚く見える。
    ホームバーにかからない程度（20px）で頭打ちにする */
-.ft-tabbar-wrap { padding-bottom: min(env(safe-area-inset-bottom), 20px); }
+.ft-tabbar-wrap { padding-bottom: min(env(safe-area-inset-bottom), 8px); }
 /* 下の帯の厚み。**右下のボタンや逃げは、必ずこれを見て決めること。**
    数字を書き写すと、帯の厚みを変えたときに置いていかれて、
    ボタンだけ高い場所に浮いたままになる */
-:root { --ft-nav-h: calc(49px + min(env(safe-area-inset-bottom), 20px)); }
+:root { --ft-nav-h: calc(46px + min(env(safe-area-inset-bottom), 8px)); }
 /* ＋の左どなりに置くボタン。**＋と別々に場所を決めないこと。**
    片方だけ動かすと重なる。＋は right:20 で幅56、あいだを12あけて 20+56+12＝88。
    **この行を media の下に書かないこと。** あとに書くと、横長のときの寄せ方を打ち消す。
@@ -23219,7 +23253,7 @@ function BottomNav({ active, onChange }) {
     return (react_1.default.createElement("div", { className: "fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
-            return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-0.5 py-1.5 min-h-[48px] relative ft-tap ft-tabbtn" },
+            return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-0.5 py-1 min-h-[44px] relative ft-tap ft-tabbtn" },
                 isActive && react_1.default.createElement("span", { className: "absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] bg-th-800 rounded-full ft-tabbar" }),
                 react_1.default.createElement(Icon, { key: isActive ? "on" : "off", size: 20, className: isActive ? "text-th-800 ft-tabpop" : "text-neutral-500", strokeWidth: isActive ? 2.5 : 2 }),
                 react_1.default.createElement("span", { className: "text-[11px] tracking-tight whitespace-nowrap " + (isActive ? "text-th-800 font-bold" : "text-neutral-500 font-medium") }, label)));
