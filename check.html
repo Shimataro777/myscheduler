@@ -72,12 +72,17 @@
       "帯の下から画面の下まで … <b>" + px(window.innerHeight - nr.bottom) + "</b>",
       "",
       "standalone（ホーム画面から） … <b>" + (window.navigator.standalone ? "はい" : "いいえ") + "</b>",
+      "display-mode: standalone … <b>" + (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches ? "はい" : "いいえ") + "</b>",
+      "画面と測った高さの差 … <b>" + px(window.screen.height - window.innerHeight) + "</b>",
       "devicePixelRatio … " + (window.devicePixelRatio || "?"),
     ].join("<br>");
   }
   function setVh() {
     var vv = window.visualViewport;
     var h = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0, vv ? vv.height : 0);
+    var scr = (window.screen && window.screen.height) || 0;
+    var st = !!(window.navigator.standalone || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches));
+    if (st && scr > h && scr - h <= 140) h = scr;
     if (h > 0) document.documentElement.style.setProperty("--ft-vh", h + "px");
   }
   setVh();

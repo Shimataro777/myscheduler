@@ -18542,7 +18542,17 @@ function useViewportHeight() {
                    （60px前後）を引いた値を返す。すると外わくがそのぶん短くなり、
                    下タブの下に白があいて、帯がとても厚く見える。
                    html の高さ（＝画面いっぱい）も測って、いちばん大きいものを採る */
-                const h = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0, vv ? vv.height : 0);
+                let h = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0, vv ? vv.height : 0);
+                /* ホーム画面から開いているのに、測った高さが画面より少し小さいことがある
+                   （ホームバーのぶんが数えられていない）。そのままだと外わくが短くなり、
+                   下タブの下に白い帯が残って、帯がとても厚く見える。
+                   **画面いっぱいまで伸ばすこと。**
+                   ただし差が大きいときは、ブラウザの帯が出ているだけなので触らない */
+                const scr = (window.screen && window.screen.height) || 0;
+                const standalone = !!(window.navigator.standalone
+                    || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches));
+                if (standalone && scr > h && scr - h <= 140)
+                    h = scr;
                 if (h > 0)
                     document.documentElement.style.setProperty("--ft-vh", h + "px");
             });
