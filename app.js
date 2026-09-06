@@ -19463,7 +19463,7 @@ function ScreenHeader({ title, right, sub }) {
         ro.observe(el);
         return () => ro.disconnect();
     }, [photo]);
-    return (react_1.default.createElement("div", { ref: headRef, className: "px-2 pb-2 relative overflow-hidden shrink-0 " + (photo ? "" : "bg-head"), style: { ...SAFE_TOP(14), zIndex: 25 } },
+    return (react_1.default.createElement("div", { ref: headRef, className: "px-2 pb-2 relative overflow-hidden shrink-0 " + (photo ? "" : "bg-head"), style: { ...SAFE_TOP(18), zIndex: 25 } },
         photo && (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("span", { className: "absolute inset-0", style: {
                     backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center",
@@ -20657,7 +20657,9 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
         const rest = sorted.filter((r) => !r.pinned).reverse();
         return [...pin, ...rest];
     }, [records, date, hidden, order]);
-    /* **絵文字を置かないこと。** 画面の調子がそこだけ変わって見える */
+    /* **絵文字を置かないこと。** 画面の調子がそこだけ変わって見える。
+       「まだ〜ありません」の見せ方は、どの画面でも同じにすること
+       （py-14・まん中ぞろえ・14.5px・ft-noresult でふわりと出す） */
     if (!list.length) {
         return (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
             react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u3053\u306E\u65E5\u306F\u307E\u3060\u8A18\u9332\u304C\u3042\u308A\u307E\u305B\u3093")));
@@ -21524,7 +21526,8 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
                             "\u4EF6"))),
                     react_1.default.createElement(PinButton, { on: it.kind.pinned, color: planColor, onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
                     react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "shrink-0", style: { color: planColor.mid } }))) : renderPlan(it.plan)))),
-                plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 text-center py-6" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))))));
+                plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093")))))));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
 function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort, initialQ }) {
@@ -21563,7 +21566,8 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
                         react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
                 react_1.default.createElement("div", { className: "px-4 pt-1 pb-4 space-y-2.5 ft-seq ft-spread" },
                     mine.map((p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan }))),
-                    mine.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-8 text-center" }, q ? "見つかりません" : "まだ計画はありません")))),
+                    mine.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                        react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, q ? "見つかりません" : "まだ計画はありません"))))),
             react_1.default.createElement("button", { type: "button", onClick: () => onAddPlan(kind), "aria-label": "\u8A08\u753B\u3092\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white card-soft flex items-center justify-center ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 30 })),
             menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30AB\u30C6\u30B4\u30EA\u306E\u8A2D\u5B9A", types: ["__rename", "__delete"], labels: { __rename: "名前を変更", __delete: "このカテゴリを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, colorKeys: { __rename: PLAN_TYPE, __delete: PLAN_TYPE }, onCancel: () => setMenuOpen(false), onPick: (k) => { setMenuOpen(false); if (k === "__rename")
@@ -21790,7 +21794,8 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                         react_1.default.createElement(lucide_react_1.Pin, { size: 12 }),
                         " \u4E0A\u306B\u56FA\u5B9A"),
                     react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, pinned.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))),
-                byDate.length === 0 ? (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-3" }, "\u307E\u3060\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093")) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, list]) => (react_1.default.createElement("div", { key: d },
+                byDate.length === 0 ? (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, list]) => (react_1.default.createElement("div", { key: d },
                     react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))))),
             react_1.default.createElement(SelectBar, { sel: sel, list: planRecords }),
             !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
@@ -22105,7 +22110,8 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                             "\u4EF6"),
                         react_1.default.createElement("span", { className: "flex-1" }),
                         react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }))))),
-                byDate.length === 0 ? (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-6 text-center" }, "\u307E\u3060\u8A18\u9332\u304C\u5165\u3063\u3066\u3044\u307E\u305B\u3093")) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, items]) => (react_1.default.createElement("div", { key: d },
+                byDate.length === 0 ? (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A18\u9332\u304C\u5165\u3063\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, items]) => (react_1.default.createElement("div", { key: d },
                     react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1.5 tabular-nums" }, d ? fmtDate(d) : ""),
                     react_1.default.createElement("div", { className: CARD_LIST }, items.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selectable: pickedSet.has(r.id), selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))))),
             !sel.on && (react_1.default.createElement("button", { type: "button", onClick: () => setSetup("manual"), "aria-label": "\u8A18\u9332\u3092\u3055\u304C\u3057\u3066\u5165\u308C\u308B", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
@@ -22134,7 +22140,8 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
         react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
         react_1.default.createElement("div", { className: "ft-scroll pad-fab" },
             react_1.default.createElement("div", { className: "px-4 pt-1 max-w-2xl mx-auto w-full space-y-2.5 ft-seq" },
-                sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 py-8 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093")),
+                sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
                 sorted.map((f) => {
                     const n = folderRecords(f, records).length;
                     const auto = folderHasCond(f);
@@ -22162,7 +22169,8 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
                         react_1.default.createElement(PinButton, { on: f.pinned, onClick: (e) => { e.stopPropagation(); onPin(f); } }),
                         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })));
                 }),
-                folders.length === 0 && (react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-400 text-center py-6" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093"))))));
+                folders.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093")))))));
 }
 /* ============================================================
    設定（表示設定）
@@ -22729,7 +22737,11 @@ html, body { height: 100%; overflow: hidden; }
 /* 引き継ぎ元と同じ 100vh。**+2px のような小細工を足さないこと**
    （送れる高さが半端に増えて、跳ね返りの感じが変わる） */
 /* 画面ぜんたい。高さを決めて、ここは動かさない */
-.ft-shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+/* **高さを vh や dvh で決めないこと。** 端末によって見えている高さと食い違い、
+   下タブが画面の下から浮いて、そのぶん帯が厚く見える。
+   上下左右を 0 で留めれば、いつでも見えている画面ぴったりになる（紙と同じ考え方） */
+.ft-shell { position: fixed; top: 0; right: 0; bottom: 0; left: 0;
+            display: flex; flex-direction: column; overflow: hidden; }
 .ft-page { min-height: 0; }
 /* 中身を送る箱。**跳ね返りはこの中で起こすこと** */
 .ft-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
