@@ -18404,7 +18404,7 @@ function RowCard({ children, className }) {
    フォルダ・計画・カテゴリで同じものを使う。
    並べかえは同じ行の右はしに置き、下に送っても上に残す */
 function ListSearchBar({ value, onChange, placeholder, right }) {
-    return (react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 sticky bg-app max-w-2xl mx-auto w-full", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 66px))", zIndex: 20 } },
+    return (react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 bg-app max-w-2xl mx-auto w-full shrink-0" },
         react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
             react_1.default.createElement("div", { className: "flex-1 min-w-0 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
                 react_1.default.createElement(lucide_react_1.Search, { size: 17, className: value ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
@@ -18525,6 +18525,40 @@ function SaveCheckIcon({ size = 22 }) {
 /* ============================================================
    重なって出る画面
    ============================================================ */
+/* 画面の高さを、その場で測って持っておく。
+   **vh や dvh を当てにしないこと。** iPhone では、ホーム画面から開いたときに
+   ホームバーのぶんを含めるかどうかが状況で変わり、
+   外わくが画面より短くなって、部品ぜんたいが上へ寄ってしまう。
+   実際に測った数（px）を入れておけば、どんな開き方でもぴったり合う。
+   回転やキーボードの開け閉めでも測り直す */
+function useViewportHeight() {
+    (0, react_1.useEffect)(() => {
+        const vv = typeof window !== "undefined" ? window.visualViewport : null;
+        let raf = 0;
+        const put = () => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+                /* キーボードが出ているあいだは visualViewport が縮む。
+                   そこに合わせると画面が跳ねるので、**大きいほうを採る** */
+                const h = Math.max(window.innerHeight || 0, vv ? vv.height : 0);
+                if (h > 0)
+                    document.documentElement.style.setProperty("--ft-vh", h + "px");
+            });
+        };
+        put();
+        window.addEventListener("resize", put);
+        window.addEventListener("orientationchange", put);
+        if (vv)
+            vv.addEventListener("resize", put);
+        return () => {
+            cancelAnimationFrame(raf);
+            window.removeEventListener("resize", put);
+            window.removeEventListener("orientationchange", put);
+            if (vv)
+                vv.removeEventListener("resize", put);
+        };
+    }, []);
+}
 function useClosing(onClose, ms = 230) {
     const [closing, setClosing] = (0, react_1.useState)(false);
     const timer = (0, react_1.useRef)(null);
@@ -19463,7 +19497,7 @@ function ScreenHeader({ title, right, sub }) {
         ro.observe(el);
         return () => ro.disconnect();
     }, [photo]);
-    return (react_1.default.createElement("div", { ref: headRef, className: "px-2 pb-2 relative overflow-hidden sticky top-0 " + (photo ? "" : "bg-head"), style: { ...SAFE_TOP(18), zIndex: 25 } },
+    return (react_1.default.createElement("div", { ref: headRef, className: "px-2 pb-2 relative overflow-hidden shrink-0 " + (photo ? "" : "bg-head"), style: { ...SAFE_TOP(18), zIndex: 25 } },
         photo && (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("span", { className: "absolute inset-0", style: {
                     backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center",
@@ -21106,30 +21140,31 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         /* いちばん急ぐ計画から。札は3枚まで（それ以上は計画の画面で見る） */
         return out.sort((a, b) => a.soonest - b.soonest).slice(0, 3);
     }, [plans]);
-    return (react_1.default.createElement("div", { className: "pad-fab" },
+    return (react_1.default.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         react_1.default.createElement(ScreenHeader, { title: "Today" }),
-        react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 sticky bg-app", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 66px))", zIndex: 20 } },
+        react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 bg-app shrink-0" },
             react_1.default.createElement("div", { className: "flex gap-1 p-[3px] rounded-full bg-th-50" }, SPANS.map((s) => (react_1.default.createElement("button", { key: s.key, type: "button", onClick: () => { setDir(0); setSpan(s.key); }, "aria-pressed": span === s.key, style: { minHeight: 44 }, className: "flex-1 rounded-full text-[14px] font-bold flex items-center justify-center ft-tap "
                     + (span === s.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") },
                 react_1.default.createElement("span", { className: "inline-block" }, s.label)))))),
-        react_1.default.createElement("div", { className: "px-5" },
-            react_1.default.createElement(MonthNavHeader, { className: "mb-1 mt-1", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
-            span === "day" && (react_1.default.createElement("div", { className: "flex items-center gap-1 mt-1 mb-3" },
-                react_1.default.createElement("button", { type: "button", onClick: () => setFilterOpen(true), "aria-label": "\u7A2E\u985E\u3067\u3057\u307C\u308B", className: "w-11 h-11 flex items-center justify-center rounded-full ft-tap ft-tap-icon relative "
-                        + (hidden.length ? "text-th-800" : "text-neutral-500 hover:bg-neutral-100") },
-                    react_1.default.createElement(lucide_react_1.Filter, { size: 20 }),
-                    hidden.length > 0 && (react_1.default.createElement("span", { className: "absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-th-800" }))),
-                react_1.default.createElement("span", { className: "flex-1" }),
-                react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder })))),
-        upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "mb-1" }, upcoming.map(({ plan, list }) => (react_1.default.createElement("div", { key: plan.id, className: CARD_SLOT },
-            react_1.default.createElement(PlanDueCard, { plan: plan, list: list, onOpen: () => onOpenPlan(plan) })))))),
-        react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
-            react_1.default.createElement("div", { key: span === "day" ? span + date : span, className: span === "day" ? pageCls : "" },
-                span === "day" && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin })),
-                span === "week" && (react_1.default.createElement(react_1.default.Fragment, null,
-                    react_1.default.createElement(WeekView, { start: weekStart, records: records, onOpenDay: (d) => { setDate(d); setSpan("day"); }, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selected: weekSel, onSelect: setWeekSel }),
-                    react_1.default.createElement(DayPanel, { date: weekSel || todayInWeek, records: records, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, onOpenDay: (d) => { setDate(d); setSpan("day"); } }))),
-                span === "month" && (react_1.default.createElement(MonthView, { year: y, month: mo, records: records, onToggleItem: onToggleItem, onEdit: onEdit, onPin: onPin, onOpenDay: (d) => { setDate(d); setSpan("day"); } })))),
+        react_1.default.createElement("div", { className: "ft-scroll pad-fab" },
+            react_1.default.createElement("div", { className: "px-5" },
+                react_1.default.createElement(MonthNavHeader, { className: "mb-1 mt-1", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
+                span === "day" && (react_1.default.createElement("div", { className: "flex items-center gap-1 mt-1 mb-3" },
+                    react_1.default.createElement("button", { type: "button", onClick: () => setFilterOpen(true), "aria-label": "\u7A2E\u985E\u3067\u3057\u307C\u308B", className: "w-11 h-11 flex items-center justify-center rounded-full ft-tap ft-tap-icon relative "
+                            + (hidden.length ? "text-th-800" : "text-neutral-500 hover:bg-neutral-100") },
+                        react_1.default.createElement(lucide_react_1.Filter, { size: 20 }),
+                        hidden.length > 0 && (react_1.default.createElement("span", { className: "absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-th-800" }))),
+                    react_1.default.createElement("span", { className: "flex-1" }),
+                    react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder })))),
+            upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "mb-1" }, upcoming.map(({ plan, list }) => (react_1.default.createElement("div", { key: plan.id, className: CARD_SLOT },
+                react_1.default.createElement(PlanDueCard, { plan: plan, list: list, onOpen: () => onOpenPlan(plan) })))))),
+            react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
+                react_1.default.createElement("div", { key: span === "day" ? span + date : span, className: span === "day" ? pageCls : "" },
+                    span === "day" && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin })),
+                    span === "week" && (react_1.default.createElement(react_1.default.Fragment, null,
+                        react_1.default.createElement(WeekView, { start: weekStart, records: records, onOpenDay: (d) => { setDate(d); setSpan("day"); }, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selected: weekSel, onSelect: setWeekSel }),
+                        react_1.default.createElement(DayPanel, { date: weekSel || todayInWeek, records: records, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, onOpenDay: (d) => { setDate(d); setSpan("day"); } }))),
+                    span === "month" && (react_1.default.createElement(MonthView, { year: y, month: mo, records: records, onToggleItem: onToggleItem, onEdit: onEdit, onPin: onPin, onOpenDay: (d) => { setDate(d); setSpan("day"); } }))))),
         react_1.default.createElement(SelectBar, { sel: sel, list: dayList.filter((r) => !hidden.includes(r.type)) }),
         filterOpen && (react_1.default.createElement(SheetDialog, { title: "\u8868\u793A\u3059\u308B\u7A2E\u985E", onCancel: () => setFilterOpen(false), onConfirm: () => setFilterOpen(false), confirmLabel: "\u6C7A\u5B9A" },
             react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" }, TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: !hidden.includes(t), onClick: () => setHidden((v) => (v.includes(t) ? v.filter((x) => x !== t) : [...v, t])) },
@@ -21305,15 +21340,9 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
         setOpen(next);
         if (!next)
             return;
-        /* 画面ぜんたいを送る作りに戻したので、window を上まで戻す */
-        const go = () => {
-            try {
-                window.scrollTo({ top: 0, behavior: "smooth" });
-            }
-            catch (e) {
-                window.scrollTo(0, 0);
-            }
-        };
+        /* 送っているのは中身の箱（.ft-scroll）。**window を動かさないこと** */
+        const go = () => { if (scrollRef.current)
+            scrollRef.current.scrollTo({ top: 0, behavior: "smooth" }); };
         /* 欄が開いて高さが決まってから動かす */
         requestAnimationFrame(() => requestAnimationFrame(go));
     };
@@ -21375,9 +21404,9 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
             out.push(`${a.from ? shortDate(a.from) : "はじめ"}〜${a.to ? shortDate(a.to) : "いま"}`);
         return out.join("・");
     }, [applied, N]);
-    return (react_1.default.createElement("div", { className: "pad-fab" },
+    return (react_1.default.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         react_1.default.createElement(ScreenHeader, { title: "\u307F\u3064\u3051\u308B" }),
-        react_1.default.createElement("div", { ref: barRef, className: "px-4 pt-3 pb-2 sticky bg-app max-w-2xl mx-auto w-full", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 66px))", zIndex: 20 } },
+        react_1.default.createElement("div", { ref: barRef, className: "px-4 pt-3 pb-2 bg-app max-w-2xl mx-auto w-full shrink-0" },
             react_1.default.createElement("button", { type: "button", onPointerDown: onBarDown, onClick: onBarClick, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
                     + (hasCriteria ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
                 react_1.default.createElement(lucide_react_1.Search, { size: 17, className: hasCriteria ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
@@ -21386,18 +21415,19 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
                     : react_1.default.createElement("span", { className: "block text-[14px] text-neutral-400 truncate" }, open ? "条件をえらんで検索" : "検索する")),
                 react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (open ? "rotate-180" : "") },
                     react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
-        react_1.default.createElement("div", { className: "px-4 max-w-2xl mx-auto w-full" },
-            react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (open ? "" : "hidden") },
-                react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: search, types: types, onToggleType: toggleType, tags: tags, onOpenTags: () => setTagOpen(true), mark: markOnly, onMark: () => setMarkOnly((v) => !v), from: from, to: to, onFrom: setFrom, onTo: setTo }),
-                react_1.default.createElement("div", { className: "flex gap-2" },
-                    hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 text-[14.5px] shrink-0" }, "\u89E3\u9664")),
-                    react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[15.5px]" },
-                        react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
-                        " \u691C\u7D22\u3059\u308B")))),
-        react_1.default.createElement("div", { className: "px-5 max-w-2xl mx-auto w-full" }, !hasCriteria ? null : results.length === 0 ? (react_1.default.createElement("div", { className: "ft-noresult py-10 text-center" },
-            react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement(ListHeadRow, { sel: sel, list: results, right: `${results.length}件`, sort: react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }) }),
-            react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle }))))))),
+        react_1.default.createElement("div", { ref: scrollRef, className: "ft-scroll pad-fab" },
+            react_1.default.createElement("div", { className: "px-4 max-w-2xl mx-auto w-full" },
+                react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (open ? "" : "hidden") },
+                    react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: search, types: types, onToggleType: toggleType, tags: tags, onOpenTags: () => setTagOpen(true), mark: markOnly, onMark: () => setMarkOnly((v) => !v), from: from, to: to, onFrom: setFrom, onTo: setTo }),
+                    react_1.default.createElement("div", { className: "flex gap-2" },
+                        hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 text-[14.5px] shrink-0" }, "\u89E3\u9664")),
+                        react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[15.5px]" },
+                            react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
+                            " \u691C\u7D22\u3059\u308B")))),
+            react_1.default.createElement("div", { className: "px-5 max-w-2xl mx-auto w-full" }, !hasCriteria ? null : results.length === 0 ? (react_1.default.createElement("div", { className: "ft-noresult py-10 text-center" },
+                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement(react_1.default.Fragment, null,
+                react_1.default.createElement(ListHeadRow, { sel: sel, list: results, right: `${results.length}件`, sort: react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }) }),
+                react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))),
         react_1.default.createElement(SelectBar, { sel: sel, list: results }),
         tagOpen && (react_1.default.createElement(TagPickDialog, { title: "\u30BF\u30B0\u3067\u7D5E\u308A\u8FBC\u3080", selected: tags, known: knownTags, onApply: (v) => { setTags(v); setTagOpen(false); }, onCancel: () => setTagOpen(false) }))));
 }
@@ -21509,28 +21539,29 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
             return 0;
         });
     }, [sortedKinds, grouped, sort, q]);
-    return (react_1.default.createElement("div", { className: "pad-fab" },
+    return (react_1.default.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
         react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
-        react_1.default.createElement("div", { className: "px-4 pt-1 max-w-2xl mx-auto w-full space-y-2.5" },
-            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind, hits && hits.get(it.kind.id) > 0 ? q : ""), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: planColor.soft, border: `1px solid ${planColor.line}` } },
-                react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: planColor.deep } },
-                    react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
-                react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                    react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, it.kind.name),
-                    react_1.default.createElement("span", { className: "block text-[13px] mt-1", style: { color: planColor.deep } },
-                        "\u30AB\u30C6\u30B4\u30EA\u30FB\u8A08\u753B ",
-                        (grouped.get(it.kind.id) || []).length,
-                        "\u4EF6"),
-                    hits && hits.get(it.kind.id) > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 mt-1.5 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-white", style: { color: planColor.deep } },
-                        react_1.default.createElement(lucide_react_1.Search, { size: 11 }),
-                        " \u3053\u306E\u4E2D\u306B ",
-                        hits.get(it.kind.id),
-                        "\u4EF6"))),
-                react_1.default.createElement(PinButton, { on: it.kind.pinned, color: planColor, onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
-                react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "shrink-0", style: { color: planColor.mid } }))) : renderPlan(it.plan)))),
-            plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))))));
+        react_1.default.createElement("div", { className: "ft-scroll pad-fab" },
+            react_1.default.createElement("div", { className: "px-4 pt-1 max-w-2xl mx-auto w-full space-y-2.5" },
+                react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind, hits && hits.get(it.kind.id) > 0 ? q : ""), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: planColor.soft, border: `1px solid ${planColor.line}` } },
+                    react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: planColor.deep } },
+                        react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
+                    react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+                        react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, it.kind.name),
+                        react_1.default.createElement("span", { className: "block text-[13px] mt-1", style: { color: planColor.deep } },
+                            "\u30AB\u30C6\u30B4\u30EA\u30FB\u8A08\u753B ",
+                            (grouped.get(it.kind.id) || []).length,
+                            "\u4EF6"),
+                        hits && hits.get(it.kind.id) > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 mt-1.5 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-white", style: { color: planColor.deep } },
+                            react_1.default.createElement(lucide_react_1.Search, { size: 11 }),
+                            " \u3053\u306E\u4E2D\u306B ",
+                            hits.get(it.kind.id),
+                            "\u4EF6"))),
+                    react_1.default.createElement(PinButton, { on: it.kind.pinned, color: planColor, onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
+                    react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "shrink-0", style: { color: planColor.mid } }))) : renderPlan(it.plan)))),
+                plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093")))))));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
 function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort, initialQ }) {
@@ -22138,41 +22169,42 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
     const [q, setQ] = (0, react_1.useState)("");
     /* 名前順か作成順。名前順のときは「01.」「02.」を数として見る */
     const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort), [folders, sort, q]);
-    return (react_1.default.createElement("div", { className: "pad-fab" },
+    return (react_1.default.createElement("div", { className: "flex-1 min-h-0 flex flex-col" },
         react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
         react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
-        react_1.default.createElement("div", { className: "px-4 pt-1 max-w-2xl mx-auto w-full space-y-2.5 ft-seq" },
-            sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
-            sorted.map((f) => {
-                const n = folderRecords(f, records).length;
-                const auto = folderHasCond(f);
-                const picked = (f.picked || []).length;
-                const cond = folderCondText(f, N);
-                return (react_1.default.createElement("div", { key: f.id, role: "button", tabIndex: 0, onClick: () => onOpen(f), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer" },
-                    react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
-                        react_1.default.createElement(lucide_react_1.Folder, { size: 26 })),
-                    react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                        react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, f.name || "（名前なし）"),
-                        react_1.default.createElement("span", { className: "flex items-center gap-1.5 mt-1.5 flex-wrap" },
-                            react_1.default.createElement("span", { className: "text-[13px] font-bold text-neutral-500 tabular-nums" },
-                                n,
-                                "\u4EF6"),
-                            auto && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-th-50 text-th-900" },
-                                react_1.default.createElement(lucide_react_1.Filter, { size: 11 }),
-                                " \u81EA\u52D5")),
-                            picked > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-neutral-100 text-neutral-600" },
-                                react_1.default.createElement(lucide_react_1.Check, { size: 11, strokeWidth: 3, className: "thick" }),
-                                " \u624B\u52D5",
-                                picked,
-                                "\u4EF6")),
-                            auto && cond && react_1.default.createElement("span", { className: "text-[11.5px] text-neutral-400 truncate" }, cond),
-                            !auto && picked === 0 && react_1.default.createElement("span", { className: "text-[11.5px] text-neutral-400" }, "\u307E\u3060\u7A7A\u3067\u3059"))),
-                    react_1.default.createElement(PinButton, { on: f.pinned, onClick: (e) => { e.stopPropagation(); onPin(f); } }),
-                    react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })));
-            }),
-            folders.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093"))))));
+        react_1.default.createElement("div", { className: "ft-scroll pad-fab" },
+            react_1.default.createElement("div", { className: "px-4 pt-1 max-w-2xl mx-auto w-full space-y-2.5 ft-seq" },
+                sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
+                sorted.map((f) => {
+                    const n = folderRecords(f, records).length;
+                    const auto = folderHasCond(f);
+                    const picked = (f.picked || []).length;
+                    const cond = folderCondText(f, N);
+                    return (react_1.default.createElement("div", { key: f.id, role: "button", tabIndex: 0, onClick: () => onOpen(f), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer" },
+                        react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
+                            react_1.default.createElement(lucide_react_1.Folder, { size: 26 })),
+                        react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+                            react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, f.name || "（名前なし）"),
+                            react_1.default.createElement("span", { className: "flex items-center gap-1.5 mt-1.5 flex-wrap" },
+                                react_1.default.createElement("span", { className: "text-[13px] font-bold text-neutral-500 tabular-nums" },
+                                    n,
+                                    "\u4EF6"),
+                                auto && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-th-50 text-th-900" },
+                                    react_1.default.createElement(lucide_react_1.Filter, { size: 11 }),
+                                    " \u81EA\u52D5")),
+                                picked > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-neutral-100 text-neutral-600" },
+                                    react_1.default.createElement(lucide_react_1.Check, { size: 11, strokeWidth: 3, className: "thick" }),
+                                    " \u624B\u52D5",
+                                    picked,
+                                    "\u4EF6")),
+                                auto && cond && react_1.default.createElement("span", { className: "text-[11.5px] text-neutral-400 truncate" }, cond),
+                                !auto && picked === 0 && react_1.default.createElement("span", { className: "text-[11.5px] text-neutral-400" }, "\u307E\u3060\u7A7A\u3067\u3059"))),
+                        react_1.default.createElement(PinButton, { on: f.pinned, onClick: (e) => { e.stopPropagation(); onPin(f); } }),
+                        react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })));
+                }),
+                folders.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093")))))));
 }
 /* ============================================================
    設定（表示設定）
@@ -22651,8 +22683,7 @@ const GLOBAL_CSS = `
 .font-sans, body { font-family: 'Noto Sans JP', sans-serif; }
 /* **縦の巻き取り棒（スクロールバー）で幅を変えないこと。**
    記録が増えて転がるようになった瞬間に、見出しの帯だけ細くなって見える */
-/* **画面ぜんたいを送れなくしないこと**（部品が上へ寄る） */
-html { scrollbar-gutter: stable; }
+html, body { height: 100%; overflow: hidden; }
 /* **overscroll-behavior を当てないこと。**
    none にすると、いちばん上や下まで送ったときの跳ね返りが消えて、
    送り心地がぼてっとする。引き継ぎ元のアプリ（Footprints）も何も当てていない。
@@ -22744,17 +22775,20 @@ html { scrollbar-gutter: stable; }
 /* 引き継ぎ元と同じ 100vh。**+2px のような小細工を足さないこと**
    （送れる高さが半端に増えて、跳ね返りの感じが変わる） */
 /* 画面ぜんたい。高さを決めて、ここは動かさない */
-/* **画面ぜんたいを「高さを決めた箱」にしないこと。**
-   fixed や 100dvh で留めると、端末によって下のはしが画面より上で止まり、
-   画面ぜんたいの部品が上へ寄って、下のほうに指の届かない空きができる。
-   引き継ぎ元のアプリと同じく、ふつうに縦へ伸びる箱にして、画面ごと送る */
-.ft-shell { min-height: 100vh; }
-.ft-page { min-height: 100vh; }
+/* 外わく。高さは JS で測った実寸（--ft-vh）を入れる。
+   **vh や dvh を書かないこと。** 端末や開き方で見えている高さと食い違い、
+   部品ぜんたいが上へ寄って、下のほうに指の届かない空きができる。
+   --ft-vh がまだ無いあいだだけ 100vh を使う */
+.ft-shell { height: var(--ft-vh, 100vh); display: flex; flex-direction: column; overflow: hidden; }
+.ft-page { min-height: 0; }
+/* 中身を送る箱。**跳ね返りはこの中で起こすこと**（見出しと下タブは止まったまま） */
+.ft-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 /* **記録のいちばん下が、右下の＋に隠れないようにすること。**
    ＋は下から96px・高さ56pxなので、そのぶんの逃げをとる */
 /* 下タブは、もう送る箱の外（ふつうに置いてある）ので、そのぶんの逃げは要らない。
    ここで空けるのは、右下の＋にかぶらないぶんだけ */
-.pad-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 152px); }
+/* 下タブは送る箱の外なので、ここで空けるのは右下の＋のぶんだけ */
+.pad-fab { padding-bottom: 104px; }
 
 /* 線は細く。しるしの線が太いと、それだけで画面が固く見える */
 .ft-root svg:not(.thick) { stroke-width: 1.75; }
@@ -23093,7 +23127,7 @@ const TABS = [
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
 function BottomNav({ active, onChange }) {
-    return (react_1.default.createElement("div", { className: "fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap", style: { paddingBottom: "env(safe-area-inset-bottom)" } },
+    return (react_1.default.createElement("div", { className: "shrink-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap", style: { paddingBottom: "env(safe-area-inset-bottom)" } },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
             return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-0.5 py-1.5 min-h-[48px] relative ft-tap ft-tabbtn" },
@@ -23155,6 +23189,8 @@ function App() {
         react_1.default.createElement(AppMain, null));
 }
 function AppMain() {
+    /* 外わくの高さは、測った実寸を使う（--ft-vh） */
+    useViewportHeight();
     const [loaded, setLoaded] = (0, react_1.useState)(false);
     const [records, setRecordsState] = (0, react_1.useState)([]);
     const [plans, setPlansState] = (0, react_1.useState)([]);
@@ -23544,8 +23580,8 @@ function AppMain() {
                                 + ("ft-font-" + (prefs.fontSize || "s")) },
                             react_1.default.createElement("style", null, GLOBAL_CSS),
                             react_1.default.createElement("style", null, `:root{--ft-head-h:calc(env(safe-area-inset-top) + 66px);${Object.entries(theme.vars).map(([k, v]) => `--th-${k}:${v}`).join(";")}}`),
-                            !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page" },
-                                react_1.default.createElement("div", { className: "max-w-lg lg:max-w-3xl mx-auto" },
+                            !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page flex-1 min-h-0 flex flex-col" },
+                                react_1.default.createElement("div", { className: "max-w-lg lg:max-w-3xl mx-auto w-full flex-1 min-h-0 flex flex-col" },
                                     tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
                                         react_1.default.createElement(TodayScreen, { records: records, plans: plans, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
                                     tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),

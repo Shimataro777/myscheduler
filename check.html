@@ -6,14 +6,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <title>寸法しらべ</title>
 <style>
-  html, body { margin: 0; }
+  html, body { height: 100%; overflow: hidden; margin: 0; }
   body { font-family: -apple-system, sans-serif; background: #fff; color: #141416; }
   /* My手帳とまったく同じ組み立て */
-  /* My手帳と同じ：ふつうに縦へ伸びる箱＋下タブは fixed */
-  .shell { min-height: 100vh; padding-bottom: calc(env(safe-area-inset-bottom) + 100px); }
-  .head { position: sticky; top: 0; background: #fff; padding: calc(env(safe-area-inset-top) + 18px) 20px 8px; border-bottom: 1px solid #E5E5E5; font-weight: 700; }
-  .body { padding: 12px 16px 24px; font-size: 13px; line-height: 1.9; }
-  .nav { position: fixed; bottom: 0; left: 0; right: 0; background: #fff;
+  /* My手帳と同じ：JSで測った高さ（--ft-vh）の箱＋中身だけを送る */
+  .shell { height: var(--ft-vh, 100vh); display: flex; flex-direction: column; overflow: hidden; }
+  .head { flex: 0 0 auto; background: #fff; padding: calc(env(safe-area-inset-top) + 18px) 20px 8px; border-bottom: 1px solid #E5E5E5; font-weight: 700; }
+  .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 16px 24px; font-size: 13px; line-height: 1.9; }
+  .nav { flex: 0 0 auto; background: #fff;
     border-top: 1px solid #E5E5E5; display: flex; padding-bottom: env(safe-area-inset-bottom); }
   .nav button { flex: 1; min-height: 48px; padding: 6px 0; display: flex; flex-direction: column;
     align-items: center; gap: 4px; background: none; border: 0; font-size: 11px; line-height: 1.1; color: #737373; }
@@ -65,7 +65,8 @@
       "下の逃げ safe-area-bottom … <b>" + px(safeB) + "</b>",
       "",
       "<b>組み立て</b>",
-      "本文の高さ … " + px(document.documentElement.scrollHeight),
+      "--ft-vh（JSで測った値）… <b>" + (document.documentElement.style.getPropertyValue("--ft-vh") || "未設定") + "</b>",
+      "外わく .shell … " + px(sr.top) + " 〜 " + px(sr.bottom) + "（高さ " + px(sr.height) + "）",
       "下の帯 … " + px(nr.top) + " 〜 " + px(nr.bottom) + "（高さ <b>" + px(nr.height) + "</b>）",
       "帯の下から画面の下まで … <b>" + px(window.innerHeight - nr.bottom) + "</b>",
       "",
@@ -73,9 +74,16 @@
       "devicePixelRatio … " + (window.devicePixelRatio || "?"),
     ].join("<br>");
   }
+  function setVh() {
+    var vv = window.visualViewport;
+    var h = Math.max(window.innerHeight || 0, vv ? vv.height : 0);
+    if (h > 0) document.documentElement.style.setProperty("--ft-vh", h + "px");
+  }
+  setVh();
   run();
-  window.addEventListener("resize", run);
-  if (window.visualViewport) window.visualViewport.addEventListener("resize", run);
+  window.addEventListener("resize", function () { setVh(); run(); });
+  window.addEventListener("orientationchange", function () { setVh(); run(); });
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", function () { setVh(); run(); });
 })();
 </script>
 </body>
