@@ -19645,7 +19645,7 @@ function useToast() {
 function Toast({ msg }) {
     if (!msg)
         return null;
-    return (react_1.default.createElement("div", { className: "fixed left-1/2 -translate-x-1/2 anim-pop pointer-events-none", style: { bottom: "calc(env(safe-area-inset-bottom) + 112px)", zIndex: 2147483250 } },
+    return (react_1.default.createElement("div", { className: "fixed left-1/2 -translate-x-1/2 anim-pop pointer-events-none", style: { bottom: "calc(var(--ft-nav-h) + 84px)", zIndex: 2147483250 } },
         react_1.default.createElement("div", { className: "bg-neutral-900 text-white text-[13.5px] font-bold px-4 py-2.5 rounded-full shadow-xl max-w-[86vw] text-center" }, msg)));
 }
 /* 本文のURLを、押せるリンクとして描く。
@@ -21174,7 +21174,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 " ",
                 TYPE_LABELS[t])))),
             hidden.length > 0 && (react_1.default.createElement("button", { type: "button", onClick: () => setHidden([]), className: BTN_SECONDARY + " w-full " + BTN_H + " text-[14.5px] mt-3" }, "\u3059\u3079\u3066\u8868\u793A")))),
-        !sel.on && (react_1.default.createElement("button", { type: "button", onClick: cycleSpan, "aria-label": `${nextSpanLabel}の画面に切り替える`, className: "fixed rounded-2xl bg-white text-th-900 border border-th-200 card-soft flex items-center justify-center ft-tap ft-fab-side z-40", style: { width: 46, height: 46, bottom: "calc(env(safe-area-inset-bottom) + 101px)" } },
+        !sel.on && (react_1.default.createElement("button", { type: "button", onClick: cycleSpan, "aria-label": `${nextSpanLabel}の画面に切り替える`, className: "fixed rounded-2xl bg-white text-th-900 border border-th-200 card-soft flex items-center justify-center ft-tap ft-fab-side z-40", style: { width: 46, height: 46, bottom: "calc(var(--ft-nav-h) + 19px)" } },
             react_1.default.createElement("span", { key: span, className: "ft-tabpop inline-flex" },
                 react_1.default.createElement(SpanCycleIcon, { size: 21 })))),
         jumpOpen && (react_1.default.createElement(MonthJumpSheet, { year: y, month: mo, years: jumpYears(y), onClose: () => setJumpOpen(false), onConfirm: (yy, mm) => {
@@ -22719,6 +22719,10 @@ html, body { height: 100%; overflow: hidden; }
    中身や設定でふくらませない。ホームバーのぶんは、字がかからない程度だけ足す
    （まるごと足すと、字の下に指1本ぶんの白があいて、とても厚く見える） */
 .ft-tabbar-wrap { padding-bottom: max(calc(env(safe-area-inset-bottom) - 16px), 0px); }
+/* 下の帯の厚み。**右下のボタンや逃げは、必ずこれを見て決めること。**
+   数字を書き写すと、帯の厚みを変えたときに置いていかれて、
+   ボタンだけ高い場所に浮いたままになる */
+:root { --ft-nav-h: calc(49px + max(calc(env(safe-area-inset-bottom) - 16px), 0px)); }
 /* ＋の左どなりに置くボタン。**＋と別々に場所を決めないこと。**
    片方だけ動かすと重なる。＋は right:20 で幅56、あいだを12あけて 20+56+12＝88。
    **この行を media の下に書かないこと。** あとに書くと、横長のときの寄せ方を打ち消す。
@@ -22793,8 +22797,9 @@ html, body { height: 100%; overflow: hidden; }
    ＋は下から96px・高さ56pxなので、そのぶんの逃げをとる */
 /* 下タブは、もう送る箱の外（ふつうに置いてある）ので、そのぶんの逃げは要らない。
    ここで空けるのは、右下の＋にかぶらないぶんだけ */
-/* 下タブは送る箱の外なので、ここで空けるのは右下の＋のぶんだけ */
-.pad-fab { padding-bottom: 104px; }
+/* 下タブは送る箱の外なので、ここで空けるのは右下の＋のぶんだけ。
+   ＋は帯の上14px・高さ56px なので、その下に少し余らせる */
+.pad-fab { padding-bottom: 88px; }
 
 /* 線は細く。しるしの線が太いと、それだけで画面が固く見える */
 .ft-root svg:not(.thick) { stroke-width: 1.75; }
@@ -23593,7 +23598,7 @@ function AppMain() {
                                     tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
                                     tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k, kq) => { setKindQ(kq || ""); setKindOpen(k.id); }, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
                                     tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id) }))))),
-                            loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
+                            loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(var(--ft-nav-h) + 14px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                             loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
                             react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, onClose: () => setMenuOpen(false), items: menuItems, footer: react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 leading-relaxed" }, "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u4FDD\u5B58\u3055\u308C\u307E\u3059\u3002\u3068\u304D\u3069\u304D\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7\u3092\u66F8\u304D\u51FA\u3057\u3066\u304A\u3044\u3066\u304F\u3060\u3055\u3044\u3002") }),
                             draft && !editing && (react_1.default.createElement(DraftCard, { draft: draft, onResume: () => { setEditing(draft); setDraft(null); }, onDiscard: () => { setDraft(null); storageSet(DRAFT_KEY, ""); } })),
