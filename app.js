@@ -22675,6 +22675,10 @@ html, body { height: 100%; overflow: hidden; }
   /* 下の帯は幅いっぱいに広げず、真ん中へ寄せる */
   .ft-tabbar-wrap > div { max-width: 720px; }
 }
+/* **下の帯だけは、文字の大きさの設定でふくらませないこと。**
+   ここが厚くなると、記録を見せる場所がそのぶん減る。
+   字も行の高さも、いつも同じにしておく */
+.ft-tabbar-wrap .ft-tabbtn span { font-size: 11.5px !important; line-height: 1.15; }
 /* ＋の左どなりに置くボタン。**＋と別々に場所を決めないこと。**
    片方だけ動かすと重なる。＋は right:20 で幅56、あいだを12あけて 20+56+12＝88。
    **この行を media の下に書かないこと。** あとに書くと、横長のときの寄せ方を打ち消す。
@@ -23091,7 +23095,7 @@ function BottomNav({ active, onChange }) {
     return (react_1.default.createElement("div", { className: "shrink-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
-            return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[56px] relative ft-tap" },
+            return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-1 py-2 min-h-[52px] relative ft-tap ft-tabbtn" },
                 isActive && react_1.default.createElement("span", { className: "absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] bg-th-800 rounded-full ft-tabbar" }),
                 react_1.default.createElement(Icon, { key: isActive ? "on" : "off", size: 21, className: isActive ? "text-th-800 ft-tabpop" : "text-neutral-500", strokeWidth: isActive ? 2.5 : 2 }),
                 react_1.default.createElement("span", { className: "text-[11.5px] tracking-tight whitespace-nowrap " + (isActive ? "text-th-800 font-bold" : "text-neutral-500 font-medium") }, label)));
