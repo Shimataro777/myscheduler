@@ -18542,17 +18542,11 @@ function useViewportHeight() {
                    （60px前後）を引いた値を返す。すると外わくがそのぶん短くなり、
                    下タブの下に白があいて、帯がとても厚く見える。
                    html の高さ（＝画面いっぱい）も測って、いちばん大きいものを採る */
-                let h = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0, vv ? vv.height : 0);
-                /* ホーム画面から開いているのに、測った高さが画面より少し小さいことがある
-                   （ホームバーのぶんが数えられていない）。そのままだと外わくが短くなり、
-                   下タブの下に白い帯が残って、帯がとても厚く見える。
-                   **画面いっぱいまで伸ばすこと。**
-                   ただし差が大きいときは、ブラウザの帯が出ているだけなので触らない */
-                const scr = (window.screen && window.screen.height) || 0;
-                const standalone = !!(window.navigator.standalone
-                    || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches));
-                if (standalone && scr > h && scr - h <= 140)
-                    h = scr;
+                const h = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0, vv ? vv.height : 0);
+                /* **screen.height まで伸ばさないこと。** 画面より大きく、
+                   下タブが画面の外へ出て見えなくなる。
+                   下タブは fixed で画面のほんとうの下に付けてあるので、
+                   ここは測れた高さのままでよい */
                 if (h > 0)
                     document.documentElement.style.setProperty("--ft-vh", h + "px");
             });
@@ -22436,7 +22430,9 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp }) {
     /* ファイル名は半角の英数字とハイフンだけにすること。
        空白や日本語を混ぜると、共有や送信の途中で文字化けすることがある。
        .json は iPhone でも Android でも扱える */
-    const fileName = `${APP_NAME}-backup-${todayStr()}${lock ? "-locked" : ""}.json`;
+    /* **日付を名前に入れないこと。** 出すたびに別の控えが増えて、
+       写真のぶんだけ端末が重くなる。いつも同じ名前で、置き換えていく */
+    const fileName = `${APP_NAME}-backup${lock ? "-locked" : ""}.json`;
     const canPickFolder = typeof window !== "undefined" && !!window.showSaveFilePicker;
     const makeText = async () => {
         const text = await buildBackup(data, withPhotos);
@@ -22728,11 +22724,11 @@ html, body { height: 100%; overflow: hidden; }
 /* **下の帯の厚みは、ここで決め打ちにすること。**
    中身や設定でふくらませない。ホームバーのぶんは、字がかからない程度だけ足す
    （まるごと足すと、字の下に指1本ぶんの白があいて、とても厚く見える） */
-.ft-tabbar-wrap { padding-bottom: max(calc(env(safe-area-inset-bottom) - 16px), 0px); }
+.ft-tabbar-wrap { padding-bottom: env(safe-area-inset-bottom); }
 /* 下の帯の厚み。**右下のボタンや逃げは、必ずこれを見て決めること。**
    数字を書き写すと、帯の厚みを変えたときに置いていかれて、
    ボタンだけ高い場所に浮いたままになる */
-:root { --ft-nav-h: calc(49px + max(calc(env(safe-area-inset-bottom) - 16px), 0px)); }
+:root { --ft-nav-h: calc(49px + env(safe-area-inset-bottom)); }
 /* ＋の左どなりに置くボタン。**＋と別々に場所を決めないこと。**
    片方だけ動かすと重なる。＋は right:20 で幅56、あいだを12あけて 20+56+12＝88。
    **この行を media の下に書かないこと。** あとに書くと、横長のときの寄せ方を打ち消す。
@@ -22807,9 +22803,8 @@ html, body { height: 100%; overflow: hidden; }
    ＋は下から96px・高さ56pxなので、そのぶんの逃げをとる */
 /* 下タブは、もう送る箱の外（ふつうに置いてある）ので、そのぶんの逃げは要らない。
    ここで空けるのは、右下の＋にかぶらないぶんだけ */
-/* 下タブは送る箱の外なので、ここで空けるのは右下の＋のぶんだけ。
-   ＋は帯の上14px・高さ56px なので、その下に少し余らせる */
-.pad-fab { padding-bottom: 88px; }
+/* 下タブ（fixed）と、その上にある＋のぶんを空ける */
+.pad-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 132px); }
 
 /* 線は細く。しるしの線が太いと、それだけで画面が固く見える */
 .ft-root svg:not(.thick) { stroke-width: 1.75; }
@@ -23148,7 +23143,7 @@ const TABS = [
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
 function BottomNav({ active, onChange }) {
-    return (react_1.default.createElement("div", { className: "shrink-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
+    return (react_1.default.createElement("div", { className: "fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
             return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-0.5 py-1.5 min-h-[48px] relative ft-tap ft-tabbtn" },
