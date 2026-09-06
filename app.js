@@ -17313,6 +17313,18 @@ const PLAN_KEY = KEY("plans");
 const KIND_KEY = KEY("plankinds");
 const FOLDER_KEY = KEY("folders");
 const TAG_KEY = KEY("tags");
+/* 「最後に書き出した時刻」と「最後に書きかえた時刻」。
+   ふたつを見くらべて、まだ控えを取っていない書きかえがあるかを知る */
+const BACKUP_AT_KEY = KEY("backupat");
+const CHANGED_AT_KEY = KEY("changedat");
+/* **書きかえたら、必ずここを通すこと。** 通し忘れると、
+   控えが古いままなのに「取ってある」と見えてしまう */
+function markChanged() {
+    try {
+        storageSet(CHANGED_AT_KEY, new Date().toISOString());
+    }
+    catch (e) { /* noop */ }
+}
 const PREF_KEY = KEY("prefs");
 const DRAFT_KEY = KEY("draft");
 /* ============================================================
@@ -19476,6 +19488,15 @@ function NameDialog({ title, label, initial = "", placeholder, confirmLabel = "�
    別々の数にすると、画面を移ったとき大きさが変わって見える
    ============================================================ */
 const MenuContext = react_1.default.createContext(null);
+/* 控えを取っていない書きかえがあるか。**画面のあちこちに出さないこと。**
+   知らせるのは、メニューの三本線に付ける小さな丸ひとつでよい */
+const NeedBackupContext = react_1.default.createContext(false);
+function NeedBackupDot({ onPhoto }) {
+    const need = react_1.default.useContext(NeedBackupContext);
+    if (!need)
+        return null;
+    return (react_1.default.createElement("span", { "aria-hidden": "true", className: "absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-amber-500 " + (onPhoto ? "ring-2 ring-white" : "") }));
+}
 const MENU_BTN = 56;
 const MENU_ICON = 32;
 function MenuButton() {
@@ -19483,7 +19504,8 @@ function MenuButton() {
     if (!openMenu)
         return null;
     return (react_1.default.createElement("button", { onClick: openMenu, "aria-label": "\u30E1\u30CB\u30E5\u30FC", className: "relative flex items-center justify-center rounded-xl text-neutral-700 ft-tap ft-tap-icon shrink-0", style: { minWidth: 48, minHeight: 48 } },
-        react_1.default.createElement(lucide_react_1.Menu, { size: 24, strokeWidth: 2 })));
+        react_1.default.createElement(lucide_react_1.Menu, { size: 24, strokeWidth: 2 }),
+        react_1.default.createElement(NeedBackupDot, null)));
 }
 function ScreenHeader({ title, right, sub }) {
     const openMenu = react_1.default.useContext(MenuContext);
@@ -19524,7 +19546,8 @@ function ScreenHeader({ title, right, sub }) {
                 right,
                 openMenu && (react_1.default.createElement("button", { onClick: openMenu, "aria-label": "\u30E1\u30CB\u30E5\u30FC", className: "relative flex items-center justify-center rounded-xl ft-tap ft-tap-icon shrink-0 "
                         + (photo ? "text-white" : "text-neutral-700"), style: { minWidth: 48, minHeight: 48, filter: photo ? "drop-shadow(0 1px 2px rgba(0,0,0,.45))" : undefined } },
-                    react_1.default.createElement(lucide_react_1.Menu, { size: 22, strokeWidth: 2 })))))));
+                    react_1.default.createElement(lucide_react_1.Menu, { size: 22, strokeWidth: 2 }),
+                    react_1.default.createElement(NeedBackupDot, { onPhoto: !!photo })))))));
 }
 /* 重なって出る画面の見出し（戻る＋題＋三本線） */
 function OverlayHeader({ title, onBack, right, hideMenu }) {
@@ -19543,7 +19566,9 @@ function MenuRow({ it }) {
             + (pressed ? "bg-neutral-200 ft-tap-pressed" : "hover:bg-neutral-50") },
         react_1.default.createElement("span", { className: "w-10 h-10 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center shrink-0 text-th-800" }, it.icon),
         react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-            react_1.default.createElement("span", { className: "block font-display text-[15.5px] text-neutral-900 tracking-wide" }, it.label),
+            react_1.default.createElement("span", { className: "flex items-center gap-1.5" },
+                react_1.default.createElement("span", { className: "font-display text-[15.5px] text-neutral-900 tracking-wide whitespace-nowrap" }, it.label),
+                it.badge && (react_1.default.createElement("span", { className: "text-[11px] font-bold rounded-md px-1.5 py-[2px] bg-amber-100 text-amber-800 shrink-0 whitespace-nowrap" }, it.badge))),
             it.desc && react_1.default.createElement("span", { className: "block text-[12.5px] text-neutral-500 mt-0.5" }, it.desc)),
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" })));
 }
@@ -22521,7 +22546,7 @@ async function buildBackup(data, withPhotos) {
         prefs: (() => { const p = { ...data.prefs }; delete p.lastBackup; return p; })(),
     }, null, 2);
 }
-function BackupScreen({ data, onClose, onRestore, onBackedUp }) {
+function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backupAt }) {
     const used = (0, react_1.useMemo)(() => usedBytes(data.records), [data.records]);
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
@@ -22681,9 +22706,12 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp }) {
                         "\u5199\u771F\u306F\u3042\u3068 ",
                         Math.max(0, Math.floor((room.quota - room.used) / PHOTO_BYTES)).toLocaleString(),
                         " \u679A\u307B\u3069\u5165\u308A\u307E\u3059")),
-                    data.prefs && data.prefs.lastBackup && (react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-400 mt-1.5" },
+                    backupAt && (react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-400 mt-1.5" },
                         "\u524D\u56DE ",
-                        String(data.prefs.lastBackup).slice(0, 10)))),
+                        fmtDate(backupAt.slice(0, 10))))),
+                needBackup && (react_1.default.createElement("div", { className: "rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 mb-5 ft-noresult" },
+                    react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-amber-800" }, backupAt ? "前回の書き出しのあとに、書きかえがあります" : "まだ一度も書き出していません"),
+                    react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-600 mt-0.5" }, "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u3042\u308A\u307E\u3059\u3002\u4E0B\u304B\u3089\u66F8\u304D\u51FA\u3057\u3066\u304A\u3051\u307E\u3059\u3002"))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u66F8\u304D\u51FA\u3059"),
                     react_1.default.createElement(HelpTip, { label: "\u66F8\u304D\u51FA\u3059", text: "\u300C\u5199\u771F\u3082\u3075\u304F\u3081\u308B\u300D\u3092\u5207\u308B\u3068\u8EFD\u304F\u306A\u308A\u307E\u3059\u304C\u3001\u623B\u3057\u3066\u3082\u5199\u771F\u306F\u51FA\u307E\u305B\u3093\u3002" })),
@@ -22871,6 +22899,13 @@ html { scrollbar-gutter: stable; }
 .space-y-1 > * + * { margin-top: .25rem; }
 .mt-5 { margin-top: 1.25rem; }
 .-mr-0\\.5 { margin-right: -.125rem; }
+/* 控えを取っていないことを知らせる色。**赤にしないこと**（こわれた合図に見える） */
+.bg-amber-100 { background-color: #FEF3C7; }
+.text-amber-800 { color: #92400E; }
+.border-amber-200 { border-color: #FDE68A; }
+.bg-amber-50 { background-color: #FFFBEB; }
+.ring-2 { box-shadow: 0 0 0 2px var(--ft-ring, #fff); }
+.ring-white { --ft-ring: #fff; }
 .w-\\[34px\\] { width: 34px; }
 .w-\\[124px\\] { width: 124px; }
 .h-5 { height: 1.25rem; }
@@ -23317,6 +23352,17 @@ function App() {
 }
 function AppMain() {
     const [loaded, setLoaded] = (0, react_1.useState)(false);
+    /* 控えを取っていない書きかえがあるか。
+       **書きかえのたびに数え直さないこと。** 時刻をふたつ持って見くらべるだけでよい */
+    const [backupAt, setBackupAt] = (0, react_1.useState)("");
+    const [changedAt, setChangedAt] = (0, react_1.useState)("");
+    const bumpChanged = (0, react_1.useCallback)(() => {
+        const now = new Date().toISOString();
+        setChangedAt(now);
+        markChanged();
+    }, []);
+    /* 読み込みの途中で立つ書きかえは、数えない（自分で書いたものではない） */
+    const needBackup = !!loaded && !!changedAt && (!backupAt || changedAt > backupAt);
     const [records, setRecordsState] = (0, react_1.useState)([]);
     const [plans, setPlansState] = (0, react_1.useState)([]);
     const [kinds, setKindsState] = (0, react_1.useState)([]);
@@ -23379,6 +23425,12 @@ function AppMain() {
             catch (e) {
                 setTagMasterState([]);
             }
+            try {
+                const [ba, ca] = await Promise.all([storageGet(BACKUP_AT_KEY), storageGet(CHANGED_AT_KEY)]);
+                setBackupAt(ba || "");
+                setChangedAt(ca || "");
+            }
+            catch (e) { /* noop */ }
             setPrefsState(pf);
             try {
                 const d = dr ? migrateRecord(JSON.parse(dr)) : null;
@@ -23402,15 +23454,16 @@ function AppMain() {
        **黙って落とさないこと。** 書いたものが消えたように見える */
     const setRecords = (0, react_1.useCallback)((next) => {
         setRecordsState(next);
+        bumpChanged();
         saveList(REC_KEY, next).then((res) => {
             if (res && res.ok === false) {
                 tell("保存できませんでした。写真を減らすか、バックアップを取ってから古い記録を消してください");
             }
         });
     }, []);
-    const setPlans = (0, react_1.useCallback)((next) => { setPlansState(next); saveList(PLAN_KEY, next); }, []);
-    const setKinds = (0, react_1.useCallback)((next) => { setKindsState(next); saveList(KIND_KEY, next); }, []);
-    const setFolders = (0, react_1.useCallback)((next) => { setFoldersState(next); saveList(FOLDER_KEY, next); }, []);
+    const setPlans = (0, react_1.useCallback)((next) => { setPlansState(next); bumpChanged(); saveList(PLAN_KEY, next); }, []); // eslint-disable-line
+    const setKinds = (0, react_1.useCallback)((next) => { setKindsState(next); bumpChanged(); saveList(KIND_KEY, next); }, []); // eslint-disable-line
+    const setFolders = (0, react_1.useCallback)((next) => { setFoldersState(next); bumpChanged(); saveList(FOLDER_KEY, next); }, []); // eslint-disable-line
     const setTagMaster = (0, react_1.useCallback)((next) => {
         const v = normalizeTags(next);
         setTagMasterState(v);
@@ -23692,64 +23745,77 @@ function AppMain() {
     const menuItems = [
         { label: "表示設定", desc: "色・文字の大きさ・動き", icon: react_1.default.createElement(lucide_react_1.Palette, { size: 19 }), onClick: () => goFromMenu(() => setSettingsOpen(true)) },
         { label: "タグの編集", desc: "名前の変更・削除", icon: react_1.default.createElement(lucide_react_1.Tag, { size: 19 }), onClick: () => goFromMenu(() => setTagScreenOpen(true)) },
-        { label: "バックアップ", desc: "書き出す・読み込む", icon: react_1.default.createElement(lucide_react_1.Download, { size: 19 }), onClick: () => goFromMenu(() => setBackupOpen(true)) },
+        {
+            label: "バックアップ",
+            desc: needBackup
+                ? (backupAt ? `最後に書き出したのは ${fmtDate(backupAt.slice(0, 10))}` : "まだ書き出していません")
+                : (backupAt ? `${fmtDate(backupAt.slice(0, 10))} に書き出しました` : "書き出す・読み込む"),
+            badge: needBackup ? "未書き出し" : "",
+            icon: react_1.default.createElement(lucide_react_1.Download, { size: 19 }), onClick: () => goFromMenu(() => setBackupOpen(true)),
+        },
         { label: "ヘルプ", desc: "使いかた", icon: react_1.default.createElement(lucide_react_1.CircleHelp, { size: 19 }), onClick: () => goFromMenu(() => setHelpOpen(true)) },
     ];
     return (react_1.default.createElement(PrefsContext.Provider, { value: prefs },
         react_1.default.createElement(ColorContext.Provider, { value: prefs.typeColor },
             react_1.default.createElement(TypeNameContext.Provider, { value: typeNames },
                 react_1.default.createElement(MenuContext.Provider, { value: () => setMenuOpen(true) },
-                    react_1.default.createElement(RecordActionsContext.Provider, { value: recordActions },
-                        react_1.default.createElement("div", { className: "ft-shell bg-app font-sans text-neutral-900 ft-root "
-                                + (prefs.motion === false ? "ft-still " : "")
-                                + ("ft-font-" + (prefs.fontSize || "s")) },
-                            react_1.default.createElement("style", null, GLOBAL_CSS),
-                            react_1.default.createElement("style", null, `:root{--ft-head-h:calc(env(safe-area-inset-top) + 66px);${Object.entries(theme.vars).map(([k, v]) => `--th-${k}:${v}`).join(";")}}`),
-                            !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page" },
-                                react_1.default.createElement("div", { className: "max-w-lg lg:max-w-3xl mx-auto" },
-                                    tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
-                                        react_1.default.createElement(TodayScreen, { records: records, plans: plans, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
-                                    tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
-                                    tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k, kq) => { setKindQ(kq || ""); setKindOpen(k.id); }, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
-                                    tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id) }))))),
-                            loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
-                            loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
-                            react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, onClose: () => setMenuOpen(false), items: menuItems, footer: react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 leading-relaxed" }, "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u4FDD\u5B58\u3055\u308C\u307E\u3059\u3002\u3068\u304D\u3069\u304D\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7\u3092\u66F8\u304D\u51FA\u3057\u3066\u304A\u3044\u3066\u304F\u3060\u3055\u3044\u3002") }),
-                            draft && !editing && (react_1.default.createElement(DraftCard, { draft: draft, onResume: () => { setEditing(draft); setDraft(null); }, onDiscard: () => { setDraft(null); storageSet(DRAFT_KEY, ""); } })),
-                            swapAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u7A2E\u985E\u3092\u5909\u3048\u307E\u3059\u304B", body: "\u3044\u307E\u5165\u3063\u3066\u3044\u308B\u4E2D\u8EAB\u306F\u6D88\u3048\u307E\u3059\u3002", danger: true, confirmLabel: "\u5909\u3048\u308B", onCancel: () => setSwapAsk(null), onConfirm: () => {
-                                    const a = swapAsk;
-                                    setSwapAsk(null);
-                                    setRecords(records.filter((r) => r.id !== a.rec.id));
-                                    addScoped(a.scope, a.dateKey);
-                                } })),
-                            typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: scoped ? SCOPED_TYPES : TYPES })),
-                            planPick && (react_1.default.createElement(TypePickSheet, { title: "\u8FFD\u52A0\u3059\u308B\u3082\u306E", types: ["__kind", PLAN_TYPE], labels: { __kind: "カテゴリ" }, icons: { __kind: react_1.default.createElement(lucide_react_1.Layers, { size: 22 }) }, colorKeys: { __kind: PLAN_TYPE }, onCancel: () => setPlanPick(false), onPick: (k) => { setPlanPick(false); if (k === PLAN_TYPE)
-                                    setAddPlanOpen(true);
-                                else
-                                    setAddKindOpen(true); } })),
-                            addKindOpen && (react_1.default.createElement(NameDialog, { title: "\u30AB\u30C6\u30B4\u30EA\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u52C9\u5F37\uFF0F\u304B\u3089\u3060\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddKindOpen(false), onConfirm: (n) => { addKind(n); setAddKindOpen(false); } })),
-                            addPlanOpen && (react_1.default.createElement(NameDialog, { title: "\u8A08\u753B\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u82F1\u8A9E\uFF0F\u4F53\u3065\u304F\u308A \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddPlanOpen(false), 
-                                /* **種類がひとつでも、勝手にそこへ入れないこと。**
-                                   計画はまず「種類なし」で独立して並び、あとから種類へ移せる */
-                                onConfirm: (n) => { addPlan(addPlanKind || null, n); setAddPlanOpen(false); setAddPlanKind(null); } })),
-                            addFolderOpen && (react_1.default.createElement(NameDialog, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddFolderOpen(false), onConfirm: (n) => { addFolder(n); setAddFolderOpen(false); } })),
-                            editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
-                            dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                            kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, initialQ: kindQ, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
-                            planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, kinds: kinds, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
-                                    if (type) {
-                                        setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
-                                        return;
-                                    }
-                                    setInPlan(pl.id);
-                                    setTypePick(true);
-                                }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                            folderObj && (react_1.default.createElement(FolderDetail, { folder: folderObj, records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onCreateTag: addTagToMaster, onClose: () => setFolderOpen(null), onChange: changeFolder, onDelete: deleteFolder, onAddRecord: (f) => { setInFolder(f.id); setTypePick(true); }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                            settingsOpen && react_1.default.createElement(SettingsScreen, { prefs: prefs, onSave: savePrefs, onClose: () => setSettingsOpen(false) }),
-                            tagScreenOpen && (react_1.default.createElement(TagManageScreen, { tags: knownTags, records: records, onMove: moveTag, onReorder: setTagMaster, onAdd: addTagToMaster, onRename: renameTag, onDelete: deleteTag, onClose: () => setTagScreenOpen(false) })),
-                            backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, onClose: () => setBackupOpen(false), onRestore: restore, onBackedUp: () => savePrefs({ ...prefs, lastBackup: new Date().toISOString() }) })),
-                            helpOpen && react_1.default.createElement(HelpScreen, { onClose: () => setHelpOpen(false) }),
-                            react_1.default.createElement(Toast, { msg: msg }))))))));
+                    react_1.default.createElement(NeedBackupContext.Provider, { value: needBackup },
+                        react_1.default.createElement(RecordActionsContext.Provider, { value: recordActions },
+                            react_1.default.createElement("div", { className: "ft-shell bg-app font-sans text-neutral-900 ft-root "
+                                    + (prefs.motion === false ? "ft-still " : "")
+                                    + ("ft-font-" + (prefs.fontSize || "s")) },
+                                react_1.default.createElement("style", null, GLOBAL_CSS),
+                                react_1.default.createElement("style", null, `:root{--ft-head-h:calc(env(safe-area-inset-top) + 66px);${Object.entries(theme.vars).map(([k, v]) => `--th-${k}:${v}`).join(";")}}`),
+                                !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page" },
+                                    react_1.default.createElement("div", { className: "max-w-lg lg:max-w-3xl mx-auto" },
+                                        tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
+                                            react_1.default.createElement(TodayScreen, { records: records, plans: plans, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
+                                        tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
+                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k, kq) => { setKindQ(kq || ""); setKindOpen(k.id); }, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
+                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id) }))))),
+                                loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
+                                loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
+                                react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, onClose: () => setMenuOpen(false), items: menuItems, footer: react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 leading-relaxed" }, "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u4FDD\u5B58\u3055\u308C\u307E\u3059\u3002\u3068\u304D\u3069\u304D\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7\u3092\u66F8\u304D\u51FA\u3057\u3066\u304A\u3044\u3066\u304F\u3060\u3055\u3044\u3002") }),
+                                draft && !editing && (react_1.default.createElement(DraftCard, { draft: draft, onResume: () => { setEditing(draft); setDraft(null); }, onDiscard: () => { setDraft(null); storageSet(DRAFT_KEY, ""); } })),
+                                swapAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u7A2E\u985E\u3092\u5909\u3048\u307E\u3059\u304B", body: "\u3044\u307E\u5165\u3063\u3066\u3044\u308B\u4E2D\u8EAB\u306F\u6D88\u3048\u307E\u3059\u3002", danger: true, confirmLabel: "\u5909\u3048\u308B", onCancel: () => setSwapAsk(null), onConfirm: () => {
+                                        const a = swapAsk;
+                                        setSwapAsk(null);
+                                        setRecords(records.filter((r) => r.id !== a.rec.id));
+                                        addScoped(a.scope, a.dateKey);
+                                    } })),
+                                typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: scoped ? SCOPED_TYPES : TYPES })),
+                                planPick && (react_1.default.createElement(TypePickSheet, { title: "\u8FFD\u52A0\u3059\u308B\u3082\u306E", types: ["__kind", PLAN_TYPE], labels: { __kind: "カテゴリ" }, icons: { __kind: react_1.default.createElement(lucide_react_1.Layers, { size: 22 }) }, colorKeys: { __kind: PLAN_TYPE }, onCancel: () => setPlanPick(false), onPick: (k) => { setPlanPick(false); if (k === PLAN_TYPE)
+                                        setAddPlanOpen(true);
+                                    else
+                                        setAddKindOpen(true); } })),
+                                addKindOpen && (react_1.default.createElement(NameDialog, { title: "\u30AB\u30C6\u30B4\u30EA\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u52C9\u5F37\uFF0F\u304B\u3089\u3060\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddKindOpen(false), onConfirm: (n) => { addKind(n); setAddKindOpen(false); } })),
+                                addPlanOpen && (react_1.default.createElement(NameDialog, { title: "\u8A08\u753B\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u82F1\u8A9E\uFF0F\u4F53\u3065\u304F\u308A \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddPlanOpen(false), 
+                                    /* **種類がひとつでも、勝手にそこへ入れないこと。**
+                                       計画はまず「種類なし」で独立して並び、あとから種類へ移せる */
+                                    onConfirm: (n) => { addPlan(addPlanKind || null, n); setAddPlanOpen(false); setAddPlanKind(null); } })),
+                                addFolderOpen && (react_1.default.createElement(NameDialog, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddFolderOpen(false), onConfirm: (n) => { addFolder(n); setAddFolderOpen(false); } })),
+                                editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
+                                dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
+                                kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, initialQ: kindQ, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
+                                planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, kinds: kinds, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
+                                        if (type) {
+                                            setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
+                                            return;
+                                        }
+                                        setInPlan(pl.id);
+                                        setTypePick(true);
+                                    }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
+                                folderObj && (react_1.default.createElement(FolderDetail, { folder: folderObj, records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onCreateTag: addTagToMaster, onClose: () => setFolderOpen(null), onChange: changeFolder, onDelete: deleteFolder, onAddRecord: (f) => { setInFolder(f.id); setTypePick(true); }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
+                                settingsOpen && react_1.default.createElement(SettingsScreen, { prefs: prefs, onSave: savePrefs, onClose: () => setSettingsOpen(false) }),
+                                tagScreenOpen && (react_1.default.createElement(TagManageScreen, { tags: knownTags, records: records, onMove: moveTag, onReorder: setTagMaster, onAdd: addTagToMaster, onRename: renameTag, onDelete: deleteTag, onClose: () => setTagScreenOpen(false) })),
+                                backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, onClose: () => setBackupOpen(false), onRestore: restore, needBackup: needBackup, backupAt: backupAt, onBackedUp: () => {
+                                        const now = new Date().toISOString();
+                                        setBackupAt(now);
+                                        storageSet(BACKUP_AT_KEY, now);
+                                        savePrefs({ ...prefs, lastBackup: now });
+                                    } })),
+                                helpOpen && react_1.default.createElement(HelpScreen, { onClose: () => setHelpOpen(false) }),
+                                react_1.default.createElement(Toast, { msg: msg })))))))));
 }
 
 };
