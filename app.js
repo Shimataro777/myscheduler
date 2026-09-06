@@ -23088,7 +23088,7 @@ const TABS = [
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
 function BottomNav({ active, onChange }) {
-    return (react_1.default.createElement("div", { className: "shrink-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap", style: { paddingBottom: "env(safe-area-inset-bottom)" } },
+    return (react_1.default.createElement("div", { className: "shrink-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
             return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[56px] relative ft-tap" },
