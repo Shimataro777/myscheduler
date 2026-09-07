@@ -22908,6 +22908,18 @@ html { scrollbar-gutter: stable; }
 .ring-white { --ft-ring: #fff; }
 .w-\\[34px\\] { width: 34px; }
 .w-\\[124px\\] { width: 124px; }
+/* **知らせの点と札の見た目を、書き足し忘れないこと。**
+   app.css は作り直せないので、新しく使う名前はここに足す。
+   足し忘れると、点が大きさ0になって「出ていない」ように見える */
+.w-2\\.5 { width: .625rem; }
+.h-2\\.5 { height: .625rem; }
+.ring-2 { box-shadow: 0 0 0 2px currentColor; }
+.ring-white { color: #FFFFFF; }
+.bg-amber-100 { background-color: #FEF3C7; }
+.text-amber-800 { color: #92400E; }
+.-ml-2 { margin-left: -.5rem; }
+.-mx-4 { margin-left: -1rem; margin-right: -1rem; }
+.outline-none { outline: 2px solid transparent; outline-offset: 2px; }
 .h-5 { height: 1.25rem; }
 .overflow-x-hidden { overflow-x: hidden; }
 /* 「あと◯日」の札と、フォルダの集め方の小さな札で使う */
