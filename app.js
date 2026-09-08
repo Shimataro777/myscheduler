@@ -17616,8 +17616,10 @@ function emptyRecord(type, date, scope) {
        **繰り返しは持たせないこと**（くり返す意味がない） */
     if (type === "memo")
         return { ...base, text: "", images: [] };
+    /* body ＝ リストの下に添える覚え書き。**予定の body と同じ名前にすること。**
+       名前を分けると、読むところ・書くところの両方で場合分けが増える */
     if (type === "checklist")
-        return { ...base, title: "", items: [], repeat: { freq: "none", days: [], until: "", skip: [] } };
+        return { ...base, title: "", items: [], body: "", repeat: { freq: "none", days: [], until: "", skip: [] } };
     /* **終日を別の項目として持たないこと。** time が空なら、それが終日。
        二か所で覚えると必ず食い違う（isAllDay ひとつで見る） */
     if (type === "schedule")
@@ -20155,7 +20157,9 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                     react_1.default.createElement("div", { className: "mt-3" },
                         react_1.default.createElement(ImagesField, { images: rec.images, onChange: (v) => set({ images: v }), onError: setErr })))),
                 rec.type === "checklist" && (react_1.default.createElement("div", { className: "mb-3" },
-                    react_1.default.createElement(ChecklistEditor, { items: rec.items || [], onChange: (v) => set({ items: v }) }))),
+                    react_1.default.createElement(ChecklistEditor, { items: rec.items || [], onChange: (v) => set({ items: v }) }),
+                    react_1.default.createElement("div", { className: "mt-2" },
+                        react_1.default.createElement(TextArea, { value: rec.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" })))),
                 rec.type === "schedule" && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(TextArea, { value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 3, placeholder: "\u4E88\u5B9A\u306E\u5185\u5BB9" }),
                     react_1.default.createElement("div", { className: "mt-3 space-y-2" },
@@ -20398,6 +20402,9 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                                 onToggleItem(r, it.id); } })),
                     canMove && !selectMode && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setMoving(it); }, "aria-label": "\u5225\u306E\u30EA\u30B9\u30C8\u3078\u79FB\u3059", className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-full text-neutral-300 hover:text-th-800 hover:bg-neutral-100 ft-tap ft-tap-icon" },
                         react_1.default.createElement(lucide_react_1.ArrowRightLeft, { size: 15 }))))))),
+                r.type === "checklist" && (r.body || "").trim() && (react_1.default.createElement("div", { className: "mt-2 pl-1.5 border-l-2 border-neutral-200" },
+                    react_1.default.createElement(LinkedText, { text: r.body, className: "text-[13.5px] leading-relaxed text-neutral-600" }),
+                    react_1.default.createElement(LinkCards, { text: r.body, small: true }))),
                 r.repeat && r.repeat.freq !== "none" && (react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 mt-0.5 flex items-center gap-1" },
                     react_1.default.createElement(lucide_react_1.Repeat, { size: 12 }),
                     repeatLabel(r.repeat))))),
@@ -22920,6 +22927,8 @@ html { scrollbar-gutter: stable; }
 .-ml-2 { margin-left: -.5rem; }
 .-mx-4 { margin-left: -1rem; margin-right: -1rem; }
 .outline-none { outline: 2px solid transparent; outline-offset: 2px; }
+.border-l-2 { border-left-width: 2px; border-left-style: solid; }
+.pl-1\\.5 { padding-left: .375rem; }
 .h-5 { height: 1.25rem; }
 .overflow-x-hidden { overflow-x: hidden; }
 /* 「あと◯日」の札と、フォルダの集め方の小さな札で使う */
