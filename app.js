@@ -19868,7 +19868,7 @@ function LinkedText({ text, className }) {
     });
     if (last < src.length)
         parts.push({ t: src.slice(last) });
-    return (react_1.default.createElement("span", { className: "whitespace-pre-line break-words " + (className || "") }, parts.map((p, i) => p.url
+    return (react_1.default.createElement("span", { className: "ft-text whitespace-pre-line break-words " + (className || "") }, parts.map((p, i) => p.url
         /* **住所だけ太字にしないこと。** そこだけ浮いて、本文が読みにくくなる。
            字体も大きさも太さも本文のまま、色だけで「押せる」と伝える */
         ? react_1.default.createElement("a", { key: i, href: p.url, target: "_blank", rel: "noopener noreferrer", className: "ft-link text-sky-700" }, p.t)
@@ -23269,10 +23269,21 @@ button { -webkit-user-select: none; user-select: none; }
 /* 長押しで設定を出す札。**この決まりを外さないこと。**
    iPhone では、押さえたままにすると字を選ぼうとして
    指を取り上げてしまい（pointercancel）、長押しが届かない */
-.ft-press {
+/* **画面ぜんたいで、字を選べないようにしておくこと。**
+   札だけを「選べない」にすると、長押しのときに iPhone が
+   その外側の選べるところ（＝画面ぜんたい）を選んでしまい、
+   まっ青に反転する。アプリらしく、ふだんは選べない形にする */
+.ft-root {
   -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none;
 }
+/* **書くところと、読ませる字は、選べるように戻すこと。**
+   打った字を直せなくなるし、メモを写せなくなる */
+input, textarea, [contenteditable="true"], .ft-text {
+  -webkit-user-select: text; user-select: text;
+  -webkit-touch-callout: default;
+}
+.ft-press { -webkit-touch-callout: none; }
 button:active { transition-duration: 60ms; }
 
 @keyframes ft-fade-in { from { opacity: 0; } to { opacity: 1; } }
