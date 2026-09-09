@@ -17413,7 +17413,10 @@ const PLAN_TYPE = "plan";
 /* フォルダ。**フォルダごとに色を持たせないこと**（計画と同じ考え方） */
 const FOLDER_TYPE = "folder";
 /* 表示設定で色を決められるもの。記録の3種類＋計画＋イベント */
-const COLORED_TYPES = [...TYPES, PLAN_TYPE, STEP_TYPE, FOLDER_TYPE];
+/* 表示設定で色を決められるもの。
+   **計画とフォルダは入れないこと。** ひとつずつ好きな色にできるので、
+   共通の色をわざわざ決める意味がない。決めていないものは基調の色になる */
+const COLORED_TYPES = [...TYPES, STEP_TYPE];
 const TYPE_LABELS = {
     memo: "メモ", media: "画像", checklist: "リスト",
     link: "リンク", schedule: "スケジュール", // link は古い記録の読み込みだけで使う
@@ -17449,7 +17452,7 @@ const COLORS = [
 const colorOf = (key) => COLORS.find((c) => c.key === key) || COLORS[0];
 const DEFAULT_TYPE_COLOR = {
     memo: "slate", media: "violet", checklist: "teal", link: "sky", schedule: "rose",
-    plan: "green", step: "indigo", folder: "sky",
+    step: "indigo",
 };
 /* テーマ色（画面ぜんたいの基調）。--th-* を差し替えると配色が一括で変わる */
 const THEMES = [
@@ -17888,8 +17891,8 @@ function migratePlan(p) {
         pinned: !!p.pinned,
         doneAt: typeof p.doneAt === "string" ? p.doneAt : "",
         id: p.id || uid(),
-        /* 計画ごとに持っていた色は、もう使わない（表示設定でひとつだけ決める） */
-        color: undefined,
+        /* 計画ごとの色。決めていなければ空（基調の色になる） */
+        color: typeof p.color === "string" ? p.color : "",
     };
 }
 /* 週・月ぜんたいに付けた記録の繰り返し。
@@ -18594,6 +18597,56 @@ function useViewportHeight() {
                 vv.removeEventListener("resize", put);
         };
     }, []);
+}
+/* 長押し。札をしばらく押さえていると、下から設定の紙が出る。
+   **押しただけで出さないこと。** ふつうの一押しは「ひらく」のまま。
+   指が動いたら（送っているだけなので）取りやめる */
+function useLongPress(onLong, ms = 480) {
+    const t = (0, react_1.useRef)(null);
+    const from = (0, react_1.useRef)(null);
+    const fired = (0, react_1.useRef)(false);
+    const stop = () => { if (t.current) {
+        clearTimeout(t.current);
+        t.current = null;
+    } };
+    (0, react_1.useEffect)(() => stop, []);
+    if (!onLong)
+        return {};
+    return {
+        onPointerDown: (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0)
+                return;
+            fired.current = false;
+            from.current = { x: e.clientX, y: e.clientY };
+            stop();
+            t.current = setTimeout(() => {
+                fired.current = true;
+                try {
+                    if (navigator.vibrate)
+                        navigator.vibrate(8);
+                }
+                catch (err) { /* 使えなくても構わない */ }
+                onLong();
+            }, ms);
+        },
+        onPointerMove: (e) => {
+            const f = from.current;
+            if (!f)
+                return;
+            if (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10)
+                stop();
+        },
+        onPointerUp: stop,
+        onPointerCancel: stop,
+        /* 長押しで出したあとは、指を離したときの「ひらく」を通さない */
+        onClickCapture: (e) => {
+            if (fired.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                fired.current = false;
+            }
+        },
+    };
 }
 function useClosing(onClose, ms = 230) {
     const [closing, setClosing] = (0, react_1.useState)(false);
@@ -21193,9 +21246,8 @@ const SPANS = [{ key: "day", label: "日" }, { key: "week", label: "週" }, { ke
 const DUE_SHOWN = 2;
 function PlanDueCard({ plan, list, onOpen }) {
     const [open, setOpen] = (0, react_1.useState)(false);
-    /* 名前の帯は「計画」の色、中のイベントは「イベント」の色。
-       **どちらも表示設定から取ること。** 計画ごとに色を持たせない */
-    const color = useTypeColor(PLAN_TYPE);
+    /* 名前の帯はその計画の色、中のイベントは「イベント」の色 */
+    const color = itemColor(plan, useTypeColor(PLAN_TYPE));
     const stepColor = useTypeColor(STEP_TYPE);
     const shown = open ? list : list.slice(0, DUE_SHOWN);
     const rest = list.length - DUE_SHOWN;
@@ -21626,15 +21678,21 @@ function NameColorSheet({ title, label, initialName, initialColor, placeholder, 
 }
 function PlanSettingsSheet({ plan, kinds, onCancel, onSave }) {
     const [d, setD] = (0, react_1.useState)(plan);
-    return (react_1.default.createElement(SheetDialog, { title: "\u540D\u524D\u30FB\u30AB\u30C6\u30B4\u30EA", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
+    return (react_1.default.createElement(SheetDialog, { title: "\u540D\u524D\u30FB\u30AB\u30C6\u30B4\u30EA\u30FB\u8272", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
         react_1.default.createElement("div", { className: "mb-3" },
             react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setD({ ...d, name: e.target.value }), placeholder: "\u8A08\u753B\u306E\u540D\u524D" })),
-        react_1.default.createElement(DrumSelect, { value: d.kindId || "", onChange: (v) => setD({ ...d, kindId: v || null }), options: kinds.map((k) => ({ value: k.id, label: k.name })), placeholder: "\u30AB\u30C6\u30B4\u30EA\u306A\u3057", title: "\u30AB\u30C6\u30B4\u30EA\u3092\u9078\u3076" })));
+        react_1.default.createElement("div", { className: "mb-3" },
+            react_1.default.createElement(DrumSelect, { value: d.kindId || "", onChange: (v) => setD({ ...d, kindId: v || null }), options: kinds.map((k) => ({ value: k.id, label: k.name })), placeholder: "\u30AB\u30C6\u30B4\u30EA\u306A\u3057", title: "\u30AB\u30C6\u30B4\u30EA\u3092\u9078\u3076" })),
+        react_1.default.createElement("div", { className: "flex items-center gap-2" },
+            react_1.default.createElement("span", { className: "text-[13.5px] text-neutral-500 min-w-0 truncate" }, "\u8272"),
+            react_1.default.createElement("span", { className: "flex-1" }),
+            react_1.default.createElement(ColorSelect, { value: d.color || "", title: "\u8272", options: [{ key: "", label: "きほんの色", mid: "#D4D4D4" }, ...COLORS], onChange: (v) => setD({ ...d, color: v }) }))));
 }
 /* 計画の札。一覧でも、カテゴリの中でも同じものを使う */
-function PlanCard({ plan, records, onOpen, onPin }) {
+function PlanCard({ plan, records, onOpen, onPin, pressProps }) {
     const p = plan;
-    const c = useTypeColor(PLAN_TYPE);
+    /* 計画ごとの色。決めていなければ基調の色 */
+    const c = itemColor(p, useTypeColor(PLAN_TYPE));
     const stepColor = useTypeColor(STEP_TYPE);
     const steps = p.steps || [];
     const doneSteps = steps.filter((g) => stepDone(g)).length;
@@ -21643,11 +21701,11 @@ function PlanCard({ plan, records, onOpen, onPin }) {
        期限のあるイベントは、ぜんぶ出す（縦に伸びてもよい） */
     const dues = (0, react_1.useMemo)(() => steps.filter((g) => !stepDone(g) && g.dueDate).sort(compareSteps), [steps]);
     const done = !!p.doneAt;
-    return (react_1.default.createElement("div", { onClick: onOpen, role: "button", tabIndex: 0, onKeyDown: (e) => { if (e.key === "Enter")
+    return (react_1.default.createElement("div", { onClick: onOpen, role: "button", tabIndex: 0, ...(pressProps || {}), onKeyDown: (e) => { if (e.key === "Enter")
             onOpen(); }, 
         /* **やり遂げた札を、派手にしないこと。** 済んだものが、これからのものより
            目立ってしまう。どの色の計画でも、同じ灰にそろえて静かにする */
-        className: "w-full rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer "
+        className: "w-full rounded-2xl p-4 text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer "
             + (done ? "bg-neutral-50" : "bg-white") },
         react_1.default.createElement("div", { className: "flex items-center gap-3" },
             react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 "
@@ -21674,7 +21732,53 @@ function PinButton({ on, onClick, color }) {
         react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") },
             react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: on ? "currentColor" : "none" }))));
 }
-function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, onPinKind, sort, onSort }) {
+function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, onPinKind, sort, onSort, onChangePlan, onDeletePlan, onRenameKind, onDeleteKind }) {
+    /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
+    const [menu, setMenu] = (0, react_1.useState)(null); // { kind } か { plan }
+    const [edit, setEdit] = (0, react_1.useState)(null);
+    const [del, setDel] = (0, react_1.useState)(null);
+    /* **くり返しの中でフックを呼ばないこと。** 札ごとに使えるよう、素の handler を作る */
+    const press = (0, react_1.useRef)({ t: null, from: null, fired: false });
+    const stopPress = () => { if (press.current.t) {
+        clearTimeout(press.current.t);
+        press.current.t = null;
+    } };
+    const longPressProps = (item) => ({
+        onPointerDown: (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0)
+                return;
+            press.current.fired = false;
+            press.current.from = { x: e.clientX, y: e.clientY };
+            stopPress();
+            press.current.t = setTimeout(() => {
+                press.current.fired = true;
+                try {
+                    if (navigator.vibrate)
+                        navigator.vibrate(8);
+                }
+                catch (err) { /* 使えなくても構わない */ }
+                setMenu(item);
+            }, 480);
+        },
+        onPointerMove: (e) => {
+            const f = press.current.from;
+            if (!f)
+                return;
+            if (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10)
+                stopPress();
+        },
+        onPointerUp: stopPress,
+        onPointerCancel: stopPress,
+        /* 長押しの吹き出し（コピーなど）を出させない */
+        onContextMenu: (e) => e.preventDefault(),
+        onClickCapture: (e) => {
+            if (press.current.fired) {
+                e.preventDefault();
+                e.stopPropagation();
+                press.current.fired = false;
+            }
+        },
+    });
     /* カテゴリも計画のなかま。**カテゴリごとに色を持たせないこと** */
     const planColor = useTypeColor(PLAN_TYPE);
     const [q, setQ] = (0, react_1.useState)("");
@@ -21715,7 +21819,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
         });
         return m;
     }, [plans, kinds]);
-    const renderPlan = (p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan }));
+    const renderPlan = (p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: longPressProps({ plan: p }) }));
     /* カテゴリと「カテゴリなしの計画」を、ひとつの列にまぜる。
        固定したもの → ふつう → やり遂げたもの、の順は変えない */
     const mixed = (0, react_1.useMemo)(() => {
@@ -21735,7 +21839,7 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
         react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
         react_1.default.createElement("div", { className: "px-4 pt-1 max-w-2xl mx-auto w-full space-y-2.5" },
-            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind, hits && hits.get(it.kind.id) > 0 ? q : ""), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: itemColor(it.kind, planColor).soft, border: `1px solid ${itemColor(it.kind, planColor).line}` } },
+            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, ...longPressProps({ kind: it.kind }), onClick: () => onOpenKind(it.kind, hits && hits.get(it.kind.id) > 0 ? q : ""), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer", style: { background: itemColor(it.kind, planColor).soft, border: `1px solid ${itemColor(it.kind, planColor).line}` } },
                 react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: itemColor(it.kind, planColor).deep } },
                     react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
                 react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -21752,10 +21856,66 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
                 react_1.default.createElement(PinButton, { on: it.kind.pinned, color: itemColor(it.kind, planColor), onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
                 react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "shrink-0", style: { color: itemColor(it.kind, planColor).mid } }))) : renderPlan(it.plan)))),
             plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))))));
+                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093")))),
+        menu && (react_1.default.createElement(TypePickSheet, { title: (menu.kind || menu.plan).name || (menu.kind ? "カテゴリ" : "計画"), types: ["__rename", "__delete"], labels: { __rename: menu.kind ? "名前と色" : "名前・カテゴリ・色",
+                __delete: menu.kind ? "このカテゴリを削除" : "この計画を削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => { const m = menu; setMenu(null); if (k === "__rename")
+                setEdit(m);
+            else
+                setDel(m); } })),
+        edit && edit.kind && (react_1.default.createElement(NameColorSheet, { title: "\u540D\u524D\u3068\u8272", label: "\u30AB\u30C6\u30B4\u30EA\u306E\u540D\u524D", initialName: edit.kind.name, initialColor: edit.kind.color, placeholder: "\u52C9\u5F37\uFF0F\u304B\u3089\u3060\uFF0F\u65C5 \u306A\u3069", onCancel: () => setEdit(null), onSave: (n, c) => { onRenameKind(edit.kind.id, n, c); setEdit(null); } })),
+        edit && edit.plan && (react_1.default.createElement(PlanSettingsSheet, { plan: edit.plan, kinds: kinds, onCancel: () => setEdit(null), onSave: (v) => { onChangePlan(v); setEdit(null); } })),
+        del && (react_1.default.createElement(ConfirmDialog, { title: del.kind ? "このカテゴリを削除しますか" : "この計画を削除しますか", body: del.kind
+                ? "中の計画は消えません。カテゴリなしに移ります。"
+                : "この計画に結びついた記録は消えません。計画だけがなくなります。", confirmLabel: "\u524A\u9664", onCancel: () => setDel(null), onConfirm: () => { const m = del; setDel(null); if (m.kind)
+                onDeleteKind(m.kind.id);
+            else
+                onDeletePlan(m.plan.id); } }))));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
-function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort, initialQ }) {
+function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort, initialQ, onChangePlan, onDeletePlan }) {
+    const [pMenu, setPMenu] = (0, react_1.useState)(null);
+    const [pEdit, setPEdit] = (0, react_1.useState)(null);
+    const [pDel, setPDel] = (0, react_1.useState)(null);
+    const press = (0, react_1.useRef)({ t: null, from: null, fired: false });
+    const stopPress = () => { if (press.current.t) {
+        clearTimeout(press.current.t);
+        press.current.t = null;
+    } };
+    const longPressProps = (item) => ({
+        onPointerDown: (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0)
+                return;
+            press.current.fired = false;
+            press.current.from = { x: e.clientX, y: e.clientY };
+            stopPress();
+            press.current.t = setTimeout(() => {
+                press.current.fired = true;
+                try {
+                    if (navigator.vibrate)
+                        navigator.vibrate(8);
+                }
+                catch (err) { /* 使えなくても構わない */ }
+                setPMenu(item);
+            }, 480);
+        },
+        onPointerMove: (e) => {
+            const f = press.current.from;
+            if (!f)
+                return;
+            if (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10)
+                stopPress();
+        },
+        onPointerUp: stopPress,
+        onPointerCancel: stopPress,
+        onContextMenu: (e) => e.preventDefault(),
+        onClickCapture: (e) => {
+            if (press.current.fired) {
+                e.preventDefault();
+                e.stopPropagation();
+                press.current.fired = false;
+            }
+        },
+    });
     const [q, setQ] = (0, react_1.useState)(initialQ || "");
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
@@ -21790,7 +21950,7 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
                                 react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
                         react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
                 react_1.default.createElement("div", { className: "px-4 pt-1 pb-4 space-y-2.5 ft-seq ft-spread" },
-                    mine.map((p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan }))),
+                    mine.map((p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: longPressProps(p) }))),
                     mine.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                         react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, q ? "見つかりません" : "まだ計画はありません"))))),
             react_1.default.createElement("button", { type: "button", onClick: () => onAddPlan(kind), "aria-label": "\u8A08\u753B\u3092\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white card-soft flex items-center justify-center ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
@@ -21800,6 +21960,12 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
                 else
                     setDelOpen(true); } })),
             renameOpen && (react_1.default.createElement(NameColorSheet, { title: "\u540D\u524D\u3068\u8272", label: "\u540D\u524D", initialName: kind.name, initialColor: kind.color, placeholder: "\u30AB\u30C6\u30B4\u30EA\u306E\u540D\u524D", onCancel: () => setRenameOpen(false), onSave: (n, c) => { onRename(kind.id, n, c); setRenameOpen(false); } })),
+            pMenu && (react_1.default.createElement(TypePickSheet, { title: pMenu.name || "計画", types: ["__rename", "__delete"], labels: { __rename: "名前・カテゴリ・色", __delete: "この計画を削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setPMenu(null), onPick: (k) => { const m = pMenu; setPMenu(null); if (k === "__rename")
+                    setPEdit(m);
+                else
+                    setPDel(m); } })),
+            pEdit && (react_1.default.createElement(PlanSettingsSheet, { plan: pEdit, kinds: [kind], onCancel: () => setPEdit(null), onSave: (v) => { onChangePlan(v); setPEdit(null); } })),
+            pDel && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u8A08\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u3053\u306E\u8A08\u753B\u306B\u7D50\u3073\u3064\u3044\u305F\u8A18\u9332\u306F\u6D88\u3048\u307E\u305B\u3093\u3002\u8A08\u753B\u3060\u3051\u304C\u306A\u304F\u306A\u308A\u307E\u3059\u3002", confirmLabel: "\u524A\u9664", onCancel: () => setPDel(null), onConfirm: () => { const m = pDel; setPDel(null); onDeletePlan(m.id); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u7A2E\u985E\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A08\u753B\u306F\u300C\u7A2E\u985E\u306A\u3057\u300D\u306B\u79FB\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(kind.id); close(); } })))));
 }
 /* ============================================================
@@ -21927,7 +22093,7 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
     const [addOpen, setAddOpen] = (0, react_1.useState)(false);
     const [stepEdit, setStepEdit] = (0, react_1.useState)(null); // 書いているイベント {step, isNew}
     const [doneOpen, setDoneOpen] = (0, react_1.useState)(false); // 済んだイベントをひらいているか
-    const color = useTypeColor(PLAN_TYPE);
+    const color = itemColor(plan, useTypeColor(PLAN_TYPE));
     const stepColor = useTypeColor(STEP_TYPE);
     const today = todayStr();
     const planRecords = (0, react_1.useMemo)(() => sortRecords(records.filter((r) => r.planId === plan.id), order), [records, plan.id, order]);
@@ -22345,11 +22511,11 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
             !sel.on && (react_1.default.createElement("button", { type: "button", onClick: () => setSetup("manual"), "aria-label": "\u8A18\u9332\u3092\u3055\u304C\u3057\u3066\u5165\u308C\u308B", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
             react_1.default.createElement(SelectBar, { sel: sel, list: pickedList, extraLabel: "\u30D5\u30A9\u30EB\u30C0\u304B\u3089\u5916\u3059", onExtra: removeFromFolder }),
-            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", types: ["__pick", "__rename", "__delete"], labels: { __pick: "記録を入れる", __rename: "名前と色", __delete: "このフォルダを削除" }, icons: { __pick: react_1.default.createElement(lucide_react_1.FolderPlus, { size: 22 }), __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
+            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", 
+                /* **「記録を入れる」をここに置かないこと。** 画面の上の札と右下の＋で足りる */
+                types: ["__rename", "__delete"], labels: { __rename: "名前と色", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
                     setMenuOpen(false);
-                    if (k === "__pick")
-                        setSetup("auto");
-                    else if (k === "__rename")
+                    if (k === "__rename")
                         setRenameOpen(true);
                     else
                         setDelOpen(true);
@@ -22358,11 +22524,57 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
             renameOpen && (react_1.default.createElement(NameColorSheet, { title: "\u540D\u524D\u3068\u8272", label: "\u30D5\u30A9\u30EB\u30C0\u306E\u540D\u524D", initialName: folder.name, initialColor: folder.color, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", onCancel: () => setRenameOpen(false), onSave: (n, c) => { onChange({ ...folder, name: n, color: c }); setRenameOpen(false); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(folder.id); } })))));
 }
-function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
+function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange, onDelete }) {
+    /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
+    const [menu, setMenu] = (0, react_1.useState)(null);
+    const [edit, setEdit] = (0, react_1.useState)(null);
+    const [del, setDel] = (0, react_1.useState)(null);
     const N = useTypeNames();
-    /* フォルダの色は、表示設定でひとつだけ決める。**フォルダごとに持たせないこと** */
+    /* 決めていないフォルダは、基調の色 */
     const fc = useTypeColor(FOLDER_TYPE);
     const [q, setQ] = (0, react_1.useState)("");
+    /* **くり返しの中でフックを呼ばないこと。** 札ごとに使えるよう、素の handler を作る */
+    const press = (0, react_1.useRef)({ t: null, from: null, fired: false });
+    const stopPress = () => { if (press.current.t) {
+        clearTimeout(press.current.t);
+        press.current.t = null;
+    } };
+    const longPressProps = (item) => ({
+        onPointerDown: (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0)
+                return;
+            press.current.fired = false;
+            press.current.from = { x: e.clientX, y: e.clientY };
+            stopPress();
+            press.current.t = setTimeout(() => {
+                press.current.fired = true;
+                try {
+                    if (navigator.vibrate)
+                        navigator.vibrate(8);
+                }
+                catch (err) { /* 使えなくても構わない */ }
+                setMenu(item);
+            }, 480);
+        },
+        onPointerMove: (e) => {
+            const f = press.current.from;
+            if (!f)
+                return;
+            if (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10)
+                stopPress();
+        },
+        onPointerUp: stopPress,
+        onPointerCancel: stopPress,
+        /* 長押しの吹き出し（コピーなど）を出させない */
+        onContextMenu: (e) => e.preventDefault(),
+        onClickCapture: (e) => {
+            if (press.current.fired) {
+                e.preventDefault();
+                e.stopPropagation();
+                press.current.fired = false;
+            }
+        },
+    });
     /* 名前順か作成順。名前順のときは「01.」「02.」を数として見る */
     const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort), [folders, sort, q]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
@@ -22378,7 +22590,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
                 const auto = folderHasCond(f);
                 const picked = (f.picked || []).length;
                 const cond = folderCondText(f, N);
-                return (react_1.default.createElement("div", { key: f.id, role: "button", tabIndex: 0, onClick: () => onOpen(f), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer" },
+                return (react_1.default.createElement("div", { key: f.id, role: "button", tabIndex: 0, onClick: () => onOpen(f), ...longPressProps(f), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer" },
                     react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: myc.soft, border: `1px solid ${myc.line}`, color: myc.deep } },
                         react_1.default.createElement(lucide_react_1.Folder, { size: 26 })),
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -22401,7 +22613,13 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
                     react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })));
             }),
             folders.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093"))))));
+                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093")))),
+        menu && (react_1.default.createElement(TypePickSheet, { title: menu.name || "フォルダ", types: ["__rename", "__delete"], labels: { __rename: "名前と色", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => { const f = menu; setMenu(null); if (k === "__rename")
+                setEdit(f);
+            else
+                setDel(f); } })),
+        edit && (react_1.default.createElement(NameColorSheet, { title: "\u540D\u524D\u3068\u8272", label: "\u30D5\u30A9\u30EB\u30C0\u306E\u540D\u524D", initialName: edit.name, initialColor: edit.color, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", onCancel: () => setEdit(null), onSave: (n, c) => { onChange({ ...edit, name: n, color: c }); setEdit(null); } })),
+        del && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u4E2D\u306E\u8A18\u9332\u306F\u6D88\u3048\u307E\u305B\u3093\u3002\u30D5\u30A9\u30EB\u30C0\u3060\u3051\u304C\u306A\u304F\u306A\u308A\u307E\u3059\u3002", confirmLabel: "\u524A\u9664", onCancel: () => setDel(null), onConfirm: () => { const f = del; setDel(null); onDelete(f.id); } }))));
 }
 /* ============================================================
    設定（表示設定）
@@ -23048,6 +23266,13 @@ button, [role="button"], label, a {
   touch-action: manipulation;
 }
 button { -webkit-user-select: none; user-select: none; }
+/* 長押しで設定を出す札。**この決まりを外さないこと。**
+   iPhone では、押さえたままにすると字を選ぼうとして
+   指を取り上げてしまい（pointercancel）、長押しが届かない */
+.ft-press {
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
+}
 button:active { transition-duration: 60ms; }
 
 @keyframes ft-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -23842,8 +24067,8 @@ function AppMain() {
                                         tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
                                             react_1.default.createElement(TodayScreen, { records: records, plans: plans, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
-                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k, kq) => { setKindQ(kq || ""); setKindOpen(k.id); }, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
-                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id) }))))),
+                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k, kq) => { setKindQ(kq || ""); setKindOpen(k.id); }, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, onChangePlan: changePlan, onDeletePlan: deletePlan, onRenameKind: renameKind, onDeleteKind: deleteKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
+                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder }))))),
                                 loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                                 loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
                                 react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, onClose: () => setMenuOpen(false), items: menuItems, footer: react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 leading-relaxed" }, "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u4FDD\u5B58\u3055\u308C\u307E\u3059\u3002\u3068\u304D\u3069\u304D\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7\u3092\u66F8\u304D\u51FA\u3057\u3066\u304A\u3044\u3066\u304F\u3060\u3055\u3044\u3002") }),
@@ -23867,7 +24092,7 @@ function AppMain() {
                                 addFolderOpen && (react_1.default.createElement(NameDialog, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddFolderOpen(false), onConfirm: (n) => { addFolder(n); setAddFolderOpen(false); } })),
                                 editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
                                 dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                                kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, initialQ: kindQ, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
+                                kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, initialQ: kindQ, onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
                                 planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, kinds: kinds, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
                                         if (type) {
                                             setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
