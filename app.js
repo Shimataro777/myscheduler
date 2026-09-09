@@ -21281,10 +21281,16 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 /* 固定したものが先、あとは期日の近い順（計画の画面と同じ並び） */
                 .sort((a, b) => compareSteps(a.step, b.step));
             if (list.length)
-                out.push({ plan: p, list, soonest: list[0].left });
+                out.push({ plan: p, list, soonest: list[0].left, pinned: !!p.pinned });
         });
-        /* いちばん急ぐ計画から。札は3枚まで（それ以上は計画の画面で見る） */
-        return out.sort((a, b) => a.soonest - b.soonest).slice(0, 3);
+        /* **上に固定した計画を、まっ先に出すこと。**
+           固定は「いま気にかけている」という印なので、期日より優先する。
+           そのなかは、いちばん急ぐものから。札は3枚まで（それ以上は計画の画面で見る） */
+        return out.sort((a, b) => {
+            if (a.pinned !== b.pinned)
+                return a.pinned ? -1 : 1;
+            return a.soonest - b.soonest;
+        }).slice(0, 3);
     }, [plans]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "Today" }),
