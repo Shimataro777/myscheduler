@@ -17402,7 +17402,7 @@ const TYPES = ["schedule", "checklist", "memo"];
 /* 週ぜんたいのマスに入れられるのは、この3つだけ。
    **1つのマスに何種類も入れないこと。** 小さいマスに並ぶと読めない */
 const SCOPED_TYPES = ["memo", "checklist"];
-/* 計画の「やること」。記録ではないが、**しるしと色は記録と同じ決め方にすること。**
+/* 計画の「イベント」。記録ではないが、**しるしと色は記録と同じ決め方にすること。**
    計画ごとに色が変わると、同じものなのに画面ごとに違って見える。
    色は表示設定の「記録の色」からひとつだけ決める */
 const STEP_TYPE = "step";
@@ -17412,12 +17412,12 @@ const STEP_TYPE = "step";
 const PLAN_TYPE = "plan";
 /* フォルダ。**フォルダごとに色を持たせないこと**（計画と同じ考え方） */
 const FOLDER_TYPE = "folder";
-/* 表示設定で色を決められるもの。記録の3種類＋計画＋やること */
+/* 表示設定で色を決められるもの。記録の3種類＋計画＋イベント */
 const COLORED_TYPES = [...TYPES, PLAN_TYPE, STEP_TYPE, FOLDER_TYPE];
 const TYPE_LABELS = {
     memo: "メモ", media: "画像", checklist: "リスト",
     link: "リンク", schedule: "スケジュール", // link は古い記録の読み込みだけで使う
-    plan: "計画", step: "やること", folder: "フォルダ",
+    plan: "計画", step: "イベント", folder: "フォルダ",
 };
 const TYPE_ICON = {
     memo: react_1.default.createElement(lucide_react_1.StickyNote, { size: 22 }),
@@ -17585,6 +17585,12 @@ const RecordActionsContext = react_1.default.createContext(null);
 /* 表示設定で色を決めていないもの（並びかえ・削除など、__ で始まる操作）は、
    **みどりで出さないこと。** いままで colorOf(undefined) が一覧の先頭を返していたので、
    画面を何色にしていても、そこだけ緑になっていた。画面の基調の色にそろえる */
+/* フォルダやカテゴリが自分の色を持っていれば、それを使う。
+   持っていなければ、表示設定で決めた色に従う */
+function itemColor(item, fallback) {
+    const k = item && item.color;
+    return k ? colorOf(k) : fallback;
+}
 function useTypeColor(type) {
     const map = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
     const prefs = react_1.default.useContext(PrefsContext);
@@ -17871,6 +17877,9 @@ function migratePlan(p) {
             done: !!g.done,
             /* 大事なものを上に置いておける。**記録の押しピンと同じ考え方にそろえること** */
             pinned: !!g.pinned,
+            /* カレンダー（Today）に出すか。**ここに書き足すのを忘れないこと。**
+               このつくりは一行ずつ写しているので、書かないと読むたびに消える */
+            onCal: stepOnCal(g),
             /* 期日を入れていないものの並びが、開くたびに変わらないようにする */
             createdAt: typeof g.createdAt === "string" && g.createdAt ? g.createdAt : "1970-01-01T00:00:00.000Z",
             items: Array.isArray(g.items) ? g.items.filter((i) => i && typeof i === "object")
@@ -17910,10 +17919,13 @@ function scopedRepeatsOn(r, key) {
    中の小さな項目がぜんぶ済んでも、勝手に達成にしない
    （やってみて「まだ足りない」と思うこともあるため）。
    逆に、中が残っていても達成にできる（もうやらなくてよくなったとき） */
+/* カレンダー（Today）に出すか。**印が無いときは出すこと。**
+   前からあるイベントが、急に消えてしまわないように */
+function stepOnCal(g) { return !g || g.onCal === undefined || !!g.onCal; }
 function stepDone(s) {
     return !!(s && s.done);
 }
-/* やることの並び。**この順を画面ごとに変えないこと**（記録の並びと同じ考え方）。
+/* イベントの並び。**この順を画面ごとに変えないこと**（記録の並びと同じ考え方）。
    固定したもの → 期日の近い順 → 期日なし → 書いた順。
    済んだものは、呼ぶ側で下へまとめる */
 function compareSteps(a, b) {
@@ -18301,7 +18313,7 @@ const BTN_SECONDARY = BTN_BASE + " bg-white border border-neutral-200 text-neutr
 const BTN_DANGER = BTN_BASE + " bg-rose-700 text-white hover:bg-rose-800";
 const BTN_DANGER_SOFT = BTN_BASE + " bg-white border border-rose-200 text-rose-700 hover:bg-rose-50";
 const BTN_QUIET = BTN_BASE + " text-neutral-500 hover:bg-neutral-100";
-/* 札（記録・やること）の横幅の決めごと。
+/* 札（記録・イベント）の横幅の決めごと。
    **画面ごとに px-… を書き足さないこと。** 少しずつずれて、並んだときにだけ気づく。
    本文の箱は px-5（20px）なので、いったん CARD_LIST で戻し、
    CARD_SLOT の 16px を当てる。どの画面でも、札は画面の端から16px。
@@ -18400,7 +18412,7 @@ function Switch({ on, onChange, label }) {
    iPhoneのカレンダーと同じくらい（64px）ないと、指がねらいを外す */
 function SheetRow({ label, children, last, help }) {
     return (react_1.default.createElement("div", { className: "flex items-center gap-2 px-4 py-2 min-h-[58px] " + (last ? "" : "border-b border-neutral-200") },
-        react_1.default.createElement("span", { className: "text-[16px] text-neutral-900 shrink-0" }, label),
+        react_1.default.createElement("span", { className: "text-[16px] text-neutral-900 min-w-0 truncate" }, label),
         help && react_1.default.createElement(HelpTip, { text: help, label: typeof label === "string" ? label : undefined }),
         react_1.default.createElement("span", { className: "flex-1" }),
         children));
@@ -19117,7 +19129,11 @@ function DrumSelect({ value, onChange, options, placeholder = "選択", title, c
         return; setTemp(value !== null && value !== void 0 ? value : ""); setOpen(true); };
     const confirm = () => { onChange(temp === "" ? "" : temp); setOpen(false); };
     return (react_1.default.createElement(react_1.default.Fragment, null,
-        react_1.default.createElement("button", { type: "button", onClick: openSheet, disabled: disabled, className: inputCls + " flex items-center justify-between text-left disabled:opacity-50 " + (className || "") },
+        react_1.default.createElement("button", { type: "button", onClick: openSheet, disabled: disabled, 
+            /* **w-full を残さないこと。** あとから幅を渡しても、
+               app.css の並び順によっては w-full が勝ってしまい、行ごとに幅が変わる */
+            className: (className ? inputCls.replace("w-full ", "") : inputCls)
+                + " flex items-center justify-between text-left disabled:opacity-50 " + (className || "") },
             react_1.default.createElement("span", { className: current ? "text-neutral-900 truncate" : "text-neutral-400 truncate" }, current ? current.label : placeholder),
             react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-500 shrink-0 ml-2" })),
         open && (react_1.default.createElement(WheelSheet, { title: title || placeholder, onClose: () => setOpen(false), onConfirm: confirm },
@@ -19838,13 +19854,13 @@ function MarkDot({ mark, size = 15 }) {
    ・移し替え（持ち越し）は閲覧画面から行う
    ============================================================ */
 /* ============================================================
-   やることを書きならべる
+   イベントを書きならべる
    **並べ替えを小さな矢印にしないこと。** 押し分けにくく、動きも分かりにくい。
    右の三本線をつまんで、そのまま上下に運ぶ形にしてある
    ============================================================ */
 /* つまんで並べ替えるしくみ。
    **並べ替えのやり方を、一覧ごとに変えないこと。**
-   リストの中身・やることの中身・タグ、どれも同じ持ち手（GripVertical）でそろえる */
+   リストの中身・イベントの中身・タグ、どれも同じ持ち手（GripVertical）でそろえる */
 function useReorder(items, onChange) {
     const [dragId, setDragId] = (0, react_1.useState)(null);
     const rowsRef = (0, react_1.useRef)({});
@@ -21169,15 +21185,15 @@ function SelectBar({ sel, list, extraLabel, onExtra }) {
 const SORT_NAME_OPTIONS = [{ value: "name", label: "名前順" }, { value: "created", label: "作成順" }];
 const SORT_RECORD_OPTIONS = [{ value: "new", label: "新しい順" }, { value: "old", label: "古い順" }];
 const SPANS = [{ key: "day", label: "日" }, { key: "week", label: "週" }, { key: "month", label: "月" }];
-/* Today の上に出す、期日が近いやることの札。
+/* Today の上に出す、期日が近いイベントの札。
    ひとつの計画ぶんを1枚にまとめる。**同じ計画名を何度も出さないこと。**
    ・見出しの帯を押すと、その計画の画面がひらく（行き来しやすいように、
      いちばん大きな押し場所を計画へつなげてある）
-   ・やることは2つまで見せて、3つめからはたたむ */
+   ・イベントは2つまで見せて、3つめからはたたむ */
 const DUE_SHOWN = 2;
 function PlanDueCard({ plan, list, onOpen }) {
     const [open, setOpen] = (0, react_1.useState)(false);
-    /* 名前の帯は「計画」の色、中のやることは「やること」の色。
+    /* 名前の帯は「計画」の色、中のイベントは「イベント」の色。
        **どちらも表示設定から取ること。** 計画ごとに色を持たせない */
     const color = useTypeColor(PLAN_TYPE);
     const stepColor = useTypeColor(STEP_TYPE);
@@ -21266,7 +21282,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
     const label = span === "day" ? fmtDate(date)
         : span === "week" ? `${Number(weekStart.slice(5, 7))}/${Number(weekStart.slice(8, 10))} – ${Number(addDays(weekStart, 6).slice(5, 7))}/${Number(addDays(weekStart, 6).slice(8, 10))}`
             : `${y}年 ${mo}月`;
-    /* 締め切りが近いやることを、そっと上に出す。
+    /* 締め切りが近いイベントを、そっと上に出す。
        **ひとつずつ札にしないこと。** 同じ計画のものが並ぶと、同じ名前が何度も出て、
        記録を見せる場所がそのぶん減る。計画ごとに1枚へまとめる */
     const upcoming = (0, react_1.useMemo)(() => {
@@ -21275,7 +21291,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
             if (p.doneAt)
                 return;
             const list = (p.steps || [])
-                .filter((g) => g.dueDate && !stepDone(g))
+                .filter((g) => g.dueDate && !stepDone(g) && stepOnCal(g))
                 .map((g) => ({ step: g, left: daysBetween(todayStr(), g.dueDate) }))
                 .filter((x) => x.left >= 0)
                 /* 固定したものが先、あとは期日の近い順（計画の画面と同じ並び） */
@@ -21593,6 +21609,21 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
    ============================================================ */
 /* 計画の名前・カテゴリ。**押すたびに本体を書き換えないこと。**
    やめたくなったときに戻せない */
+/* 名前と色を決める紙。フォルダとカテゴリで同じものを使う。
+   **色を「決めない」も選べるようにすること。** そのときは表示設定の色に従う */
+function NameColorSheet({ title, label, initialName, initialColor, placeholder, onCancel, onSave }) {
+    const [name, setName] = (0, react_1.useState)(initialName || "");
+    const [color, setColor] = (0, react_1.useState)(initialColor || "");
+    const opts = [{ key: "", label: "きほんの色", mid: "#D4D4D4" }, ...COLORS];
+    return (react_1.default.createElement(SheetDialog, { title: title, onCancel: onCancel, onConfirm: () => onSave(name.trim(), color), confirmLabel: "\u4FDD\u5B58", disabled: !name.trim() },
+        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, label),
+        react_1.default.createElement("div", { className: "mb-4" },
+            react_1.default.createElement(TextInput, { value: name, onChange: (e) => setName(e.target.value), placeholder: placeholder })),
+        react_1.default.createElement("div", { className: "flex items-center gap-2" },
+            react_1.default.createElement("span", { className: "text-[13.5px] text-neutral-500 min-w-0 truncate" }, "\u8272"),
+            react_1.default.createElement("span", { className: "flex-1" }),
+            react_1.default.createElement(ColorSelect, { value: color, options: opts, onChange: setColor, title: "\u8272" }))));
+}
 function PlanSettingsSheet({ plan, kinds, onCancel, onSave }) {
     const [d, setD] = (0, react_1.useState)(plan);
     return (react_1.default.createElement(SheetDialog, { title: "\u540D\u524D\u30FB\u30AB\u30C6\u30B4\u30EA", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
@@ -21609,17 +21640,23 @@ function PlanCard({ plan, records, onOpen, onPin }) {
     const doneSteps = steps.filter((g) => stepDone(g)).length;
     const recs = records.filter((r) => r.planId === p.id).length;
     /* **つぎの1件だけにしないこと。** ここは計画のあらまし。
-       期限のあるやることは、ぜんぶ出す（縦に伸びてもよい） */
+       期限のあるイベントは、ぜんぶ出す（縦に伸びてもよい） */
     const dues = (0, react_1.useMemo)(() => steps.filter((g) => !stepDone(g) && g.dueDate).sort(compareSteps), [steps]);
     const done = !!p.doneAt;
     return (react_1.default.createElement("div", { onClick: onOpen, role: "button", tabIndex: 0, onKeyDown: (e) => { if (e.key === "Enter")
-            onOpen(); }, className: "w-full rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: done ? { background: c.soft } : undefined },
+            onOpen(); }, 
+        /* **やり遂げた札を、派手にしないこと。** 済んだものが、これからのものより
+           目立ってしまう。どの色の計画でも、同じ灰にそろえて静かにする */
+        className: "w-full rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer "
+            + (done ? "bg-neutral-50" : "bg-white") },
         react_1.default.createElement("div", { className: "flex items-center gap-3" },
-            react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: done ? { background: c.deep, color: "#FFFFFF" } : { background: c.soft, color: c.deep } }, done ? react_1.default.createElement(lucide_react_1.Check, { size: 26, strokeWidth: 3, className: "thick" }) : react_1.default.createElement(lucide_react_1.Target, { size: 24 })),
+            react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 "
+                    + (done ? "bg-neutral-200 text-neutral-500" : ""), style: done ? undefined : { background: c.soft, color: c.deep } }, done ? react_1.default.createElement(lucide_react_1.Check, { size: 26, strokeWidth: 3, className: "thick" }) : react_1.default.createElement(lucide_react_1.Target, { size: 24 })),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, p.name || "（名前なし）"),
+                react_1.default.createElement("span", { className: "block font-display text-[17px] leading-snug break-words "
+                        + (done ? "text-neutral-500" : "text-neutral-900") }, p.name || "（名前なし）"),
                 react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500 mt-1" }, done ? `${fmtDate(p.doneAt)} にやり遂げた` : (steps.length ? `${doneSteps}/${steps.length} 達成・` : "") + `記録 ${recs}件`)),
-            onPin && react_1.default.createElement(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } }),
+            onPin && react_1.default.createElement(PinButton, { on: p.pinned, color: done ? { soft: "#E5E5E5", deep: "#737373" } : c, onClick: (e) => { e.stopPropagation(); onPin(p); } }),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })),
         !done && dues.length > 0 && (react_1.default.createElement("div", { className: "mt-2.5 space-y-1.5" }, dues.map((g) => {
             const l = daysBetween(todayStr(), g.dueDate);
@@ -21698,22 +21735,22 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
         react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
         react_1.default.createElement("div", { className: "px-4 pt-1 max-w-2xl mx-auto w-full space-y-2.5" },
-            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind, hits && hits.get(it.kind.id) > 0 ? q : ""), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: planColor.soft, border: `1px solid ${planColor.line}` } },
-                react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: planColor.deep } },
+            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, onClick: () => onOpenKind(it.kind, hits && hits.get(it.kind.id) > 0 ? q : ""), className: "w-full flex items-center gap-3 rounded-2xl p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer", style: { background: itemColor(it.kind, planColor).soft, border: `1px solid ${itemColor(it.kind, planColor).line}` } },
+                react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: "#FFFFFF", color: itemColor(it.kind, planColor).deep } },
                     react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
                 react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                     react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, it.kind.name),
-                    react_1.default.createElement("span", { className: "block text-[13px] mt-1", style: { color: planColor.deep } },
+                    react_1.default.createElement("span", { className: "block text-[13px] mt-1", style: { color: itemColor(it.kind, planColor).deep } },
                         "\u30AB\u30C6\u30B4\u30EA\u30FB\u8A08\u753B ",
                         (grouped.get(it.kind.id) || []).length,
                         "\u4EF6"),
-                    hits && hits.get(it.kind.id) > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 mt-1.5 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-white", style: { color: planColor.deep } },
+                    hits && hits.get(it.kind.id) > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 mt-1.5 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-white", style: { color: itemColor(it.kind, planColor).deep } },
                         react_1.default.createElement(lucide_react_1.Search, { size: 11 }),
                         " \u3053\u306E\u4E2D\u306B ",
                         hits.get(it.kind.id),
                         "\u4EF6"))),
-                react_1.default.createElement(PinButton, { on: it.kind.pinned, color: planColor, onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
-                react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "shrink-0", style: { color: planColor.mid } }))) : renderPlan(it.plan)))),
+                react_1.default.createElement(PinButton, { on: it.kind.pinned, color: itemColor(it.kind, planColor), onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
+                react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "shrink-0", style: { color: itemColor(it.kind, planColor).mid } }))) : renderPlan(it.plan)))),
             plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))))));
 }
@@ -21758,11 +21795,11 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
                         react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, q ? "見つかりません" : "まだ計画はありません"))))),
             react_1.default.createElement("button", { type: "button", onClick: () => onAddPlan(kind), "aria-label": "\u8A08\u753B\u3092\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white card-soft flex items-center justify-center ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 30 })),
-            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30AB\u30C6\u30B4\u30EA\u306E\u8A2D\u5B9A", types: ["__rename", "__delete"], labels: { __rename: "名前を変更", __delete: "このカテゴリを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, colorKeys: { __rename: PLAN_TYPE, __delete: PLAN_TYPE }, onCancel: () => setMenuOpen(false), onPick: (k) => { setMenuOpen(false); if (k === "__rename")
+            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30AB\u30C6\u30B4\u30EA\u306E\u8A2D\u5B9A", types: ["__rename", "__delete"], labels: { __rename: "名前と色", __delete: "このカテゴリを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, colorKeys: { __rename: PLAN_TYPE, __delete: PLAN_TYPE }, onCancel: () => setMenuOpen(false), onPick: (k) => { setMenuOpen(false); if (k === "__rename")
                     setRenameOpen(true);
                 else
                     setDelOpen(true); } })),
-            renameOpen && (react_1.default.createElement(NameDialog, { title: "\u540D\u524D\u3092\u5909\u66F4", label: "\u540D\u524D", initial: kind.name, confirmLabel: "\u4FDD\u5B58", onCancel: () => setRenameOpen(false), onConfirm: (n) => { onRename(kind.id, n); setRenameOpen(false); } })),
+            renameOpen && (react_1.default.createElement(NameColorSheet, { title: "\u540D\u524D\u3068\u8272", label: "\u540D\u524D", initialName: kind.name, initialColor: kind.color, placeholder: "\u30AB\u30C6\u30B4\u30EA\u306E\u540D\u524D", onCancel: () => setRenameOpen(false), onSave: (n, c) => { onRename(kind.id, n, c); setRenameOpen(false); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u7A2E\u985E\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A08\u753B\u306F\u300C\u7A2E\u985E\u306A\u3057\u300D\u306B\u79FB\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(kind.id); close(); } })))));
 }
 /* ============================================================
@@ -21770,11 +21807,11 @@ function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRe
    大きな1つ「いつまでに何を」の中に、小さな「そのために何をするか」が入る
    例：8/31までにこの単元を覚える → 12〜18ページ／19〜25ページ …
    ============================================================ */
-/* やることの札（読むだけ）。
+/* イベントの札（読むだけ）。
    **その場で書き換えられるようにしないこと。** 前は題も期日もいつでも直せて、
    ×ひとつで消えてしまった。記録の札と同じで、見るときは読むだけ、
    直すときは鉛筆から開く（消すのも、そのなかの「削除」＋確かめの窓を通す） */
-/* **計画の色を持ち込まないこと。** 同じ「やること」なのに、計画ごとに色が変わって見える。
+/* **計画の色を持ち込まないこと。** 同じ「イベント」なのに、計画ごとに色が変わって見える。
    色は表示設定でひとつだけ決める（`useTypeColor(STEP_TYPE)`） */
 function StepCard({ step, onChange, onEdit, onPin, inset }) {
     const color = useTypeColor(STEP_TYPE);
@@ -21785,7 +21822,7 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
     const toggleItem = (id) => onChange({ ...step, items: items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)) });
     /* 「あと◯日」は、この画面でいちばん知りたいこと。**日付と同じ扱いにしないこと。**
        日付は小さな灰、残りの日数は色付きの札にして、ぱっと目に入るようにする。
-       過ぎていたら知らせの色、3日以内はやることの色、それより先は落ち着いた灰 */
+       過ぎていたら知らせの色、3日以内はイベントの色、それより先は落ち着いた灰 */
     const leftStyle = left === null ? { background: "#F3F3F5", color: "#8A8A90" }
         : left < 0 ? { background: "#FFF1F4", color: "#BE123C" }
             : left <= 3 ? { background: color.soft, color: color.deep }
@@ -21820,7 +21857,7 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
                 react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text)))))))));
 }
-/* やることを書く画面。
+/* イベントを書く画面。
    **記録を書く画面と別の作りにしないこと。** 同じ「書くこと」なのに
    開き方も、閉じ方も、消し方も違うと、そのつど手が迷う。
    RecordForm と、次のところをそろえてある。
@@ -21853,15 +21890,15 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
                 react_1.default.createElement("span", { className: "flex-1 min-w-0 flex items-center justify-center gap-1.5" },
                     react_1.default.createElement("span", { style: { color: color.deep } },
                         react_1.default.createElement(lucide_react_1.ListChecks, { size: 17 })),
-                    react_1.default.createElement("span", { className: "text-[15.5px] font-bold text-neutral-700 truncate" }, "\u3084\u308B\u3053\u3068")),
+                    react_1.default.createElement("span", { className: "text-[15.5px] font-bold text-neutral-700 truncate" }, "\u30A4\u30D9\u30F3\u30C8")),
                 react_1.default.createElement("span", { className: "min-w-[52px] shrink-0", "aria-hidden": "true" })),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 max-w-2xl mx-auto w-full" },
                 react_1.default.createElement(TextInput, { value: step.title, onChange: (e) => set({ title: e.target.value }), placeholder: "\u3044\u3064\u307E\u3067\u306B\u4F55\u3092\u3059\u308B\u304B", className: "font-bold mb-3" }),
                 react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u671F\u9650" },
                         react_1.default.createElement(DateInput, { pill: true, value: step.dueDate, allowEmpty: true, placeholder: "\u306A\u3057", onChange: (e) => set({ dueDate: e.target.value }) })),
-                    react_1.default.createElement(SheetRow, { label: "\u4E0A\u306B\u56FA\u5B9A", last: true },
-                        react_1.default.createElement(Switch, { on: !!step.pinned, label: "\u4E0A\u306B\u56FA\u5B9A", onChange: (v) => set({ pinned: v }) }))),
+                    react_1.default.createElement(SheetRow, { label: "\u30AB\u30EC\u30F3\u30C0\u30FC\u306B\u51FA\u3059", last: true },
+                        react_1.default.createElement(Switch, { on: stepOnCal(step), label: "\u30AB\u30EC\u30F3\u30C0\u30FC\u306B\u51FA\u3059", onChange: (v) => set({ onCal: v }) }))),
                 react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1.5" }, "\u305D\u306E\u305F\u3081\u306B\u3084\u308B\u3053\u3068"),
                 react_1.default.createElement(ChecklistEditor, { items: items, onChange: (v) => set({ items: v }) })),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
@@ -21875,7 +21912,7 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
 }
 /* --- 計画をひらいた画面 ---
    ひとつの計画のなかで、
-   ①やること（2段のチェックリスト） ②日々の記録
+   ①イベント（2段のチェックリスト） ②日々の記録
    がひと続きに見える。**ここを細かく分けすぎないこと。**
    画面が増えるほど、書く気持ちが遠のく */
 function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
@@ -21888,8 +21925,8 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
     const [celebrate, setCelebrate] = (0, react_1.useState)(false);
     const [doneAsk, setDoneAsk] = (0, react_1.useState)(false);
     const [addOpen, setAddOpen] = (0, react_1.useState)(false);
-    const [stepEdit, setStepEdit] = (0, react_1.useState)(null); // 書いているやること {step, isNew}
-    const [doneOpen, setDoneOpen] = (0, react_1.useState)(false); // 済んだやることをひらいているか
+    const [stepEdit, setStepEdit] = (0, react_1.useState)(null); // 書いているイベント {step, isNew}
+    const [doneOpen, setDoneOpen] = (0, react_1.useState)(false); // 済んだイベントをひらいているか
     const color = useTypeColor(PLAN_TYPE);
     const stepColor = useTypeColor(STEP_TYPE);
     const today = todayStr();
@@ -21914,7 +21951,7 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
     /* **作った時点で計画に入れないこと。** 記録と同じで、
        「保存」を押すまでは、まだどこにも無い。やめれば何も残らない */
     const addStep = () => setStepEdit({
-        step: { id: uid(), title: "", dueDate: "", done: false, pinned: false, createdAt: new Date().toISOString(), items: [] },
+        step: { id: uid(), title: "", dueDate: "", done: false, pinned: false, onCal: true, createdAt: new Date().toISOString(), items: [] },
         isNew: true,
     });
     const editStep = (s) => setStepEdit({ step: s, isNew: false });
@@ -21962,11 +21999,11 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                                     react_1.default.createElement("span", { className: doneOpen ? "flex rotate-180" : "flex" },
                                         react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
                             doneOpen && (react_1.default.createElement("div", { className: "ft-seq pt-1 pb-2" }, closedSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, inset: true, onChange: setStep, onEdit: () => editStep(s) }))))))))),
-                plan.doneAt && (react_1.default.createElement("div", { className: "rounded-2xl p-4 mb-5 flex items-center gap-3", style: { background: color.soft } },
-                    react_1.default.createElement("span", { className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0", style: { background: color.deep, color: "#FFFFFF" } },
+                plan.doneAt && (react_1.default.createElement("div", { className: "rounded-2xl p-4 mb-5 flex items-center gap-3 bg-neutral-100" },
+                    react_1.default.createElement("span", { className: "w-11 h-11 rounded-full flex items-center justify-center shrink-0 bg-neutral-400 text-white" },
                         react_1.default.createElement(lucide_react_1.Check, { size: 22, strokeWidth: 3, className: "thick" })),
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                        react_1.default.createElement("span", { className: "block text-[15px] font-bold", style: { color: color.deep } }, "\u3084\u308A\u9042\u3052\u307E\u3057\u305F"),
+                        react_1.default.createElement("span", { className: "block text-[15px] font-bold text-neutral-500" }, "\u3084\u308A\u9042\u3052\u307E\u3057\u305F"),
                         react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500" }, fmtDate(plan.doneAt))))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u8A18\u9332"),
@@ -22028,7 +22065,8 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                         "\u300D",
                         react_1.default.createElement("br", null),
                         "\u304A\u3064\u304B\u308C\u3055\u307E\u3067\u3057\u305F\u3002"),
-                    react_1.default.createElement("button", { type: "button", onClick: () => setCelebrate(false), className: BTN_PRIMARY + " btn-h-lg px-8 text-[16px]" }, "\u3068\u3058\u308B")))),
+                    react_1.default.createElement("div", { className: "flex justify-center" },
+                        react_1.default.createElement("button", { type: "button", onClick: () => setCelebrate(false), className: BTN_PRIMARY + " btn-h-lg px-8 text-[16px]" }, "\u3068\u3058\u308B"))))),
             settingsOpen && (react_1.default.createElement(PlanSettingsSheet, { plan: plan, kinds: kinds, onCancel: () => setSettingsOpen(false), onSave: (v) => { onChange(v); setSettingsOpen(false); } })),
             doneAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u3084\u308A\u9042\u3052\u307E\u3057\u305F\u304B", body: "\u8A08\u753B\u306F\u4E00\u89A7\u306E\u4E0B\u306E\u307B\u3046\u3078\u79FB\u308A\u3001\u3044\u3064\u3067\u3082\u898B\u8FD4\u305B\u307E\u3059\u3002", confirmLabel: "\u3084\u308A\u9042\u3052\u305F", onCancel: () => setDoneAsk(false), onConfirm: () => { setDoneAsk(false); onChange({ ...plan, doneAt: todayStr() }); setCelebrate(true); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u8A08\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(plan.id); } })))));
@@ -22252,7 +22290,8 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
     const N = useTypeNames();
     const colorMap = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
     const list = (0, react_1.useMemo)(() => sortRecords(folderRecords(folder, records), order), [folder, records, order]);
-    const fc = useTypeColor(FOLDER_TYPE);
+    const fcBase = useTypeColor(FOLDER_TYPE);
+    const fc = itemColor(folder, fcBase);
     const hasCond = folderHasCond(folder);
     const condText = folderCondText(folder, N);
     /* 手動で入れたぶん。**これだけが外せる** */
@@ -22306,7 +22345,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
             !sel.on && (react_1.default.createElement("button", { type: "button", onClick: () => setSetup("manual"), "aria-label": "\u8A18\u9332\u3092\u3055\u304C\u3057\u3066\u5165\u308C\u308B", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
             react_1.default.createElement(SelectBar, { sel: sel, list: pickedList, extraLabel: "\u30D5\u30A9\u30EB\u30C0\u304B\u3089\u5916\u3059", onExtra: removeFromFolder }),
-            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", types: ["__pick", "__rename", "__delete"], labels: { __pick: "記録を入れる", __rename: "名前を変更", __delete: "このフォルダを削除" }, icons: { __pick: react_1.default.createElement(lucide_react_1.FolderPlus, { size: 22 }), __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
+            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", types: ["__pick", "__rename", "__delete"], labels: { __pick: "記録を入れる", __rename: "名前と色", __delete: "このフォルダを削除" }, icons: { __pick: react_1.default.createElement(lucide_react_1.FolderPlus, { size: 22 }), __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
                     setMenuOpen(false);
                     if (k === "__pick")
                         setSetup("auto");
@@ -22316,7 +22355,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                         setDelOpen(true);
                 } })),
             setup && (react_1.default.createElement(FolderSetupSheet, { folder: folder, records: records, knownTags: knownTags, initialTab: setup, onCancel: () => setSetup(null), onSave: (next) => { onChange({ ...folder, ...next }); setSetup(null); } })),
-            renameOpen && (react_1.default.createElement(NameDialog, { title: "\u540D\u524D\u3092\u5909\u66F4", label: "\u30D5\u30A9\u30EB\u30C0\u306E\u540D\u524D", initial: folder.name, confirmLabel: "\u4FDD\u5B58", onCancel: () => setRenameOpen(false), onConfirm: (n) => { onChange({ ...folder, name: n }); setRenameOpen(false); } })),
+            renameOpen && (react_1.default.createElement(NameColorSheet, { title: "\u540D\u524D\u3068\u8272", label: "\u30D5\u30A9\u30EB\u30C0\u306E\u540D\u524D", initialName: folder.name, initialColor: folder.color, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", onCancel: () => setRenameOpen(false), onSave: (n, c) => { onChange({ ...folder, name: n, color: c }); setRenameOpen(false); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(folder.id); } })))));
 }
 function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
@@ -22333,12 +22372,14 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
             sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
             sorted.map((f) => {
+                /* フォルダごとの色。決めていなければ、表示設定の色に従う */
+                const myc = itemColor(f, fc);
                 const n = folderRecords(f, records).length;
                 const auto = folderHasCond(f);
                 const picked = (f.picked || []).length;
                 const cond = folderCondText(f, N);
                 return (react_1.default.createElement("div", { key: f.id, role: "button", tabIndex: 0, onClick: () => onOpen(f), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card card-soft cursor-pointer" },
-                    react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: fc.soft, border: `1px solid ${fc.line}`, color: fc.deep } },
+                    react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: myc.soft, border: `1px solid ${myc.line}`, color: myc.deep } },
                         react_1.default.createElement(lucide_react_1.Folder, { size: 26 })),
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                         react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, f.name || "（名前なし）"),
@@ -22346,7 +22387,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort }) {
                             react_1.default.createElement("span", { className: "text-[13px] font-bold text-neutral-500 tabular-nums" },
                                 n,
                                 "\u4EF6"),
-                            auto && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px]", style: { background: fc.soft, color: fc.deep } },
+                            auto && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px]", style: { background: myc.soft, color: myc.deep } },
                                 react_1.default.createElement(lucide_react_1.Filter, { size: 11 }),
                                 " \u81EA\u52D5")),
                             picked > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-neutral-100 text-neutral-600" },
@@ -22446,19 +22487,20 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                 react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u6587\u5B57\u3068\u52D5\u304D"),
                 react_1.default.createElement(RowCard, null,
                     react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-100" },
-                        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-900 mb-2" }, "\u6587\u5B57\u306E\u5927\u304D\u3055"),
-                        react_1.default.createElement("div", { className: "flex gap-2.5" }, FONT_SIZES.map((f) => (react_1.default.createElement("button", { key: f.key, type: "button", onClick: () => set({ fontSize: f.key }), "aria-pressed": draft.fontSize === f.key, className: "flex-1 h-[52px] rounded-xl border flex items-center justify-center font-bold ft-tap ft-tap-card "
-                                + (f.key === "s" ? "text-[15px] " : f.key === "m" ? "text-[17.5px] " : "text-[21px] ")
+                        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, "\u6587\u5B57\u306E\u5927\u304D\u3055"),
+                        react_1.default.createElement("div", { className: "flex gap-2.5" }, FONT_SIZES.map((f) => (react_1.default.createElement("button", { key: f.key, type: "button", onClick: () => set({ fontSize: f.key }), "aria-pressed": draft.fontSize === f.key, className: "flex-1 h-[44px] rounded-xl border flex items-center justify-center font-bold text-[15px] ft-tap ft-tap-card "
                                 + (draft.fontSize === f.key ? "border-th-800 bg-th-50 text-th-900" : "border-neutral-200 bg-white text-neutral-600") }, f.label))))),
                     react_1.default.createElement(SheetRow, { label: "\u753B\u9762\u306E\u52D5\u304D", last: true },
                         react_1.default.createElement(Switch, { on: draft.motion !== false, onChange: (v) => set({ motion: v }), label: "\u753B\u9762\u306E\u52D5\u304D" }))),
                 react_1.default.createElement("div", { className: "h-5", "aria-hidden": "true" }),
                 react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u4E26\u3073\u9806"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
-                    react_1.default.createElement(SheetRow, { label: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA" },
-                        react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA", className: "w-[124px]", noEmpty: true })),
-                    react_1.default.createElement(SheetRow, { label: "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB", last: true },
-                        react_1.default.createElement(DrumSelect, { value: draft.recordOrder || "new", onChange: (v) => set({ recordOrder: v || "new" }), options: SORT_RECORD_OPTIONS, title: "\u65E5\u3005\u306E\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB", className: "w-[124px]", noEmpty: true })))),
+                    react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-200" },
+                        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA"),
+                        react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA", noEmpty: true })),
+                    react_1.default.createElement("div", { className: "px-4 py-3" },
+                        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB"),
+                        react_1.default.createElement(DrumSelect, { value: draft.recordOrder || "new", onChange: (v) => set({ recordOrder: v || "new" }), options: SORT_RECORD_OPTIONS, title: "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB", noEmpty: true })))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: leave, className: BTN_SECONDARY + " btn-h-lg px-5 text-[15.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: () => { onSave(draft); close(); }, disabled: !dirty, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[16px]" },
@@ -22799,7 +22841,7 @@ const HELP_SECTIONS = [
     },
     {
         title: "計画",
-        body: "右下の的から、計画とカテゴリを作れます。\nやることには、そのためにやることを足せます。\nやり遂げたかどうかは、歯車から登録します。",
+        body: "右下の的から、計画とカテゴリを作れます。\nイベントには、そのためにやることを足せます。\nやり遂げたかどうかは、歯車から登録します。",
     },
     {
         title: "フォルダ",
@@ -22906,7 +22948,7 @@ html { scrollbar-gutter: stable; }
    ・opacity-40 … 効かない欄（終日のときの時刻）をうすくする
    ・pointer-events-auto … 画像の拡大窓で、上下の文字だけを押せるようにする */
 .border-transparent { border-color: transparent; }
-/* やることの札で使うもの。**足し忘れると、区切り線が消えて1かたまりに見える** */
+/* イベントの札で使うもの。**足し忘れると、区切り線が消えて1かたまりに見える** */
 .divide-y > * + * { border-top-width: 1px; border-top-style: solid; }
 .divide-neutral-100 > * + * { border-top-color: #F5F5F5; }
 .space-y-1 > * + * { margin-top: .25rem; }
@@ -22935,6 +22977,8 @@ html { scrollbar-gutter: stable; }
 .outline-none { outline: 2px solid transparent; outline-offset: 2px; }
 .border-l-2 { border-left-width: 2px; border-left-style: solid; }
 .pl-1\\.5 { padding-left: .375rem; }
+.bg-neutral-400 { background-color: #A3A3A3; }
+.h-\\[44px\\] { height: 44px; }
 .h-5 { height: 1.25rem; }
 .overflow-x-hidden { overflow-x: hidden; }
 /* 「あと◯日」の札と、フォルダの集め方の小さな札で使う */
@@ -23642,7 +23686,7 @@ function AppMain() {
     const addKind = (name) => setKinds([...kinds, { id: uid(), name, pinned: false, createdAt: new Date().toISOString() }]);
     const togglePinKind = (k) => setKinds(kinds.map((x) => (x.id === k.id ? { ...x, pinned: !x.pinned } : x)));
     const togglePinFolder = (f) => setFolders(folders.map((x) => (x.id === f.id ? { ...x, pinned: !x.pinned } : x)));
-    const renameKind = (id, name) => setKinds(kinds.map((k) => (k.id === id ? { ...k, name } : k)));
+    const renameKind = (id, name, color) => setKinds(kinds.map((k) => (k.id === id ? { ...k, name, color: color || "" } : k)));
     const deleteKind = (id) => {
         setKinds(kinds.filter((k) => k.id !== id));
         setPlans(plans.map((p) => (p.kindId === id ? { ...p, kindId: null } : p)));
