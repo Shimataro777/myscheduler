@@ -17413,16 +17413,17 @@ const PLAN_TYPE = "plan";
 /* フォルダとカテゴリ。**ひとつずつ色を持たせないこと。**
    表示設定でまとめて決める（計画だけは、ひとつずつ決められる） */
 const FOLDER_TYPE = "folder";
-const KIND_TYPE = "kind";
+/* カテゴリは廃止した。**新しく使わないこと。**
+   古い控えを読み込んだときのために、名前だけ残してある */
 /* 表示設定で色を決められるもの。記録の3種類＋計画＋イベント */
 /* 表示設定で色を決められるもの。
    **計画とフォルダは入れないこと。** ひとつずつ好きな色にできるので、
    共通の色をわざわざ決める意味がない。決めていないものは基調の色になる */
-const COLORED_TYPES = [...TYPES, STEP_TYPE, KIND_TYPE, FOLDER_TYPE];
+const COLORED_TYPES = [...TYPES, STEP_TYPE, FOLDER_TYPE];
 const TYPE_LABELS = {
     memo: "メモ", media: "画像", checklist: "リスト",
     link: "リンク", schedule: "スケジュール", // link は古い記録の読み込みだけで使う
-    plan: "計画", step: "イベント", folder: "フォルダ", kind: "カテゴリ",
+    plan: "計画", step: "イベント", folder: "フォルダ",
 };
 const TYPE_ICON = {
     memo: react_1.default.createElement(lucide_react_1.StickyNote, { size: 22 }),
@@ -17432,7 +17433,6 @@ const TYPE_ICON = {
     schedule: react_1.default.createElement(lucide_react_1.CalendarClock, { size: 22 }),
     plan: react_1.default.createElement(lucide_react_1.Target, { size: 22 }),
     folder: react_1.default.createElement(lucide_react_1.Folder, { size: 22 }),
-    kind: react_1.default.createElement(lucide_react_1.Layers, { size: 22 }),
     /* チェックリストの ListChecks と取り違えないよう、別のしるしにする */
     step: react_1.default.createElement(lucide_react_1.ListTodo, { size: 22 }),
 };
@@ -17455,7 +17455,7 @@ const COLORS = [
 const colorOf = (key) => COLORS.find((c) => c.key === key) || COLORS[0];
 const DEFAULT_TYPE_COLOR = {
     memo: "slate", media: "violet", checklist: "teal", link: "sky", schedule: "rose",
-    step: "indigo", kind: "green", folder: "sky",
+    step: "indigo", folder: "sky",
 };
 /* テーマ色（画面ぜんたいの基調）。--th-* を差し替えると配色が一括で変わる */
 const THEMES = [
@@ -17596,6 +17596,13 @@ const RecordActionsContext = react_1.default.createContext(null);
 function itemColor(item, fallback) {
     const k = item && item.color;
     return k ? colorOf(k) : fallback;
+}
+/* 計画の色は、**えらんだアイコンから決まる**。
+   **色を別に持たせないこと。** 決めることが増えるだけで、
+   アイコンと色がちぐはぐな札もできてしまう */
+function planColorOf(plan, fallback) {
+    const art = plan && plan.icon && ICON_ART[plan.icon];
+    return art && art.color ? colorOf(art.color) : fallback;
 }
 function useTypeColor(type) {
     const map = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
@@ -17860,11 +17867,11 @@ function repeatsOn(r, date) {
 /* ============================================================
    計画
    ============================================================ */
-function emptyPlan(kindId) {
+function emptyPlan() {
     return {
         /* **色を持たないこと。** 計画の色は表示設定でひとつだけ決める。
            古い記録に残っている color は、読み込むときに落とす */
-        id: uid(), kindId: kindId || null, name: "", note: "",
+        id: uid(), name: "", note: "",
         steps: [], // 2段のチェックリスト {id,title,dueDate,done,items:[{id,text,done}]}
         pinned: false, // 上に固定（いちばん上に出す）
         doneAt: "", // やり遂げた日（空なら、まだ進行中）
@@ -17875,7 +17882,7 @@ function migratePlan(p) {
     if (!p || typeof p !== "object")
         return null;
     return {
-        ...emptyPlan(p.kindId), ...p,
+        ...emptyPlan(), ...p,
         /* 古いつくり（goals）で保存したものも、そのまま読めるようにしておく */
         steps: (Array.isArray(p.steps) ? p.steps : Array.isArray(p.goals) ? p.goals : [])
             .filter((g) => g && typeof g === "object").map((g) => ({
@@ -18203,33 +18210,33 @@ function shrinkImage(source, maxSide = 900) {
    **単色のしるしにしないこと。** ほかの記号と見分けがつかない。
    絵柄は5つだけ用意して、それ以外は自分の写真を入れてもらう */
 const ICON_ART = {
-    home: { label: "家族", bg: "#EAF6EE", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+    home: { label: "家族", bg: "#EAF6EE", color: "green", draw: (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("path", { d: "M6 15 L18 6 L30 15 V29 a2 2 0 0 1-2 2 H8 a2 2 0 0 1-2-2 Z", fill: "#FFFFFF", stroke: "#4B7A5A", strokeWidth: "1.8", strokeLinejoin: "round" }),
             react_1.default.createElement("path", { d: "M4 15.5 L18 4.5 L32 15.5", fill: "none", stroke: "#4B7A5A", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round" }),
             react_1.default.createElement("rect", { x: "14.5", y: "20", width: "7", height: "11", rx: "1", fill: "#BFE0CB" }),
             react_1.default.createElement("path", { d: "M27 22 c4-1 5-4 5-4 s-3.5-.5-5 1.6 c-1 1.5 0 2.4 0 2.4 Z", fill: "#7FBF95" }),
             react_1.default.createElement("path", { d: "M28 27 c4-1 5-4 5-4 s-3.5-.5-5 1.6 c-1 1.5 0 2.4 0 2.4 Z", fill: "#A5D4B5" }))) },
-    study: { label: "勉強", bg: "#EAF2FB", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+    study: { label: "勉強", bg: "#EAF2FB", color: "indigo", draw: (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("path", { d: "M5 12 h11 a3 3 0 0 1 2 1.2 A3 3 0 0 1 20 12 h11 v17 H20 a2 2 0 0 0-2 1 a2 2 0 0 0-2-1 H5 Z", fill: "#FFFFFF", stroke: "#3E6EA8", strokeWidth: "1.8", strokeLinejoin: "round" }),
             react_1.default.createElement("path", { d: "M18 13.5 V30", stroke: "#3E6EA8", strokeWidth: "1.6" }),
             react_1.default.createElement("path", { d: "M8 17 h7 M8 20.5 h7 M21 17 h7 M21 20.5 h7", stroke: "#9CC2E6", strokeWidth: "1.6", strokeLinecap: "round" }),
             react_1.default.createElement("path", { d: "M18 3 L30 8 L18 13 L6 8 Z", fill: "#2F5C8F" }),
             react_1.default.createElement("path", { d: "M26 10 v5", stroke: "#2F5C8F", strokeWidth: "1.6", strokeLinecap: "round" }))) },
-    gift: { label: "楽しみ", bg: "#EAF4FA", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+    gift: { label: "楽しみ", bg: "#EAF4FA", color: "sky", draw: (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("rect", { x: "5", y: "15", width: "26", height: "16", rx: "2", fill: "#FFFFFF", stroke: "#3E86AE", strokeWidth: "1.8" }),
             react_1.default.createElement("rect", { x: "4", y: "11", width: "28", height: "6", rx: "1.6", fill: "#BFE2F2", stroke: "#3E86AE", strokeWidth: "1.8" }),
             react_1.default.createElement("path", { d: "M18 11 V31", stroke: "#3E86AE", strokeWidth: "2" }),
             react_1.default.createElement("path", { d: "M18 11 c-5 0-7-2-7-4 s4-3 7 4 Z", fill: "#7FC4E3", stroke: "#3E86AE", strokeWidth: "1.5", strokeLinejoin: "round" }),
             react_1.default.createElement("path", { d: "M18 11 c5 0 7-2 7-4 s-4-3-7 4 Z", fill: "#7FC4E3", stroke: "#3E86AE", strokeWidth: "1.5", strokeLinejoin: "round" }))) },
-    work: { label: "仕事", bg: "#F4EFEA", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+    work: { label: "仕事", bg: "#F4EFEA", color: "amber", draw: (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("path", { d: "M13 11 v-2 a2 2 0 0 1 2-2 h6 a2 2 0 0 1 2 2 v2", fill: "none", stroke: "#8A6A4B", strokeWidth: "1.8", strokeLinecap: "round" }),
             react_1.default.createElement("rect", { x: "4", y: "11", width: "28", height: "19", rx: "2.5", fill: "#FFFFFF", stroke: "#8A6A4B", strokeWidth: "1.8" }),
             react_1.default.createElement("path", { d: "M4 19 h28", stroke: "#8A6A4B", strokeWidth: "1.6" }),
             react_1.default.createElement("rect", { x: "14.5", y: "16.5", width: "7", height: "5", rx: "1.2", fill: "#E0C9AC", stroke: "#8A6A4B", strokeWidth: "1.4" }))) },
-    travel: { label: "旅行", bg: "#EAF1F7", draw: (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement("path", { d: "M3 21 l4-1.2 l5.5 1.6 L20 19 l-8-9 l3.4-1 l10.2 7.2 l5.6-1.6 c2.2-.6 4 .2 4.3 1.6 c.3 1.4-1 2.7-3.2 3.3 L4.6 26 Z", fill: "#CFE2F1", stroke: "#39628C", strokeWidth: "1.7", strokeLinejoin: "round" }),
-            react_1.default.createElement("path", { d: "M6 29 h22", stroke: "#39628C", strokeWidth: "1.8", strokeLinecap: "round" }))) },
-    health: { label: "心身", bg: "#FBEDF0", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+    travel: { label: "旅行", bg: "#EAF1F7", color: "sky", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("path", { d: "M17.6 3.2 c1.5 0 2.6 1.5 2.6 3.4 v7.6 l11.4 6.6 v3.4 l-11.4-3.4 v5.6 l3.6 2.6 v2.4 l-6.2-1.8 l-6.2 1.8 v-2.4 l3.6-2.6 v-5.6 L3.6 24.2 v-3.4 L15 14.2 V6.6 c0-1.9 1.1-3.4 2.6-3.4 Z", fill: "#CFE2F1", stroke: "#39628C", strokeWidth: "1.7", strokeLinejoin: "round" }),
+            react_1.default.createElement("circle", { cx: "17.6", cy: "9", r: "1.3", fill: "#39628C" }))) },
+    health: { label: "心身", bg: "#FBEDF0", color: "rose", draw: (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("path", { d: "M18 30 C7 22 4 17 4 13.5 A6.5 6.5 0 0 1 18 10 A6.5 6.5 0 0 1 32 13.5 C32 17 29 22 18 30 Z", fill: "#F6C3CE", stroke: "#B4566E", strokeWidth: "1.8", strokeLinejoin: "round" }),
             react_1.default.createElement("path", { d: "M7 19 h6 l2.5-4 l3 8 l2.5-4 h8", fill: "none", stroke: "#B4566E", strokeWidth: "1.9", strokeLinecap: "round", strokeLinejoin: "round" }))) },
 };
@@ -18265,7 +18272,8 @@ function cropImage(source, { aspect = 1, scale = 1, dx = 0, dy = 0, maxSide = 64
                 const k = base * scale;
                 const w = img.width * k;
                 const h = img.height * k;
-                ctx.drawImage(img, (outW - w) / 2 + dx * k, (outH - h) / 2 + dy * k, w, h);
+                /* dx/dy は、出す絵のうえでのずれ（px）。**k を掛けないこと** */
+                ctx.drawImage(img, (outW - w) / 2 + dx, (outH - h) / 2 + dy, w, h);
                 let out = "";
                 try {
                     out = cv.toDataURL("image/webp", 0.8);
@@ -20400,15 +20408,15 @@ function DraftCard({ draft, onResume, onDiscard }) {
        開いたときに一度だけたずねて、答えたら消える形にする */
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-start justify-center px-6 " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483300, paddingTop: "calc(env(safe-area-inset-top) + 72px)" } },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
-        react_1.default.createElement("div", { className: "relative w-full max-w-sm bg-white rounded-2xl shadow-lg p-5 anim-pop" },
-            react_1.default.createElement("div", { className: "flex items-center gap-2.5 mb-3" },
-                react_1.default.createElement("span", { className: "w-10 h-10 rounded-xl flex items-center justify-center shrink-0", style: { background: color.soft, color: color.deep } }, typeIcon(draft.type, 19)),
+        react_1.default.createElement("div", { className: "relative w-full max-w-sm bg-white rounded-2xl shadow-lg px-5 pt-5 pb-4 anim-pop" },
+            react_1.default.createElement("div", { className: "flex items-center gap-3 mb-5" },
+                react_1.default.createElement("span", { className: "w-11 h-11 rounded-xl flex items-center justify-center shrink-0", style: { background: color.soft, color: color.deep } }, typeIcon(draft.type, 20)),
                 react_1.default.createElement("div", { className: "min-w-0" },
-                    react_1.default.createElement("p", { className: "text-[12px] font-bold text-neutral-500" }, "\u66F8\u304D\u304B\u3051\u306E\u8A18\u9332\u304C\u3042\u308A\u307E\u3059"),
+                    react_1.default.createElement("p", { className: "text-[12px] font-bold text-neutral-500 mb-0.5" }, "\u66F8\u304D\u304B\u3051\u306E\u8A18\u9332\u304C\u3042\u308A\u307E\u3059"),
                     react_1.default.createElement("p", { className: "text-[15.5px] font-bold text-neutral-900 truncate" }, recordTitle(draft, N)))),
             react_1.default.createElement("div", { className: "flex gap-2.5" },
-                react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 btn-h-lg text-[15.5px]" }, "\u524A\u9664"),
-                react_1.default.createElement("button", { type: "button", onClick: onResume, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[15.5px]" }, "\u7D9A\u304D\u304B\u3089\u66F8\u304F")))));
+                react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
+                react_1.default.createElement("button", { type: "button", onClick: onResume, className: BTN_PRIMARY + " flex-[1.4] " + BTN_H + " text-[14.5px]" }, "\u7D9A\u304D\u304B\u3089\u66F8\u304F")))));
 }
 /* ============================================================
    タイムラインの札（記録概要）
@@ -21351,7 +21359,7 @@ const DUE_SHOWN = 2;
 function PlanDueCard({ plan, list, onOpen }) {
     const [open, setOpen] = (0, react_1.useState)(false);
     /* 名前の帯はその計画の色、中のイベントは「イベント」の色 */
-    const color = itemColor(plan, useTypeColor(PLAN_TYPE));
+    const color = planColorOf(plan, useTypeColor(PLAN_TYPE));
     const stepColor = useTypeColor(STEP_TYPE);
     const shown = open ? list : list.slice(0, DUE_SHOWN);
     const rest = list.length - DUE_SHOWN;
@@ -21767,15 +21775,21 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
    やめたくなったときに戻せない */
 /* 名前と色を決める紙。フォルダとカテゴリで同じものを使う。
    **色を「決めない」も選べるようにすること。** そのときは表示設定の色に従う */
-function NameIconSheet({ title, label, initialName, initialIcon, placeholder, fallback, color, onCancel, onSave }) {
+/* フォルダの設定。計画の設定と同じ形にそろえる。
+   **画面ごとに並べ方を変えないこと** */
+function NameIconSheet({ title, initialName, initialIcon, placeholder, fallback, color, confirmLabel = "保存", presets = false, photo = true, onCancel, onSave }) {
     const [name, setName] = (0, react_1.useState)(initialName || "");
     const [icon, setIcon] = (0, react_1.useState)(initialIcon || "");
-    return (react_1.default.createElement(SheetDialog, { title: title, onCancel: onCancel, onConfirm: () => onSave(name.trim(), icon), confirmLabel: "\u4FDD\u5B58", disabled: !name.trim() },
-        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, label),
-        react_1.default.createElement("div", { className: "mb-4" },
-            react_1.default.createElement(TextInput, { value: name, onChange: (e) => setName(e.target.value), placeholder: placeholder })),
-        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, "\u7D75"),
-        react_1.default.createElement(IconPicker, { value: icon, onChange: setIcon, fallback: fallback, color: color, presets: false })));
+    const base = useTypeColor(presets ? PLAN_TYPE : FOLDER_TYPE);
+    const c = color || (presets ? planColorOf({ icon }, base) : base);
+    return (react_1.default.createElement(SheetDialog, { title: title, onCancel: onCancel, onConfirm: () => onSave(name.trim(), icon), confirmLabel: confirmLabel, disabled: !name.trim() },
+        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-5" },
+            react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (icon && ICON_ART[icon]) ? ICON_ART[icon].bg : c.soft, color: c.deep } },
+                react_1.default.createElement(ItemIcon, { icon: icon, fallback: fallback, color: c })),
+            react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+                react_1.default.createElement(TextInput, { value: name, onChange: (e) => setName(e.target.value), placeholder: placeholder }))),
+        react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-2" }, "\u30A2\u30A4\u30B3\u30F3"),
+        react_1.default.createElement(IconPicker, { value: icon, onChange: setIcon, fallback: fallback, color: c, presets: presets, photo: photo })));
 }
 /* 切り抜きの窓。えらんだ絵を、指で動かして・つまんで大きさを変えて、決まった形に収める。
    **えらんだ絵をそのまま入れないこと。** どこが写るかを自分で決められるほうがよい */
@@ -21801,7 +21815,7 @@ function IconPicker({ value, onChange, fallback, color, presets = true, photo = 
                     ? react_1.default.createElement(Photo, { src: value, className: "block w-full h-full", style: { objectFit: "cover" } })
                     : react_1.default.createElement("span", { className: "flex text-neutral-400" },
                         react_1.default.createElement(lucide_react_1.Image, { size: 22 }))),
-            value && (react_1.default.createElement("button", { type: "button", onClick: () => onChange(""), className: "w-14 h-14 rounded-2xl border border-neutral-200 flex items-center justify-center text-neutral-400 ft-tap ft-tap-card", "aria-label": "\u7D75\u3092\u3084\u3081\u308B" },
+            value && (react_1.default.createElement("button", { type: "button", onClick: () => onChange(""), className: "w-14 h-14 rounded-2xl border border-neutral-200 flex items-center justify-center text-neutral-400 ft-tap ft-tap-card", "aria-label": "\u30A2\u30A4\u30B3\u30F3\u3092\u3084\u3081\u308B" },
                 react_1.default.createElement(lucide_react_1.X, { size: 20 })))),
         file && (react_1.default.createElement(CropSheet, { file: file, aspect: 1, title: "\u7D75\u306E\u4F4D\u7F6E\u3092\u6C7A\u3081\u308B", onCancel: () => setFile(null), onDone: async (src) => {
                 setBusy(true);
@@ -21814,58 +21828,116 @@ function IconPicker({ value, onChange, fallback, color, presets = true, photo = 
 }
 function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCancel, onDone }) {
     const [url, setUrl] = (0, react_1.useState)("");
+    const [nat, setNat] = (0, react_1.useState)(null); // 元の絵の大きさ
     const [ng, setNg] = (0, react_1.useState)(false);
+    const [box, setBox] = (0, react_1.useState)({ w: 300, h: 300 });
     const [scale, setScale] = (0, react_1.useState)(1);
-    const [pos, setPos] = (0, react_1.useState)({ x: 0, y: 0 });
+    const [pos, setPos] = (0, react_1.useState)({ x: 0, y: 0 }); // 窓のまん中からのずれ（画面のpx）
     const [busy, setBusy] = (0, react_1.useState)(false);
     const boxRef = (0, react_1.useRef)(null);
-    const drag = (0, react_1.useRef)(null);
+    const pts = (0, react_1.useRef)(new Map()); // いま触れている指
+    const start = (0, react_1.useRef)(null);
     /* **元の写真をそのまま見せないこと。** iPhone の写真は大きすぎて、
-       そのままだと絵として読めず、まっ黒になることがある。
-       いちど小さくしてから見せ、切り抜きもその小さいほうから作る */
+       絵として読めずにまっ黒になることがある。いちど小さくしてから見せる */
     (0, react_1.useEffect)(() => {
         let alive = true;
         setUrl("");
         setNg(false);
+        setNat(null);
         shrinkImage(file, 1600)
-            .then((d) => { if (alive)
-            setUrl(d); })
+            .then((d) => {
+            if (!alive)
+                return;
+            const im = new Image();
+            im.onload = () => { if (alive) {
+                setNat({ w: im.width, h: im.height });
+                setUrl(d);
+            } };
+            im.onerror = () => { if (alive)
+                setNg(true); };
+            im.src = d;
+        })
             .catch(() => { if (alive)
             setNg(true); });
         return () => { alive = false; };
     }, [file]);
-    /* 指で動かす。**枠から出しても戻せるようにすること**（あとで直せる） */
+    (0, react_1.useEffect)(() => {
+        const el = boxRef.current;
+        if (!el || typeof ResizeObserver === "undefined")
+            return undefined;
+        const put = () => setBox({ w: el.clientWidth, h: el.clientHeight });
+        put();
+        const ro = new ResizeObserver(put);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [url]);
+    /* 窓いっぱいに広がる大きさ（＝これ以上小さくしない） */
+    const base = nat ? Math.max(box.w / nat.w, box.h / nat.h) : 1;
+    const dispW = nat ? nat.w * base * scale : box.w;
+    const dispH = nat ? nat.h * base * scale : box.h;
+    /* **枠を写真からはみ出させないこと。** 動かせるのは、はみ出しているぶんだけ */
+    const limX = Math.max(0, (dispW - box.w) / 2);
+    const limY = Math.max(0, (dispH - box.h) / 2);
+    const clamp = (v, lim) => Math.max(-lim, Math.min(lim, v));
+    /* 指で引いているあいだは、少しだけ外へ出られる（そのあと戻る） */
+    const rubber = (v, lim) => (Math.abs(v) <= lim ? v : (v > 0 ? lim : -lim) + (v - (v > 0 ? lim : -lim)) * 0.22);
+    const dist = () => {
+        const a = [...pts.current.values()];
+        if (a.length < 2)
+            return 0;
+        return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+    };
     const down = (e) => {
-        drag.current = { x: e.clientX, y: e.clientY, from: pos };
+        pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
         try {
             e.currentTarget.setPointerCapture(e.pointerId);
         }
         catch (err) { /* 使えない端末は無視 */ }
+        start.current = { pos, scale, d: dist(),
+            c: { x: e.clientX, y: e.clientY } };
     };
     const move = (e) => {
-        const d = drag.current;
-        if (!d)
+        if (!pts.current.has(e.pointerId))
             return;
-        const box = boxRef.current;
-        const w = box ? box.clientWidth : 300;
-        /* 窓の幅を1として持っておく（あとで絵の大きさに掛ける） */
-        setPos({ x: d.from.x + (e.clientX - d.x) / w, y: d.from.y + (e.clientY - d.y) / w });
+        pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        const st = start.current;
+        if (!st)
+            return;
+        if (pts.current.size >= 2) {
+            /* つまんで大きさを変える */
+            const d = dist();
+            if (st.d > 0 && d > 0) {
+                const next = Math.max(1, Math.min(4, st.scale * (d / st.d)));
+                setScale(next);
+            }
+            return;
+        }
+        setPos({
+            x: rubber(st.pos.x + (e.clientX - st.c.x), limX),
+            y: rubber(st.pos.y + (e.clientY - st.c.y), limY),
+        });
     };
-    const up = () => { drag.current = null; };
+    const up = (e) => {
+        pts.current.delete(e.pointerId);
+        if (pts.current.size === 0) {
+            start.current = null;
+            /* はみ出したぶんは、するっと戻す */
+            setPos((v) => ({ x: clamp(v.x, limX), y: clamp(v.y, limY) }));
+        }
+        else {
+            start.current = { pos, scale, d: dist(), c: { x: e.clientX, y: e.clientY } };
+        }
+    };
+    /* 大きさを変えたあとも、枠が外へ出ないように引き戻す */
+    (0, react_1.useEffect)(() => { setPos((v) => ({ x: clamp(v.x, limX), y: clamp(v.y, limY) })); }, [scale, box.w, box.h, nat]); // eslint-disable-line
     const done = async () => {
         setBusy(true);
         try {
-            const box = boxRef.current;
-            const w = box ? box.clientWidth : 300;
-            /* 画面で動かしたぶんを、絵の大きさに直して渡す */
-            /* 画面では「窓の幅を1」として動かしている。
-               出す絵は maxSide 幅なので、その割合で置きかえる */
             const outW = aspect === 1 ? 480 : 1200;
+            /* 画面での動かしぶんを、出す絵の大きさに直す */
+            const k = box.w > 0 ? outW / box.w : 1;
             const out = await cropImage(url || file, {
-                aspect, scale,
-                dx: (pos.x * outW) / scale,
-                dy: (pos.y * outW) / scale,
-                maxSide: outW,
+                aspect, scale, dx: clamp(pos.x, limX) * k, dy: clamp(pos.y, limY) * k, maxSide: outW,
             });
             onDone(out);
         }
@@ -21882,19 +21954,19 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
                 react_1.default.createElement("button", { type: "button", onClick: onCancel, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.X, { size: 24 }))),
             react_1.default.createElement("div", { className: "px-4 py-4" },
-                react_1.default.createElement("div", { ref: boxRef, className: "relative w-full overflow-hidden bg-neutral-900 ft-press", style: { aspectRatio: `${aspect}`, borderRadius: round ? "50%" : 16, touchAction: "none" }, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up },
+                react_1.default.createElement("div", { ref: boxRef, className: "relative w-full overflow-hidden bg-neutral-900 ft-press", "data-lim": `${Math.round(limX)},${Math.round(limY)},${Math.round(dispW)},${Math.round(box.w)},${nat ? 1 : 0}`, style: { aspectRatio: `${aspect}`, borderRadius: round ? "50%" : 16, touchAction: "none" }, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up },
                     !url && !ng && (react_1.default.createElement("span", { className: "absolute inset-0 flex items-center justify-center text-white" },
                         react_1.default.createElement(Spinner, { size: 26 }))),
                     ng && (react_1.default.createElement("span", { className: "absolute inset-0 flex items-center justify-center text-[13px] text-white px-6 text-center" }, "\u3053\u306E\u5199\u771F\u306F\u8AAD\u307F\u8FBC\u3081\u307E\u305B\u3093\u3067\u3057\u305F")),
-                    url && (react_1.default.createElement("img", { src: url, alt: "", draggable: false, style: {
-                            position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover",
-                            transform: `translate(${pos.x * 100}%, ${pos.y * 100}%) scale(${scale})`,
-                            transformOrigin: "center",
+                    url && nat && (react_1.default.createElement("img", { src: url, alt: "", draggable: false, style: {
+                            position: "absolute",
+                            width: dispW, height: dispH,
+                            left: (box.w - dispW) / 2 + pos.x,
+                            top: (box.h - dispH) / 2 + pos.y,
+                            transition: start.current ? "none" : "left .18s ease-out, top .18s ease-out",
+                            maxWidth: "none",
                         } }))),
-                react_1.default.createElement("div", { className: "flex items-center gap-3 mt-4" },
-                    react_1.default.createElement("span", { className: "text-[12.5px] text-neutral-500 shrink-0" }, "\u5927\u304D\u3055"),
-                    react_1.default.createElement("input", { type: "range", min: "1", max: "3", step: "0.01", value: scale, onChange: (e) => setScale(Number(e.target.value)), className: "flex-1 ft-range", "aria-label": "\u5927\u304D\u3055" })),
-                react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 mt-2" }, "\u6307\u3067\u52D5\u304B\u3057\u3066\u3001\u5199\u3057\u305F\u3044\u3068\u3053\u308D\u3092\u67A0\u306B\u5408\u308F\u305B\u3089\u308C\u307E\u3059\u3002")),
+                react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 mt-3 text-center" }, "\u6307\u3067\u52D5\u304B\u3059\uFF0F\u3064\u307E\u3093\u3067\u5927\u304D\u3055\u3092\u5909\u3048\u308B")),
             react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: onCancel, className: BTN_SECONDARY + " flex-1 " + BTN_H + " text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: done, disabled: busy || !url, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " text-[14.5px]" },
@@ -21902,26 +21974,58 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
                     " ",
                     busy ? "作っています" : "決定")))));
 }
-function PlanSettingsSheet({ plan, kinds, onCancel, onSave }) {
+/* 絵をえらぶ欄。用意した5つか、自分の写真か、しるしだけ（なし）。
+   **並べて見せること。** どれになるかを、押す前に分かるように */
+function IconPicker({ value, onChange, fallback, color, presets = true, photo = true }) {
+    const [file, setFile] = (0, react_1.useState)(null);
+    const [busy, setBusy] = (0, react_1.useState)(false);
+    const custom = !!value && !ICON_ART[value];
+    return (react_1.default.createElement(react_1.default.Fragment, null,
+        react_1.default.createElement("div", { className: "flex flex-wrap gap-2" },
+            react_1.default.createElement("button", { type: "button", onClick: () => onChange(""), "aria-pressed": !value, className: "w-14 h-14 rounded-2xl border-2 flex items-center justify-center overflow-hidden ft-tap ft-tap-card "
+                    + (!value ? "border-th-800" : "border-neutral-200"), style: { background: color ? color.soft : "#F3F3F5" } },
+                react_1.default.createElement(ItemIcon, { fallback: fallback, color: color })),
+            presets && ICON_KEYS.map((k) => (react_1.default.createElement("button", { key: k, type: "button", onClick: () => onChange(k), "aria-pressed": value === k, "aria-label": ICON_ART[k].label, className: "w-14 h-14 rounded-2xl border-2 flex items-center justify-center overflow-hidden ft-tap ft-tap-card "
+                    + (value === k ? "border-th-800" : "border-neutral-200"), style: { background: ICON_ART[k].bg } },
+                react_1.default.createElement(ItemIcon, { icon: k })))),
+            photo && react_1.default.createElement("label", { className: "w-14 h-14 rounded-2xl border-2 flex items-center justify-center overflow-hidden cursor-pointer ft-tap ft-tap-card "
+                    + (custom ? "border-th-800" : "border-dashed border-neutral-300") },
+                react_1.default.createElement("input", { type: "file", accept: "image/*", className: "hidden", disabled: busy, onChange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f)
+                        setFile(f); } }),
+                custom
+                    ? react_1.default.createElement(Photo, { src: value, className: "block w-full h-full", style: { objectFit: "cover" } })
+                    : react_1.default.createElement("span", { className: "flex text-neutral-400" },
+                        react_1.default.createElement(lucide_react_1.Image, { size: 22 }))),
+            value && (react_1.default.createElement("button", { type: "button", onClick: () => onChange(""), className: "w-14 h-14 rounded-2xl border border-neutral-200 flex items-center justify-center text-neutral-400 ft-tap ft-tap-card", "aria-label": "\u30A2\u30A4\u30B3\u30F3\u3092\u3084\u3081\u308B" },
+                react_1.default.createElement(lucide_react_1.X, { size: 20 })))),
+        file && (react_1.default.createElement(CropSheet, { file: file, aspect: 1, title: "\u7D75\u306E\u4F4D\u7F6E\u3092\u6C7A\u3081\u308B", onCancel: () => setFile(null), onDone: async (src) => {
+                setBusy(true);
+                const id = "ph_" + uid();
+                const res = await photoPut(id, src);
+                onChange(res === null ? src : "photo:" + id);
+                setBusy(false);
+                setFile(null);
+            } }))));
+}
+function PlanSettingsSheet({ plan, onCancel, onSave }) {
     const planC = useTypeColor(PLAN_TYPE);
     const [d, setD] = (0, react_1.useState)(plan);
-    return (react_1.default.createElement(SheetDialog, { title: "\u540D\u524D\u30FB\u30AB\u30C6\u30B4\u30EA\u30FB\u8272\u30FB\u7D75", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
-        react_1.default.createElement("div", { className: "mb-3" },
-            react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setD({ ...d, name: e.target.value }), placeholder: "\u8A08\u753B\u306E\u540D\u524D" })),
-        react_1.default.createElement("div", { className: "mb-3" },
-            react_1.default.createElement(DrumSelect, { value: d.kindId || "", onChange: (v) => setD({ ...d, kindId: v || null }), options: kinds.map((k) => ({ value: k.id, label: k.name })), placeholder: "\u30AB\u30C6\u30B4\u30EA\u306A\u3057", title: "\u30AB\u30C6\u30B4\u30EA\u3092\u9078\u3076" })),
-        react_1.default.createElement("div", { className: "flex items-center gap-2 mb-4" },
-            react_1.default.createElement("span", { className: "text-[13.5px] text-neutral-500 min-w-0 truncate" }, "\u8272"),
-            react_1.default.createElement("span", { className: "flex-1" }),
-            react_1.default.createElement(ColorSelect, { value: d.color || "", title: "\u8272", options: [{ key: "", label: "きほんの色", mid: "#D4D4D4" }, ...COLORS], onChange: (v) => setD({ ...d, color: v }) })),
-        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, "\u7D75"),
-        react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(lucide_react_1.Target, { size: 24 }), color: itemColor(d, planC), photo: false })));
+    const c = planColorOf(d, planC);
+    return (react_1.default.createElement(SheetDialog, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
+        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-5" },
+            react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (d.icon && ICON_ART[d.icon]) ? ICON_ART[d.icon].bg : c.soft, color: c.deep } },
+                react_1.default.createElement(ItemIcon, { icon: d.icon, fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), color: c })),
+            react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+                react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setD({ ...d, name: e.target.value }), placeholder: "\u8A08\u753B\u306E\u540D\u524D" }))),
+        react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-2" }, "\u30A2\u30A4\u30B3\u30F3"),
+        react_1.default.createElement("div", { className: "mb-5" },
+            react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(lucide_react_1.Target, { size: 24 }), color: c, photo: false }))));
 }
-/* 計画の札。一覧でも、カテゴリの中でも同じものを使う */
+/* 計画の札 */
 function PlanCard({ plan, records, onOpen, onPin, pressProps }) {
     const p = plan;
     /* 計画ごとの色。決めていなければ基調の色 */
-    const c = itemColor(p, useTypeColor(PLAN_TYPE));
+    const c = planColorOf(p, useTypeColor(PLAN_TYPE));
     const stepColor = useTypeColor(STEP_TYPE);
     const steps = p.steps || [];
     const doneSteps = steps.filter((g) => stepDone(g)).length;
@@ -21965,9 +22069,9 @@ function PinButton({ on, onClick, color }) {
         react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") },
             react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: on ? "currentColor" : "none" }))));
 }
-function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, onPinKind, sort, onSort, onChangePlan, onDeletePlan, onRenameKind, onDeleteKind }) {
+function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onChangePlan, onDeletePlan }) {
     /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
-    const [menu, setMenu] = (0, react_1.useState)(null); // { kind } か { plan }
+    const [menu, setMenu] = (0, react_1.useState)(null); // { plan }
     const [edit, setEdit] = (0, react_1.useState)(null);
     const [del, setDel] = (0, react_1.useState)(null);
     /* **くり返しの中でフックを呼ばないこと。** 札ごとに使えるよう、素の handler を作る */
@@ -22012,93 +22116,39 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
             }
         },
     });
-    /* カテゴリも計画のなかま。**カテゴリごとに色を持たせないこと** */
     const planColor = useTypeColor(PLAN_TYPE);
-    const kindColor = useTypeColor(KIND_TYPE);
     const [q, setQ] = (0, react_1.useState)("");
-    /* **カテゴリの名前だけで判じないこと。** 中の計画が当たっていれば、
-       そのカテゴリも残す（開けば見つかる、と分かるように件数を添える） */
-    const hits = (0, react_1.useMemo)(() => {
-        const w = q.trim();
-        if (!w)
-            return null;
-        const m = new Map();
-        kinds.forEach((k) => {
-            m.set(k.id, matchName(plans.filter((p) => p.kindId === k.id), w).length);
-        });
-        return m;
-    }, [kinds, plans, q]);
-    const sortedKinds = (0, react_1.useMemo)(() => {
-        const w = q.trim();
-        const list = !w ? kinds : kinds.filter((k) => matchName([k], w).length > 0 || (hits && hits.get(k.id) > 0));
-        return sortItems(list, sort);
-    }, [kinds, sort, q, hits]);
-    /* 並び順：上に固定したもの → ふつうのもの → やり遂げたもの。
-       同じ組の中は、上でえらんだ順（名前順／作成順）にそろえる */
-    const sortPlans = (list) => sortItems(list, sort).sort((a, b) => {
-        const da = !!a.doneAt, db = !!b.doneAt;
-        if (da !== db)
-            return da ? 1 : -1;
-        if (!!a.pinned !== !!b.pinned)
-            return a.pinned ? -1 : 1;
-        return 0;
-    });
-    const grouped = (0, react_1.useMemo)(() => {
-        const m = new Map();
-        kinds.forEach((k) => m.set(k.id, []));
-        m.set("__none", []);
-        plans.forEach((p) => {
-            const key = p.kindId && m.has(p.kindId) ? p.kindId : "__none";
-            m.get(key).push(p);
-        });
-        return m;
-    }, [plans, kinds]);
+    /* **カテゴリで分けないこと。** 入れ物をこしらえるより、
+       いま進めているものが上にそろっているほうが探しやすい。
+       やり遂げたものだけ、いちばん下の「済み」にまとめて静かにする */
+    const shown = (0, react_1.useMemo)(() => matchName(plans, q), [plans, q]);
+    const live = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => !p.doneAt), sort)
+        .sort((a, b) => (!!a.pinned === !!b.pinned ? 0 : (a.pinned ? -1 : 1))), [shown, sort]);
+    const done = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => !!p.doneAt), sort), [shown, sort]);
+    const [doneOpen, setDoneOpen] = (0, react_1.useState)(false);
     const renderPlan = (p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: longPressProps({ plan: p }) }));
-    /* カテゴリと「カテゴリなしの計画」を、ひとつの列にまぜる。
-       固定したもの → ふつう → やり遂げたもの、の順は変えない */
-    const mixed = (0, react_1.useMemo)(() => {
-        const rows = [
-            ...sortedKinds.map((k) => ({ kind: k, pinned: !!k.pinned, done: false, name: k.name, createdAt: k.createdAt })),
-            ...matchName(grouped.get("__none") || [], q).map((p) => ({ plan: p, pinned: !!p.pinned, done: !!p.doneAt, name: p.name, createdAt: p.createdAt })),
-        ];
-        return sortItems(rows, sort).sort((a, b) => {
-            if (a.done !== b.done)
-                return a.done ? 1 : -1;
-            if (a.pinned !== b.pinned)
-                return a.pinned ? -1 : 1;
-            return 0;
-        });
-    }, [sortedKinds, grouped, sort, q]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
-        react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
+        react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u8A08\u753B\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
         react_1.default.createElement("div", { className: "px-4 pt-1 max-w-2xl mx-auto w-full space-y-2.5" },
-            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, mixed.map((it) => (it.kind ? (react_1.default.createElement("div", { key: "k" + it.kind.id, role: "button", tabIndex: 0, ...longPressProps({ kind: it.kind }), onClick: () => onOpenKind(it.kind, hits && hits.get(it.kind.id) > 0 ? q : ""), 
-                /* **枠の中に色を敷かないこと。** 計画の札と見た目が違いすぎて、
-                   同じ列に並んでいるのに別の仕組みに見える。色はしるしだけに */
-                className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer" },
-                react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0", style: { background: kindColor.soft, color: kindColor.deep } },
-                    react_1.default.createElement(lucide_react_1.Layers, { size: 24 })),
-                react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                    react_1.default.createElement("span", { className: "block font-display text-[17px] text-neutral-900 leading-snug break-words" }, it.kind.name),
-                    react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500 mt-1" },
-                        "\u30AB\u30C6\u30B4\u30EA\u30FB\u8A08\u753B ",
-                        (grouped.get(it.kind.id) || []).length,
+            react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, live.map(renderPlan)),
+            done.length > 0 && (react_1.default.createElement("div", { className: live.length ? "pt-3" : "" },
+                react_1.default.createElement("button", { type: "button", onClick: () => setDoneOpen((v) => !v), "aria-expanded": doneOpen, className: "w-full flex items-center gap-2 min-h-[46px] px-1 text-left ft-tap" },
+                    react_1.default.createElement("span", { className: "w-7 h-7 rounded-full bg-neutral-200 text-neutral-500 flex items-center justify-center shrink-0" },
+                        react_1.default.createElement(lucide_react_1.Check, { size: 15, strokeWidth: 3, className: "thick" })),
+                    react_1.default.createElement("span", { className: "text-[14px] font-bold text-neutral-500" }, "\u6E08\u307F"),
+                    react_1.default.createElement("span", { className: "text-[12.5px] text-neutral-400 tabular-nums" },
+                        done.length,
                         "\u4EF6"),
-                    hits && hits.get(it.kind.id) > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 mt-1.5 text-[11.5px] font-bold rounded-md px-1.5 py-[2px] bg-white", style: { color: kindColor.deep } },
-                        react_1.default.createElement(lucide_react_1.Search, { size: 11 }),
-                        " \u3053\u306E\u4E2D\u306B ",
-                        hits.get(it.kind.id),
-                        "\u4EF6"))),
-                react_1.default.createElement(PinButton, { on: it.kind.pinned, color: kindColor, onClick: (e) => { e.stopPropagation(); onPinKind(it.kind); } }),
-                react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" }))) : renderPlan(it.plan)))),
-            plans.length === 0 && kinds.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                    react_1.default.createElement("span", { className: "flex-1" }),
+                    react_1.default.createElement("span", { className: "flex text-neutral-400 " + (doneOpen ? "rotate-180" : "") },
+                        react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 }))),
+                doneOpen && react_1.default.createElement("div", { className: "space-y-2.5 mt-1 ft-seq ft-spread" }, done.map(renderPlan)))),
+            plans.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093")))),
-        menu && (react_1.default.createElement(TypePickSheet, { title: (menu.kind || menu.plan).name || (menu.kind ? "カテゴリ" : "計画"), types: menu.kind ? ["__rename", "__delete"]
-                : (menu.plan.doneAt ? ["__undone", "__rename", "__delete"] : ["__done", "__rename", "__delete"]), labels: {
+        menu && (react_1.default.createElement(TypePickSheet, { title: menu.plan.name || "計画", types: menu.plan.doneAt ? ["__undone", "__rename", "__delete"] : ["__done", "__rename", "__delete"], labels: {
                 __done: "この計画をやり遂げた", __undone: "やり遂げたのを取り消す",
-                __rename: menu.kind ? "名前を変更" : "名前・カテゴリ・色・絵",
-                __delete: menu.kind ? "このカテゴリを削除" : "この計画を削除"
+                __rename: "計画の設定", __delete: "この計画を削除"
             }, icons: { __done: react_1.default.createElement(lucide_react_1.Check, { size: 22 }), __undone: react_1.default.createElement(lucide_react_1.RotateCcw, { size: 22 }),
                 __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => {
                 const m = menu;
@@ -22112,117 +22162,10 @@ function PlanScreen({ plans, kinds, records, onOpenPlan, onOpenKind, onPinPlan, 
                 else
                     setDel(m);
             } })),
-        edit && edit.kind && (react_1.default.createElement(NameDialog, { title: "\u540D\u524D\u3092\u5909\u66F4", label: "\u30AB\u30C6\u30B4\u30EA\u306E\u540D\u524D", initial: edit.kind.name, confirmLabel: "\u4FDD\u5B58", onCancel: () => setEdit(null), onConfirm: (n) => { onRenameKind(edit.kind.id, n); setEdit(null); } })),
-        edit && edit.plan && (react_1.default.createElement(PlanSettingsSheet, { plan: edit.plan, kinds: kinds, onCancel: () => setEdit(null), onSave: (v) => { onChangePlan(v); setEdit(null); } })),
-        del && (react_1.default.createElement(ConfirmDialog, { title: del.kind ? "このカテゴリを削除しますか" : "この計画を削除しますか", body: del.kind
-                ? "中の計画は消えません。カテゴリなしに移ります。"
-                : "この計画に結びついた記録は消えません。計画だけがなくなります。", confirmLabel: "\u524A\u9664", onCancel: () => setDel(null), onConfirm: () => { const m = del; setDel(null); if (m.kind)
-                onDeleteKind(m.kind.id);
-            else
-                onDeletePlan(m.plan.id); } }))));
+        edit && (react_1.default.createElement(PlanSettingsSheet, { plan: edit.plan, onCancel: () => setEdit(null), onSave: (v) => { onChangePlan(v); setEdit(null); } })),
+        del && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u8A08\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u3053\u306E\u8A08\u753B\u306B\u7D50\u3073\u3064\u3044\u305F\u8A18\u9332\u306F\u6D88\u3048\u307E\u305B\u3093\u3002\u8A08\u753B\u3060\u3051\u304C\u306A\u304F\u306A\u308A\u307E\u3059\u3002", confirmLabel: "\u524A\u9664", onCancel: () => setDel(null), onConfirm: () => { const m = del; setDel(null); onDeletePlan(m.plan.id); } }))));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
-function KindScreen({ kind, plans, records, onClose, onOpenPlan, onAddPlan, onRename, onDelete, onPinPlan, sort, onSort, initialQ, onChangePlan, onDeletePlan }) {
-    const [pMenu, setPMenu] = (0, react_1.useState)(null);
-    const [pEdit, setPEdit] = (0, react_1.useState)(null);
-    const [pDel, setPDel] = (0, react_1.useState)(null);
-    const press = (0, react_1.useRef)({ t: null, from: null, fired: false });
-    const stopPress = () => { if (press.current.t) {
-        clearTimeout(press.current.t);
-        press.current.t = null;
-    } };
-    const longPressProps = (item) => ({
-        onPointerDown: (e) => {
-            if (e.pointerType === "mouse" && e.button !== 0)
-                return;
-            press.current.fired = false;
-            press.current.from = { x: e.clientX, y: e.clientY };
-            stopPress();
-            press.current.t = setTimeout(() => {
-                press.current.fired = true;
-                try {
-                    if (navigator.vibrate)
-                        navigator.vibrate(8);
-                }
-                catch (err) { /* 使えなくても構わない */ }
-                setPMenu(item);
-            }, 480);
-        },
-        onPointerMove: (e) => {
-            const f = press.current.from;
-            if (!f)
-                return;
-            if (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10)
-                stopPress();
-        },
-        onPointerUp: stopPress,
-        onPointerCancel: stopPress,
-        onContextMenu: (e) => e.preventDefault(),
-        onClickCapture: (e) => {
-            if (press.current.fired) {
-                e.preventDefault();
-                e.stopPropagation();
-                press.current.fired = false;
-            }
-        },
-    });
-    const [q, setQ] = (0, react_1.useState)(initialQ || "");
-    const [closing, close] = useClosing(onClose);
-    const { stripRef, screenRef } = useEdgeSwipeBack(close);
-    const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
-    const [celebrate, setCelebrate] = (0, react_1.useState)(false);
-    const [doneAsk, setDoneAsk] = (0, react_1.useState)(false);
-    const [addOpen, setAddOpen] = (0, react_1.useState)(false);
-    const [renameOpen, setRenameOpen] = (0, react_1.useState)(false);
-    const [delOpen, setDelOpen] = (0, react_1.useState)(false);
-    /* 計画の一覧と同じ並び。**この画面だけ別にしないこと** */
-    const mine = (0, react_1.useMemo)(() => sortItems(matchName(plans.filter((p) => p.kindId === kind.id), q), sort)
-        .sort((a, b) => {
-        const da = !!a.doneAt, db = !!b.doneAt;
-        if (da !== db)
-            return da ? 1 : -1;
-        if (!!a.pinned !== !!b.pinned)
-            return a.pinned ? -1 : 1;
-        return 0;
-    }), [plans, kind.id, sort, q]);
-    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
-        react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
-            react_1.default.createElement(OverlayHeader, { title: kind.name, onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
-                    react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto max-w-2xl mx-auto w-full pad-fab" },
-                react_1.default.createElement("div", { className: "sticky bg-app px-4 pt-3 pb-2", style: { top: 0, zIndex: 20 } },
-                    react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
-                        react_1.default.createElement("div", { className: "flex-1 min-w-0 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
-                            react_1.default.createElement(lucide_react_1.Search, { size: 17, className: q ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
-                            react_1.default.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\u8A08\u753B\u3092\u3055\u304C\u3059", className: "flex-1 min-w-0 bg-transparent outline-none text-[14.5px] text-neutral-900 placeholder-neutral-400" }),
-                            q && (react_1.default.createElement("button", { type: "button", onClick: () => setQ(""), "aria-label": "\u6D88\u3059", className: "w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-neutral-400 ft-tap ft-tap-icon" },
-                                react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
-                        react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }))),
-                react_1.default.createElement("div", { className: "px-4 pt-1 pb-4 space-y-2.5 ft-seq ft-spread" },
-                    mine.map((p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: longPressProps(p) }))),
-                    mine.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                        react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, q ? "見つかりません" : "まだ計画はありません"))))),
-            react_1.default.createElement("button", { type: "button", onClick: () => onAddPlan(kind), "aria-label": "\u8A08\u753B\u3092\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white card-soft flex items-center justify-center ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
-                react_1.default.createElement(lucide_react_1.Plus, { size: 30 })),
-            menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30AB\u30C6\u30B4\u30EA\u306E\u8A2D\u5B9A", types: ["__rename", "__delete"], labels: { __rename: "名前を変更", __delete: "このカテゴリを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, colorKeys: { __rename: PLAN_TYPE, __delete: PLAN_TYPE }, onCancel: () => setMenuOpen(false), onPick: (k) => { setMenuOpen(false); if (k === "__rename")
-                    setRenameOpen(true);
-                else
-                    setDelOpen(true); } })),
-            renameOpen && (react_1.default.createElement(NameColorSheet, { title: "\u540D\u524D\u3068\u8272", label: "\u540D\u524D", initialName: kind.name, initialColor: kind.color, placeholder: "\u30AB\u30C6\u30B4\u30EA\u306E\u540D\u524D", onCancel: () => setRenameOpen(false), onSave: (n, c) => { onRename(kind.id, n, c); setRenameOpen(false); } })),
-            pMenu && (react_1.default.createElement(TypePickSheet, { title: pMenu.name || "計画", types: ["__rename", "__delete"], labels: { __rename: "名前・カテゴリ・色・絵", __delete: "この計画を削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setPMenu(null), onPick: (k) => { const m = pMenu; setPMenu(null); if (k === "__rename")
-                    setPEdit(m);
-                else
-                    setPDel(m); } })),
-            pEdit && (react_1.default.createElement(PlanSettingsSheet, { plan: pEdit, kinds: [kind], onCancel: () => setPEdit(null), onSave: (v) => { onChangePlan(v); setPEdit(null); } })),
-            pDel && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u8A08\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u3053\u306E\u8A08\u753B\u306B\u7D50\u3073\u3064\u3044\u305F\u8A18\u9332\u306F\u6D88\u3048\u307E\u305B\u3093\u3002\u8A08\u753B\u3060\u3051\u304C\u306A\u304F\u306A\u308A\u307E\u3059\u3002", confirmLabel: "\u524A\u9664", onCancel: () => setPDel(null), onConfirm: () => { const m = pDel; setPDel(null); onDeletePlan(m.id); } })),
-            delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u7A2E\u985E\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A08\u753B\u306F\u300C\u7A2E\u985E\u306A\u3057\u300D\u306B\u79FB\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(kind.id); close(); } })))));
-}
-/* ============================================================
-   2段のチェックリスト（計画の中身）
-   大きな1つ「いつまでに何を」の中に、小さな「そのために何をするか」が入る
-   例：8/31までにこの単元を覚える → 12〜18ページ／19〜25ページ …
-   ============================================================ */
 /* イベントの札（読むだけ）。
    **その場で書き換えられるようにしないこと。** 前は題も期日もいつでも直せて、
    ×ひとつで消えてしまった。記録の札と同じで、見るときは読むだけ、
@@ -22331,7 +22274,7 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
    ①イベント（2段のチェックリスト） ②日々の記録
    がひと続きに見える。**ここを細かく分けすぎないこと。**
    画面が増えるほど、書く気持ちが遠のく */
-function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
+function PlanDashboard({ plan, records, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
     const sel = useSelectMode(onDeleteMany);
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
@@ -22343,7 +22286,7 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
     const [addOpen, setAddOpen] = (0, react_1.useState)(false);
     const [stepEdit, setStepEdit] = (0, react_1.useState)(null); // 書いているイベント {step, isNew}
     const [doneOpen, setDoneOpen] = (0, react_1.useState)(false); // 済んだイベントをひらいているか
-    const color = itemColor(plan, useTypeColor(PLAN_TYPE));
+    const color = planColorOf(plan, useTypeColor(PLAN_TYPE));
     const stepColor = useTypeColor(STEP_TYPE);
     const today = todayStr();
     const planRecords = (0, react_1.useMemo)(() => sortRecords(records.filter((r) => r.planId === plan.id), order), [records, plan.id, order]);
@@ -22483,7 +22426,7 @@ function PlanDashboard({ plan, records, kinds, onClose, onChange, onDelete, onAd
                         "\u304A\u3064\u304B\u308C\u3055\u307E\u3067\u3057\u305F\u3002"),
                     react_1.default.createElement("div", { className: "flex justify-center" },
                         react_1.default.createElement("button", { type: "button", onClick: () => setCelebrate(false), className: BTN_PRIMARY + " btn-h-lg px-8 text-[16px]" }, "\u3068\u3058\u308B"))))),
-            settingsOpen && (react_1.default.createElement(PlanSettingsSheet, { plan: plan, kinds: kinds, onCancel: () => setSettingsOpen(false), onSave: (v) => { onChange(v); setSettingsOpen(false); } })),
+            settingsOpen && (react_1.default.createElement(PlanSettingsSheet, { plan: plan, onCancel: () => setSettingsOpen(false), onSave: (v) => { onChange(v); setSettingsOpen(false); } })),
             doneAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u3084\u308A\u9042\u3052\u307E\u3057\u305F\u304B", body: "\u8A08\u753B\u306F\u4E00\u89A7\u306E\u4E0B\u306E\u307B\u3046\u3078\u79FB\u308A\u3001\u3044\u3064\u3067\u3082\u898B\u8FD4\u305B\u307E\u3059\u3002", confirmLabel: "\u3084\u308A\u9042\u3052\u305F", onCancel: () => setDoneAsk(false), onConfirm: () => { setDoneAsk(false); onChange({ ...plan, doneAt: todayStr() }); setCelebrate(true); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u8A08\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(plan.id); } })))));
 }
@@ -22762,7 +22705,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
             react_1.default.createElement(SelectBar, { sel: sel, list: pickedList, extraLabel: "\u30D5\u30A9\u30EB\u30C0\u304B\u3089\u5916\u3059", onExtra: removeFromFolder }),
             menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", 
                 /* **「記録を入れる」をここに置かないこと。** 画面の上の札と右下の＋で足りる */
-                types: ["__rename", "__delete"], labels: { __rename: "名前と絵", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
+                types: ["__rename", "__delete"], labels: { __rename: "フォルダの設定", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
                     setMenuOpen(false);
                     if (k === "__rename")
                         setRenameOpen(true);
@@ -22770,7 +22713,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                         setDelOpen(true);
                 } })),
             setup && (react_1.default.createElement(FolderSetupSheet, { folder: folder, records: records, knownTags: knownTags, initialTab: setup, onCancel: () => setSetup(null), onSave: (next) => { onChange({ ...folder, ...next }); setSetup(null); } })),
-            renameOpen && (react_1.default.createElement(NameIconSheet, { title: "\u540D\u524D\u3068\u7D75", label: "\u30D5\u30A9\u30EB\u30C0\u306E\u540D\u524D", initialName: folder.name, initialIcon: folder.icon, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setRenameOpen(false), onSave: (n, ic) => { onChange({ ...folder, name: n, icon: ic }); setRenameOpen(false); } })),
+            renameOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", presets: false, initialName: folder.name, initialIcon: folder.icon, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setRenameOpen(false), onSave: (n, ic) => { onChange({ ...folder, name: n, icon: ic }); setRenameOpen(false); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(folder.id); } })))));
 }
 function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange, onDelete }) {
@@ -22863,11 +22806,11 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
             }),
             folders.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093")))),
-        menu && (react_1.default.createElement(TypePickSheet, { title: menu.name || "フォルダ", types: ["__rename", "__delete"], labels: { __rename: "名前と絵", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => { const f = menu; setMenu(null); if (k === "__rename")
+        menu && (react_1.default.createElement(TypePickSheet, { title: menu.name || "フォルダ", types: ["__rename", "__delete"], labels: { __rename: "フォルダの設定", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => { const f = menu; setMenu(null); if (k === "__rename")
                 setEdit(f);
             else
                 setDel(f); } })),
-        edit && (react_1.default.createElement(NameIconSheet, { title: "\u540D\u524D\u3068\u7D75", label: "\u30D5\u30A9\u30EB\u30C0\u306E\u540D\u524D", initialName: edit.name, initialIcon: edit.icon, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setEdit(null), onSave: (n, ic) => { onChange({ ...edit, name: n, icon: ic }); setEdit(null); } })),
+        edit && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", presets: false, initialName: edit.name, initialIcon: edit.icon, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setEdit(null), onSave: (n, ic) => { onChange({ ...edit, name: n, icon: ic }); setEdit(null); } })),
         del && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u4E2D\u306E\u8A18\u9332\u306F\u6D88\u3048\u307E\u305B\u3093\u3002\u30D5\u30A9\u30EB\u30C0\u3060\u3051\u304C\u306A\u304F\u306A\u308A\u307E\u3059\u3002", confirmLabel: "\u524A\u9664", onCancel: () => setDel(null), onConfirm: () => { const f = del; setDel(null); onDelete(f.id); } }))));
 }
 /* ============================================================
@@ -23454,6 +23397,8 @@ html { scrollbar-gutter: stable; }
 .border-white { border-color: #FFFFFF; }
 .-bottom-0\\.5 { bottom: -.125rem; }
 .-right-0\\.5 { right: -.125rem; }
+.flex-\\[1\\.4\\] { flex: 1.4 1 0%; }
+.pt-5 { padding-top: 1.25rem; }
 .mt-4 { margin-top: 1rem; }
 /* 大きさを変える棒。**押せる大きさを保つこと** */
 .ft-range { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px;
@@ -23950,15 +23895,10 @@ function AppMain() {
        **出したままにしないこと。** 次の画面の内容と重なって読みにくい */
     const [selecting, setSelecting] = (0, react_1.useState)(false); // えらぶ最中かどうか（＋を隠すため）
     const [viewDate, setViewDate] = (0, react_1.useState)(todayStr()); // Todayでいま見ている日
-    const [kindOpen, setKindOpen] = (0, react_1.useState)(null);
-    const [kindQ, setKindQ] = (0, react_1.useState)("");
     const [inPlan, setInPlan] = (0, react_1.useState)(null); // 計画の中で記録を作るとき
     const [inFolder, setInFolder] = (0, react_1.useState)(null); // フォルダの中で記録を作るとき
     const [addPlanOpen, setAddPlanOpen] = (0, react_1.useState)(false);
-    const [addPlanKind, setAddPlanKind] = (0, react_1.useState)(null);
-    const [addKindOpen, setAddKindOpen] = (0, react_1.useState)(false);
     const [addFolderOpen, setAddFolderOpen] = (0, react_1.useState)(false);
-    const [planPick, setPlanPick] = (0, react_1.useState)(false);
     const [editing, setEditing] = (0, react_1.useState)(null);
     const [dayOpen, setDayOpen] = (0, react_1.useState)(null);
     const [planOpen, setPlanOpen] = (0, react_1.useState)(null);
@@ -24184,16 +24124,9 @@ function AppMain() {
     };
     /* --- 計画 --- */
     /* **色を持たせないこと。** 計画も種類も、色は表示設定でひとつだけ決める */
-    const addKind = (name) => setKinds([...kinds, { id: uid(), name, pinned: false, createdAt: new Date().toISOString() }]);
-    const togglePinKind = (k) => setKinds(kinds.map((x) => (x.id === k.id ? { ...x, pinned: !x.pinned } : x)));
     const togglePinFolder = (f) => setFolders(folders.map((x) => (x.id === f.id ? { ...x, pinned: !x.pinned } : x)));
-    const renameKind = (id, name, color) => setKinds(kinds.map((k) => (k.id === id ? { ...k, name, color: color || "" } : k)));
-    const deleteKind = (id) => {
-        setKinds(kinds.filter((k) => k.id !== id));
-        setPlans(plans.map((p) => (p.kindId === id ? { ...p, kindId: null } : p)));
-    };
-    const addPlan = (kindId, name) => {
-        const p = { ...emptyPlan(kindId), name: name || "新しい計画" };
+    const addPlan = (_unused, name, icon) => {
+        const p = { ...emptyPlan(), name: name || "新しい計画", icon: icon || "" };
         setPlans([...plans, p]);
         setPlanOpen(p.id);
     };
@@ -24205,7 +24138,7 @@ function AppMain() {
     const deletePlan = (id) => { setPlans(plans.filter((x) => x.id !== id)); setPlanOpen(null); tell("計画を削除しました"); };
     /* 複数の日付に、同じチェックリストをまとめて作る */
     /* --- フォルダ --- */
-    const addFolder = (name) => { const f = emptyFolder(name); setFolders([...folders, f]); setFolderOpen(f.id); };
+    const addFolder = (name, icon) => { const f = { ...emptyFolder(name), icon: icon || "" }; setFolders([...folders, f]); setFolderOpen(f.id); };
     const changeFolder = (f) => setFolders(folders.map((x) => (x.id === f.id ? f : x)));
     const deleteFolder = (id) => { setFolders(folders.filter((x) => x.id !== id)); setFolderOpen(null); tell("フォルダを削除しました"); };
     /* --- タグの整理。一覧と記録の両方に同じことをすること --- */
@@ -24274,11 +24207,9 @@ function AppMain() {
     const swapScoped = (rec, scope, dateKey) => setSwapAsk({ rec, scope, dateKey });
     /* 右下の＋。押したときの働きは、いま見ている画面によって変わる */
     const onFab = () => {
-        /* 計画タブでは、いつも「計画」か「種類」かを聞く。
-           **種類がないときに、いきなり種類作りへ入れないこと。**
-           はじめて使う人は「まず計画を書きたい」ので、そこで止まってしまう */
+        /* **何を作るか聞かないこと。** 計画タブの＋は、いつも計画 */
         if (tab === "plan") {
-            setPlanPick(true);
+            setAddPlanOpen(true);
             return;
         }
         if (tab === "folder") {
@@ -24302,7 +24233,6 @@ function AppMain() {
         setDayOpen(null);
         setPlanOpen(null);
         setFolderOpen(null);
-        setKindOpen(null);
         setSettingsOpen(false);
         setTagScreenOpen(false);
         setBackupOpen(false);
@@ -24310,9 +24240,8 @@ function AppMain() {
         setTimeout(() => { fn(); setMenuInstant(false); }, 0);
     };
     const theme = THEMES.find((t) => t.key === prefs.theme) || THEMES[0];
-    (0, react_1.useEffect)(() => { tell(""); }, [editing, dayOpen, planOpen, kindOpen, folderOpen, settingsOpen, backupOpen, tagScreenOpen, helpOpen, tab]); // eslint-disable-line
+    (0, react_1.useEffect)(() => { tell(""); }, [editing, dayOpen, planOpen, folderOpen, settingsOpen, backupOpen, tagScreenOpen, helpOpen, tab]); // eslint-disable-line
     const planObj = plans.find((p) => p.id === planOpen) || null;
-    const kindObj = kinds.find((k) => k.id === kindOpen) || null;
     const folderObj = folders.find((f) => f.id === folderOpen) || null;
     const menuItems = [
         { label: "表示設定", desc: "色・文字の大きさ・動き", icon: react_1.default.createElement(lucide_react_1.Palette, { size: 19 }), onClick: () => goFromMenu(() => setSettingsOpen(true)) },
@@ -24343,7 +24272,7 @@ function AppMain() {
                                         tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
                                             react_1.default.createElement(TodayScreen, { records: records, plans: plans, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
-                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, kinds: kinds, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onOpenKind: (k, kq) => { setKindQ(kq || ""); setKindOpen(k.id); }, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onPinKind: togglePinKind, onChangePlan: changePlan, onDeletePlan: deletePlan, onRenameKind: renameKind, onDeleteKind: deleteKind, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
+                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
                                         tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder }))))),
                                 loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                                 loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
@@ -24356,20 +24285,11 @@ function AppMain() {
                                         addScoped(a.scope, a.dateKey);
                                     } })),
                                 typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: scoped ? SCOPED_TYPES : TYPES })),
-                                planPick && (react_1.default.createElement(TypePickSheet, { title: "\u8FFD\u52A0\u3059\u308B\u3082\u306E", types: ["__kind", PLAN_TYPE], labels: { __kind: "カテゴリ" }, icons: { __kind: react_1.default.createElement(lucide_react_1.Layers, { size: 22 }) }, colorKeys: { __kind: PLAN_TYPE }, onCancel: () => setPlanPick(false), onPick: (k) => { setPlanPick(false); if (k === PLAN_TYPE)
-                                        setAddPlanOpen(true);
-                                    else
-                                        setAddKindOpen(true); } })),
-                                addKindOpen && (react_1.default.createElement(NameDialog, { title: "\u30AB\u30C6\u30B4\u30EA\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u52C9\u5F37\uFF0F\u304B\u3089\u3060\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddKindOpen(false), onConfirm: (n) => { addKind(n); setAddKindOpen(false); } })),
-                                addPlanOpen && (react_1.default.createElement(NameDialog, { title: "\u8A08\u753B\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u82F1\u8A9E\uFF0F\u4F53\u3065\u304F\u308A \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddPlanOpen(false), 
-                                    /* **種類がひとつでも、勝手にそこへ入れないこと。**
-                                       計画はまず「種類なし」で独立して並び、あとから種類へ移せる */
-                                    onConfirm: (n) => { addPlan(addPlanKind || null, n); setAddPlanOpen(false); setAddPlanKind(null); } })),
-                                addFolderOpen && (react_1.default.createElement(NameDialog, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", label: "\u540D\u524D", placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", confirmLabel: "\u4F5C\u6210", onCancel: () => setAddFolderOpen(false), onConfirm: (n) => { addFolder(n); setAddFolderOpen(false); } })),
+                                addPlanOpen && (react_1.default.createElement(NameIconSheet, { title: "\u8A08\u753B\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: true, photo: false, placeholder: "\u82F1\u8A9E\uFF0F\u4F53\u3065\u304F\u308A \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), onCancel: () => setAddPlanOpen(false), onSave: (n, ic) => { addPlan(null, n, ic); setAddPlanOpen(false); } })),
+                                addFolderOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: false, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 28 }), onCancel: () => setAddFolderOpen(false), onSave: (n, ic) => { addFolder(n, ic); setAddFolderOpen(false); } })),
                                 editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
                                 dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                                kindObj && (react_1.default.createElement(KindScreen, { kind: kindObj, plans: plans, records: records, initialQ: kindQ, onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onClose: () => setKindOpen(null), onOpenPlan: (p) => setPlanOpen(p.id), onAddPlan: (k) => { setAddPlanKind(k.id); setAddPlanOpen(true); }, onRename: renameKind, onDelete: deleteKind, onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }) })),
-                                planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, kinds: kinds, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
+                                planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
                                         if (type) {
                                             setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
                                             return;
