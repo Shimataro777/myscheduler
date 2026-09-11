@@ -17419,7 +17419,14 @@ const FOLDER_TYPE = "folder";
 /* 表示設定で色を決められるもの。
    **計画とフォルダは入れないこと。** ひとつずつ好きな色にできるので、
    共通の色をわざわざ決める意味がない。決めていないものは基調の色になる */
-const COLORED_TYPES = [...TYPES, STEP_TYPE, FOLDER_TYPE];
+/* 表示設定で色を決められるもの。
+   **スケジュールを入れないこと。** 予定は「スケジュールの色」のわくで決める */
+const COLORED_TYPES = [...TYPES.filter((t) => t !== "schedule"), STEP_TYPE, FOLDER_TYPE];
+/* 予定の色は「3つのわく」で覚える。
+   **色そのものを記録に持たせないこと。** あとで色を変えたときに、
+   そのわくの記録がまとめて変わらない。記録はわくの名前（c1/c2/c3）だけ持つ */
+const SCHEDULE_SLOTS = ["c1", "c2", "c3"];
+const DEFAULT_SCHEDULE_COLORS = { c1: "rose", c2: "amber", c3: "slate" };
 const TYPE_LABELS = {
     memo: "メモ", media: "画像", checklist: "リスト",
     link: "リンク", schedule: "スケジュール", // link は古い記録の読み込みだけで使う
@@ -17443,27 +17450,32 @@ const COLORS = [
     /* deep ＝ 字やしるしの色／mid ＝ 帯や線／soft ＝ 下じき／line ＝ ふちどり。
        **どれも濃くしすぎないこと。** 記録がいくつも並ぶので、
        一つひとつが強いと画面ぜんたいが騒がしくなる */
+    /* 虹の並び（赤→橙→黄→緑→青→藍→紫）＋ 灰。
+       **この順を入れかえないこと。** えらぶ画面でも、この順のまま並べる */
+    { key: "red", label: "あか", deep: "#C9615E", mid: "#E8908D", soft: "#FDF4F3", line: "#F6D8D6" },
+    { key: "orange", label: "だいだい", deep: "#C8783C", mid: "#E8A874", soft: "#FDF6EF", line: "#F5DFC8" },
+    { key: "amber", label: "やまぶき", deep: "#C08F3C", mid: "#E5BE72", soft: "#FDF8EF", line: "#F3E3C4" },
     { key: "teal", label: "あさぎ", deep: "#2E9E80", mid: "#5FCBAE", soft: "#F2FBF8", line: "#CDEDE2" },
     { key: "sky", label: "そら", deep: "#3E96C8", mid: "#77C0E4", soft: "#F2F9FD", line: "#CDE7F6" },
-    { key: "indigo", label: "ききょう", deep: "#6272C7", mid: "#93A1E0", soft: "#F4F6FD", line: "#D8DEF6" },
+    { key: "indigo", label: "あい", deep: "#4F63A8", mid: "#8393CE", soft: "#F4F6FC", line: "#D6DDF2" },
     { key: "violet", label: "ふじ", deep: "#8A7BC8", mid: "#B3A6E3", soft: "#F7F5FD", line: "#E2DBF7" },
-    { key: "rose", label: "さくら", deep: "#D4788D", mid: "#EFA3B4", soft: "#FEF4F6", line: "#F8D9E0" },
-    { key: "amber", label: "やまぶき", deep: "#C08F3C", mid: "#E5BE72", soft: "#FDF8EF", line: "#F3E3C4" },
-    { key: "green", label: "みどり", deep: "#5AA05C", mid: "#8FC98F", soft: "#F4FAF4", line: "#D5EBD5" },
     { key: "slate", label: "はいいろ", deep: "#6B7783", mid: "#9CA7B2", soft: "#F7F8FA", line: "#DFE4E9" },
 ];
 const colorOf = (key) => COLORS.find((c) => c.key === key) || COLORS[0];
 const DEFAULT_TYPE_COLOR = {
     memo: "slate", media: "violet", checklist: "teal", link: "sky", schedule: "rose",
-    step: "indigo", folder: "sky",
+    step: "violet", folder: "sky",
 };
 /* テーマ色（画面ぜんたいの基調）。--th-* を差し替えると配色が一括で変わる */
 const THEMES = [
-    /* 画面の基調も淡く。**濃く沈んだ色にしないこと** */
+    /* 画面の基調も淡く。**濃く沈んだ色にしないこと**。
+       **記録の色と同じ8つ・同じ虹の並びにそろえること**（選ぶ場所で数が変わると迷う） */
+    { key: "red", label: "あか", swatch: "#EFA5A3", vars: { 50: "#FDF6F6", 100: "#FBEBEA", 200: "#F5D5D3", 300: "#EFBEBB", 600: "#F0ACAA", 700: "#EFA5A3", 800: "#D98F8C", 900: "#BC7673", 950: "#9E5F5D" } },
+    { key: "orange", label: "だいだい", swatch: "#EFB185", vars: { 50: "#FDF8F4", 100: "#FBEFE6", 200: "#F6DDC9", 300: "#F1C9A8", 600: "#F0B992", 700: "#EFB185", 800: "#D99B6E", 900: "#BB825A", 950: "#9C6B49" } },
+    { key: "amber", label: "やまぶき", swatch: "#EFCB86", vars: { 50: "#FEFBF3", 100: "#FCF4E2", 200: "#F8E7C2", 300: "#F3D89F", 600: "#F1D191", 700: "#EFCB86", 800: "#D9B26B", 900: "#B99457", 950: "#9A7A42" } },
     { key: "teal", label: "あさぎ", swatch: "#6FC7AC", vars: { 50: "#F4FBF8", 100: "#E4F5EE", 200: "#C6EBDD", 300: "#A2DEC9", 600: "#7FD0B7", 700: "#6FC7AC", 800: "#57B79B", 900: "#479B83", 950: "#3B8370" } },
     { key: "sky", label: "そら", swatch: "#87C4E4", vars: { 50: "#F4FAFD", 100: "#E5F2FA", 200: "#C9E5F5", 300: "#A5D3EC", 600: "#96CBE8", 700: "#87C4E4", 800: "#6FAFD2", 900: "#5C95B4", 950: "#4A7E9B" } },
-    { key: "rose", label: "さくら", swatch: "#F0A6B4", vars: { 50: "#FEF6F7", 100: "#FCEAEE", 200: "#F8D3DA", 300: "#F4BBC6", 600: "#F2AFBC", 700: "#F0A6B4", 800: "#DC8F9E", 900: "#C07786", 950: "#A55F6D" } },
-    { key: "amber", label: "やまぶき", swatch: "#EFCB86", vars: { 50: "#FEFBF3", 100: "#FCF4E2", 200: "#F8E7C2", 300: "#F3D89F", 600: "#F1D191", 700: "#EFCB86", 800: "#D9B26B", 900: "#B99457", 950: "#9A7A42" } },
+    { key: "indigo", label: "あい", swatch: "#94A2D6", vars: { 50: "#F6F7FC", 100: "#ECEFF9", 200: "#D8DEF2", 300: "#BDC7E8", 600: "#A0ADDB", 700: "#94A2D6", 800: "#7D8CC2", 900: "#6674A5", 950: "#545F89" } },
     { key: "violet", label: "ふじ", swatch: "#BCA9DF", vars: { 50: "#F9F7FD", 100: "#F1ECFA", 200: "#E2D8F3", 300: "#CFC0EA", 600: "#C5B3E3", 700: "#BCA9DF", 800: "#A492CB", 900: "#8B79AF", 950: "#74628F" } },
     { key: "slate", label: "はいいろ", swatch: "#9BA6B2", vars: { 50: "#F8F9FA", 100: "#F0F2F5", 200: "#E0E4E9", 300: "#C9D0D8", 600: "#A7B1BC", 700: "#9BA6B2", 800: "#86919D", 900: "#6F7984", 950: "#5B646E" } },
 ];
@@ -17551,6 +17563,8 @@ const DEFAULT_PREFS = {
     motion: true,
     fontSize: "s",
     typeColor: { ...DEFAULT_TYPE_COLOR },
+    /* 予定の3つのわくに、どの色を当てるか */
+    schedColor: { ...DEFAULT_SCHEDULE_COLORS },
     typeName: {}, // 記録の種類の呼び名を変えたいとき
     /* 並び順。**画面ごとに別々に覚えないこと。** 表示設定でひとつだけ決める
        （"name" ＝ 名前順／"created" ＝ 作成順） */
@@ -17571,6 +17585,7 @@ async function loadPrefs() {
         return {
             ...DEFAULT_PREFS, ...(p && typeof p === "object" ? p : {}),
             typeColor: { ...DEFAULT_TYPE_COLOR, ...((p && p.typeColor) || {}) },
+            schedColor: { ...DEFAULT_SCHEDULE_COLORS, ...((p && p.schedColor) || {}) },
             typeName: { ...((p && p.typeName) || {}) },
         };
     }
@@ -17603,6 +17618,12 @@ function itemColor(item, fallback) {
 function planColorOf(plan, fallback) {
     const art = plan && plan.icon && ICON_ART[plan.icon];
     return art && art.color ? colorOf(art.color) : fallback;
+}
+/* 予定の「わく」から、いまの色をひく */
+function useSchedColor() {
+    const prefs = react_1.default.useContext(PrefsContext) || DEFAULT_PREFS;
+    const map = prefs.schedColor || DEFAULT_SCHEDULE_COLORS;
+    return (slot) => (slot && map[slot] ? colorOf(map[slot]) : null);
 }
 function useTypeColor(type) {
     const map = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
@@ -17666,6 +17687,8 @@ function migrateRecord(r) {
         type,
         tags: normalizeTags(r.tags),
         comment: typeof r.comment === "string" ? r.comment : "",
+        /* 予定だけが持てる「色のわく」。ほかの種類では空のまま */
+        color: (r.type === "schedule" && SCHEDULE_SLOTS.includes(r.color)) ? r.color : "",
         mark: markOf(r.mark) ? r.mark : null,
         scope: (r.scope === "week" || r.scope === "month") ? r.scope : "day",
         pinned: !!r.pinned,
@@ -18210,35 +18233,63 @@ function shrinkImage(source, maxSide = 900) {
    **単色のしるしにしないこと。** ほかの記号と見分けがつかない。
    絵柄は5つだけ用意して、それ以外は自分の写真を入れてもらう */
 const ICON_ART = {
-    home: { label: "家族", bg: "#EAF6EE", color: "green", draw: (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement("path", { d: "M6 15 L18 6 L30 15 V29 a2 2 0 0 1-2 2 H8 a2 2 0 0 1-2-2 Z", fill: "#FFFFFF", stroke: "#4B7A5A", strokeWidth: "1.8", strokeLinejoin: "round" }),
-            react_1.default.createElement("path", { d: "M4 15.5 L18 4.5 L32 15.5", fill: "none", stroke: "#4B7A5A", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round" }),
-            react_1.default.createElement("rect", { x: "14.5", y: "20", width: "7", height: "11", rx: "1", fill: "#BFE0CB" }),
-            react_1.default.createElement("path", { d: "M27 22 c4-1 5-4 5-4 s-3.5-.5-5 1.6 c-1 1.5 0 2.4 0 2.4 Z", fill: "#7FBF95" }),
-            react_1.default.createElement("path", { d: "M28 27 c4-1 5-4 5-4 s-3.5-.5-5 1.6 c-1 1.5 0 2.4 0 2.4 Z", fill: "#A5D4B5" }))) },
-    study: { label: "勉強", bg: "#EAF2FB", color: "indigo", draw: (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement("path", { d: "M5 12 h11 a3 3 0 0 1 2 1.2 A3 3 0 0 1 20 12 h11 v17 H20 a2 2 0 0 0-2 1 a2 2 0 0 0-2-1 H5 Z", fill: "#FFFFFF", stroke: "#3E6EA8", strokeWidth: "1.8", strokeLinejoin: "round" }),
-            react_1.default.createElement("path", { d: "M18 13.5 V30", stroke: "#3E6EA8", strokeWidth: "1.6" }),
-            react_1.default.createElement("path", { d: "M8 17 h7 M8 20.5 h7 M21 17 h7 M21 20.5 h7", stroke: "#9CC2E6", strokeWidth: "1.6", strokeLinecap: "round" }),
-            react_1.default.createElement("path", { d: "M18 3 L30 8 L18 13 L6 8 Z", fill: "#2F5C8F" }),
-            react_1.default.createElement("path", { d: "M26 10 v5", stroke: "#2F5C8F", strokeWidth: "1.6", strokeLinecap: "round" }))) },
-    gift: { label: "楽しみ", bg: "#EAF4FA", color: "sky", draw: (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement("rect", { x: "5", y: "15", width: "26", height: "16", rx: "2", fill: "#FFFFFF", stroke: "#3E86AE", strokeWidth: "1.8" }),
-            react_1.default.createElement("rect", { x: "4", y: "11", width: "28", height: "6", rx: "1.6", fill: "#BFE2F2", stroke: "#3E86AE", strokeWidth: "1.8" }),
-            react_1.default.createElement("path", { d: "M18 11 V31", stroke: "#3E86AE", strokeWidth: "2" }),
-            react_1.default.createElement("path", { d: "M18 11 c-5 0-7-2-7-4 s4-3 7 4 Z", fill: "#7FC4E3", stroke: "#3E86AE", strokeWidth: "1.5", strokeLinejoin: "round" }),
-            react_1.default.createElement("path", { d: "M18 11 c5 0 7-2 7-4 s-4-3-7 4 Z", fill: "#7FC4E3", stroke: "#3E86AE", strokeWidth: "1.5", strokeLinejoin: "round" }))) },
-    work: { label: "仕事", bg: "#F4EFEA", color: "amber", draw: (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement("path", { d: "M13 11 v-2 a2 2 0 0 1 2-2 h6 a2 2 0 0 1 2 2 v2", fill: "none", stroke: "#8A6A4B", strokeWidth: "1.8", strokeLinecap: "round" }),
-            react_1.default.createElement("rect", { x: "4", y: "11", width: "28", height: "19", rx: "2.5", fill: "#FFFFFF", stroke: "#8A6A4B", strokeWidth: "1.8" }),
-            react_1.default.createElement("path", { d: "M4 19 h28", stroke: "#8A6A4B", strokeWidth: "1.6" }),
-            react_1.default.createElement("rect", { x: "14.5", y: "16.5", width: "7", height: "5", rx: "1.2", fill: "#E0C9AC", stroke: "#8A6A4B", strokeWidth: "1.4" }))) },
-    travel: { label: "旅行", bg: "#EAF1F7", color: "sky", draw: (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement("path", { d: "M17.6 3.2 c1.5 0 2.6 1.5 2.6 3.4 v7.6 l11.4 6.6 v3.4 l-11.4-3.4 v5.6 l3.6 2.6 v2.4 l-6.2-1.8 l-6.2 1.8 v-2.4 l3.6-2.6 v-5.6 L3.6 24.2 v-3.4 L15 14.2 V6.6 c0-1.9 1.1-3.4 2.6-3.4 Z", fill: "#CFE2F1", stroke: "#39628C", strokeWidth: "1.7", strokeLinejoin: "round" }),
-            react_1.default.createElement("circle", { cx: "17.6", cy: "9", r: "1.3", fill: "#39628C" }))) },
-    health: { label: "心身", bg: "#FBEDF0", color: "rose", draw: (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement("path", { d: "M18 30 C7 22 4 17 4 13.5 A6.5 6.5 0 0 1 18 10 A6.5 6.5 0 0 1 32 13.5 C32 17 29 22 18 30 Z", fill: "#F6C3CE", stroke: "#B4566E", strokeWidth: "1.8", strokeLinejoin: "round" }),
-            react_1.default.createElement("path", { d: "M7 19 h6 l2.5-4 l3 8 l2.5-4 h8", fill: "none", stroke: "#B4566E", strokeWidth: "1.9", strokeLinecap: "round", strokeLinejoin: "round" }))) },
+    /* **その色を感じられる絵にすること。** 色だけ変えて絵が別の色のままだと、札がちぐはぐに見える。
+       色わりは虹の並びに沿わせてある（心身=赤／楽しみ=橙／お金=黄／勉強=緑／
+       旅行=青／創作=藍／家族=紫／仕事=灰） */
+    health: { label: "心身", bg: "#FCF0EF", color: "red", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("path", { d: "M18 30 C7 22 4 17 4 13.5 A6.5 6.5 0 0 1 18 10 A6.5 6.5 0 0 1 32 13.5 C32 17 29 22 18 30 Z", fill: "#F3BDBB", stroke: "#B85451", strokeWidth: "1.8", strokeLinejoin: "round" }),
+            react_1.default.createElement("path", { d: "M7 19 h6 l2.5-4 l3 8 l2.5-4 h8", fill: "none", stroke: "#B85451", strokeWidth: "1.9", strokeLinecap: "round", strokeLinejoin: "round" }))) },
+    gift: { label: "楽しみ", bg: "#FBF2E9", color: "orange", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("rect", { x: "5", y: "15", width: "26", height: "16", rx: "2", fill: "#FFFFFF", stroke: "#B96C33", strokeWidth: "1.8" }),
+            react_1.default.createElement("rect", { x: "4", y: "11", width: "28", height: "6", rx: "1.6", fill: "#F2CFA9", stroke: "#B96C33", strokeWidth: "1.8" }),
+            react_1.default.createElement("path", { d: "M18 11 V31", stroke: "#B96C33", strokeWidth: "2" }),
+            react_1.default.createElement("path", { d: "M18 11 c-5 0-7-2-7-4 s4-3 7 4 Z", fill: "#E8A874", stroke: "#B96C33", strokeWidth: "1.5", strokeLinejoin: "round" }),
+            react_1.default.createElement("path", { d: "M18 11 c5 0 7-2 7-4 s-4-3-7 4 Z", fill: "#E8A874", stroke: "#B96C33", strokeWidth: "1.5", strokeLinejoin: "round" }))) },
+    money: { label: "お金", bg: "#FBF6E9", color: "amber", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("ellipse", { cx: "14", cy: "26", rx: "9.5", ry: "4", fill: "#EFD79E", stroke: "#B08334", strokeWidth: "1.7" }),
+            react_1.default.createElement("path", { d: "M4.5 26 v-3.5 a9.5 4 0 0 0 19 0 V26", fill: "#EFD79E", stroke: "#B08334", strokeWidth: "1.7", strokeLinejoin: "round" }),
+            react_1.default.createElement("ellipse", { cx: "14", cy: "22.5", rx: "9.5", ry: "4", fill: "#F5E7C2", stroke: "#B08334", strokeWidth: "1.7" }),
+            react_1.default.createElement("path", { d: "M4.5 22.5 v-3.5 a9.5 4 0 0 0 19 0 v3.5", fill: "#F5E7C2", stroke: "#B08334", strokeWidth: "1.7", strokeLinejoin: "round" }),
+            react_1.default.createElement("ellipse", { cx: "14", cy: "19", rx: "9.5", ry: "4", fill: "#FBF3DC", stroke: "#B08334", strokeWidth: "1.7" }),
+            react_1.default.createElement("circle", { cx: "26", cy: "11", r: "6", fill: "#F5E7C2", stroke: "#B08334", strokeWidth: "1.8" }),
+            react_1.default.createElement("path", { d: "M26 7.5 v7 M23.8 9.6 h4.4 M23.8 12.2 h4.4", stroke: "#B08334", strokeWidth: "1.6", strokeLinecap: "round" }))) },
+    study: { label: "勉強", bg: "#E9F7F2", color: "teal", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("path", { d: "M5 12 h11 a3 3 0 0 1 2 1.2 A3 3 0 0 1 20 12 h11 v17 H20 a2 2 0 0 0-2 1 a2 2 0 0 0-2-1 H5 Z", fill: "#FFFFFF", stroke: "#2E9E80", strokeWidth: "1.8", strokeLinejoin: "round" }),
+            react_1.default.createElement("path", { d: "M18 13.5 V30", stroke: "#2E9E80", strokeWidth: "1.6" }),
+            react_1.default.createElement("path", { d: "M8 17 h7 M8 20.5 h7 M21 17 h7 M21 20.5 h7", stroke: "#8FDCC5", strokeWidth: "1.6", strokeLinecap: "round" }),
+            react_1.default.createElement("path", { d: "M18 3 L30 8 L18 13 L6 8 Z", fill: "#2E9E80" }),
+            react_1.default.createElement("path", { d: "M26 10 v5", stroke: "#2E9E80", strokeWidth: "1.6", strokeLinecap: "round" }))) },
+    travel: { label: "旅行", bg: "#E8F3FA", color: "sky", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("path", { d: "M13 10 v-2 a2 2 0 0 1 2-2 h6 a2 2 0 0 1 2 2 v2", fill: "none", stroke: "#3E96C8", strokeWidth: "1.8", strokeLinecap: "round" }),
+            react_1.default.createElement("rect", { x: "4", y: "10", width: "28", height: "20", rx: "3", fill: "#BFDFF2", stroke: "#3E96C8", strokeWidth: "1.8" }),
+            react_1.default.createElement("rect", { x: "14.5", y: "10", width: "7", height: "20", fill: "#FFFFFF", opacity: ".7" }),
+            react_1.default.createElement("path", { d: "M14.5 10 v20 M21.5 10 v20", stroke: "#3E96C8", strokeWidth: "1.5" }),
+            react_1.default.createElement("path", { d: "M8 30 v2 M28 30 v2", stroke: "#3E96C8", strokeWidth: "1.8", strokeLinecap: "round" }))) },
+    craft: { label: "創作・趣味", bg: "#F1F3FB", color: "indigo", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("path", { d: "M15 5 c7 0 13 4.6 13 10.4 c0 3.4-2.6 4.6-4.8 4.6 h-2.4 c-1.8 0-3 1-3 2.4 c0 1 .6 1.6 .6 2.6 c0 1.6-1.4 2.6-3.4 2.6 C8.4 27.6 3 22.4 3 16 C3 9.8 8.4 5 15 5 Z", fill: "#FFFFFF", stroke: "#46589B", strokeWidth: "1.8", strokeLinejoin: "round" }),
+            react_1.default.createElement("circle", { cx: "10", cy: "12", r: "2.1", fill: "#E8908D" }),
+            react_1.default.createElement("circle", { cx: "16.5", cy: "9.5", r: "2.1", fill: "#E5BE72" }),
+            react_1.default.createElement("circle", { cx: "22", cy: "13", r: "2.1", fill: "#5FCBAE" }),
+            react_1.default.createElement("circle", { cx: "9", cy: "19", r: "2.1", fill: "#8393CE" }),
+            react_1.default.createElement("path", { d: "M25 30 l7-7 a1.8 1.8 0 0 0-2.6-2.6 l-7 7 Z", fill: "#B3A6E3", stroke: "#46589B", strokeWidth: "1.6", strokeLinejoin: "round" }))) },
+    home: { label: "家族", bg: "#F4F1FC", color: "violet", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("path", { d: "M6 15 L18 6 L30 15 V29 a2 2 0 0 1-2 2 H8 a2 2 0 0 1-2-2 Z", fill: "#FFFFFF", stroke: "#7A69BE", strokeWidth: "1.8", strokeLinejoin: "round" }),
+            react_1.default.createElement("path", { d: "M4 15.5 L18 4.5 L32 15.5", fill: "none", stroke: "#7A69BE", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round" }),
+            react_1.default.createElement("rect", { x: "14.5", y: "20", width: "7", height: "11", rx: "1", fill: "#CFC4EE" }),
+            react_1.default.createElement("rect", { x: "8.5", y: "18", width: "4.5", height: "4", rx: "1", fill: "#E2DBF7" }),
+            react_1.default.createElement("rect", { x: "23", y: "18", width: "4.5", height: "4", rx: "1", fill: "#E2DBF7" }))) },
+    work: { label: "仕事", bg: "#F5F6F8", color: "slate", draw: (react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("rect", { x: "5", y: "9", width: "14", height: "22", rx: "1.6", fill: "#FFFFFF", stroke: "#66717D", strokeWidth: "1.8" }),
+            react_1.default.createElement("rect", { x: "19", y: "15", width: "12", height: "16", rx: "1.6", fill: "#FFFFFF", stroke: "#66717D", strokeWidth: "1.8" }),
+            react_1.default.createElement("rect", { x: "8", y: "12.5", width: "3.2", height: "3.2", rx: ".6", fill: "#B9C2CB" }),
+            react_1.default.createElement("rect", { x: "13", y: "12.5", width: "3.2", height: "3.2", rx: ".6", fill: "#B9C2CB" }),
+            react_1.default.createElement("rect", { x: "8", y: "18", width: "3.2", height: "3.2", rx: ".6", fill: "#B9C2CB" }),
+            react_1.default.createElement("rect", { x: "13", y: "18", width: "3.2", height: "3.2", rx: ".6", fill: "#B9C2CB" }),
+            react_1.default.createElement("rect", { x: "22", y: "19", width: "3", height: "3", rx: ".6", fill: "#B9C2CB" }),
+            react_1.default.createElement("rect", { x: "26.5", y: "19", width: "3", height: "3", rx: ".6", fill: "#B9C2CB" }),
+            react_1.default.createElement("rect", { x: "10.5", y: "24", width: "4.5", height: "7", rx: ".8", fill: "#DDE2E7" }),
+            react_1.default.createElement("rect", { x: "23", y: "25", width: "4", height: "6", rx: ".8", fill: "#DDE2E7" }),
+            react_1.default.createElement("path", { d: "M3 31 h30", stroke: "#66717D", strokeWidth: "1.9", strokeLinecap: "round" }))) },
 };
 const ICON_KEYS = Object.keys(ICON_ART);
 /* 計画・フォルダの絵。自分の写真（photo: か data:）なら、そのまま出す */
@@ -18523,8 +18574,9 @@ function Switch({ on, onChange, label }) {
    日時のように「何の日時か」を言わないと分からないところだけで使う */
 /* 設定のような1行。**縦を詰めないこと。**
    iPhoneのカレンダーと同じくらい（64px）ないと、指がねらいを外す */
-function SheetRow({ label, children, last, help }) {
-    return (react_1.default.createElement("div", { className: "flex items-center gap-2 px-4 py-2 min-h-[58px] " + (last ? "" : "border-b border-neutral-200") },
+function SheetRow({ label, children, last, help, className }) {
+    return (react_1.default.createElement("div", { className: "flex items-center gap-2 px-4 py-2 min-h-[58px] "
+            + (last ? "" : "border-b border-neutral-200") + (className ? " " + className : "") },
         react_1.default.createElement("span", { className: "text-[16px] text-neutral-900 min-w-0 truncate" }, label),
         help && react_1.default.createElement(HelpTip, { text: help, label: typeof label === "string" ? label : undefined }),
         react_1.default.createElement("span", { className: "flex-1" }),
@@ -19619,7 +19671,7 @@ function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, 
    **設定を変えたら「保存」で決める形にすること。**
    さわるたびに反映すると、決めたつもりがないのに変わってしまう
    ============================================================ */
-function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保存", disabled }) {
+function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保存", disabled, hideConfirm }) {
     const [closing, close] = useClosing(onCancel, 200);
     useLockBackground();
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483200 }, onClick: close },
@@ -19632,8 +19684,8 @@ function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保
                     react_1.default.createElement(lucide_react_1.X, { size: 20 }))),
             react_1.default.createElement("div", { className: "ft-sheet-body px-4 py-4" }, children),
             react_1.default.createElement("div", { className: "flex gap-2 px-4 py-3 border-t border-neutral-200 shrink-0", style: { paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" } },
-                react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 btn-h-lg text-[16px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                react_1.default.createElement("button", { type: "button", onClick: onConfirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[16px]" }, confirmLabel)))));
+                react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + (hideConfirm ? " w-full " : " flex-1 ") + "btn-h-lg text-[16px]" }, hideConfirm ? "とじる" : "キャンセル"),
+                !hideConfirm && (react_1.default.createElement("button", { type: "button", onClick: onConfirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[16px]" }, confirmLabel))))));
 }
 function ConfirmDialog({ title, body, confirmLabel = "削除する", danger = true, onConfirm, onCancel }) {
     const [closing, close] = useClosing(onCancel, 180);
@@ -20233,6 +20285,7 @@ function WhenRow({ rec, onChange, withTime }) {
    何を書く欄かは、欄の中の薄い字だけで分かるようにしてある。
    ============================================================ */
 function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTag, plans, onAutoDraft }) {
+    const slotColor = useSchedColor();
     const [rec, setRec] = (0, react_1.useState)(() => migrateRecord(initial) || emptyRecord("memo"));
     const [confirmDel, setConfirmDel] = (0, react_1.useState)(false);
     const [dirty, setDirty] = (0, react_1.useState)(false);
@@ -20340,6 +20393,15 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                     react_1.default.createElement("div", { className: "mt-2" },
                         react_1.default.createElement(TextArea, { value: rec.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" })))),
                 rec.type === "schedule" && (react_1.default.createElement(react_1.default.Fragment, null,
+                    react_1.default.createElement(RowCard, { className: "mb-3" },
+                        react_1.default.createElement(SheetRow, { label: "\u8272", last: true },
+                            react_1.default.createElement("span", { className: "flex items-center gap-1.5" }, SCHEDULE_SLOTS.map((slot) => {
+                                const c = slotColor(slot);
+                                const on = (rec.color || "") === slot;
+                                return (react_1.default.createElement("button", { key: slot, type: "button", onClick: () => set({ color: on ? "" : slot }), "aria-label": c.label, "aria-pressed": on, className: "w-10 h-10 rounded-full border-2 flex items-center justify-center ft-tap "
+                                        + (on ? "border-th-800" : "border-transparent") },
+                                    react_1.default.createElement("span", { className: "w-6 h-6 rounded-full", style: { background: c.mid } })));
+                            })))),
                     react_1.default.createElement(TextArea, { value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 3, placeholder: "\u4E88\u5B9A\u306E\u5185\u5BB9" }),
                     react_1.default.createElement("div", { className: "mt-3 space-y-2" },
                         react_1.default.createElement(TextInput, { value: rec.place, onChange: (e) => set({ place: e.target.value }), placeholder: "\u5834\u6240" }),
@@ -20485,9 +20547,12 @@ function restOfLines(r) {
    ・左は丸いしるしの列。時刻のある記録は、この列を縦線が串のように貫く
    ・枠で囲わず、うすい横線で区切るだけにする
    ============================================================ */
-function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable = true, selected, onSelect, lineUp, lineDown, onPin, showDate }) {
+function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable = true, selected, onSelect, onLongSelect, lineUp, lineDown, onPin, showDate }) {
     const N = useTypeNames();
-    const color = useTypeColor(r.type);
+    /* 予定は、えらんだ「わく」の色を使う（無ければ表示設定の色）。
+       あとで表示設定の色を変えると、そのわくの予定がまとめて変わる */
+    const slotColor = useSchedColor();
+    const color = (r.type === "schedule" && (slotColor(r.color) || slotColor("c1"))) || useTypeColor(r.type);
     const [moving, setMoving] = (0, react_1.useState)(null);
     const [photo, setPhoto] = (0, react_1.useState)(null); // 大きく見ている写真の番号
     const acts = react_1.default.useContext(RecordActionsContext);
@@ -20499,7 +20564,49 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
     /* えらべない札（フォルダで条件により入っているもの）は、押しても何も起きない */
     const tap = () => { if (selectMode && selectable)
         onSelect(r); };
-    return (react_1.default.createElement("div", { onClick: tap, className: (selectMode ? "relative flex gap-2 pb-2.5 pl-5 pr-4 " + (selectable ? "ft-tap cursor-pointer" : "") : CARD_SLOT), style: selectMode && !selectable ? { opacity: 0.55 } : undefined },
+    /* **長押しで、えらぶ形に入れること。** 上の「選択」まで指を運ばせない */
+    const press = (0, react_1.useRef)({ t: null, from: null, fired: false });
+    const stopPress = () => { if (press.current.t) {
+        clearTimeout(press.current.t);
+        press.current.t = null;
+    } };
+    (0, react_1.useEffect)(() => stopPress, []);
+    const pressProps = (!onLongSelect || selectMode) ? {} : {
+        onPointerDown: (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0)
+                return;
+            press.current.fired = false;
+            press.current.from = { x: e.clientX, y: e.clientY };
+            stopPress();
+            press.current.t = setTimeout(() => {
+                press.current.fired = true;
+                try {
+                    if (navigator.vibrate)
+                        navigator.vibrate(8);
+                }
+                catch (err) { /* 使えなくても構わない */ }
+                onLongSelect(r);
+            }, 480);
+        },
+        onPointerMove: (e) => {
+            const f = press.current.from;
+            if (!f)
+                return;
+            if (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10)
+                stopPress();
+        },
+        onPointerUp: stopPress,
+        onPointerCancel: stopPress,
+        onContextMenu: (e) => e.preventDefault(),
+        onClickCapture: (e) => {
+            if (press.current.fired) {
+                e.preventDefault();
+                e.stopPropagation();
+                press.current.fired = false;
+            }
+        },
+    };
+    return (react_1.default.createElement("div", { onClick: tap, ...pressProps, className: (selectMode ? "relative flex gap-2 pb-2.5 pl-5 pr-4 " + (selectable ? "ft-tap cursor-pointer" : "") : CARD_SLOT), style: selectMode && !selectable ? { opacity: 0.55 } : undefined },
         !selectMode && (lineUp || lineDown) && (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("span", { className: "absolute", "aria-hidden": "true", style: {
                     left: 7, width: 2, background: color.mid, opacity: 0.45,
@@ -20985,7 +21092,7 @@ function scheduleWhen(r) {
 /* ============================================================
    1日ごとの画面（全ての記録がタイムラインで並ぶ）
    ============================================================ */
-function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selectedIds, onSelect, onPin, hidden, order }) {
+function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selectedIds, onSelect, onPin, hidden, order, onLongSelect }) {
     const list = (0, react_1.useMemo)(() => {
         const own = records.filter((r) => isDayRec(r) && r.date === date);
         /* 繰り返しの記録は、その日ぶんの控えを作って並べる（元の記録は書き換えない） */
@@ -21027,7 +21134,7 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
        時刻のないものには線を引かない（つながっていないほうが正しい） */
     return (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r, i) => {
         const on = timed(r);
-        return (react_1.default.createElement(RecordRow, { key: r.id + (r.__repeat ? "-rep" : ""), r: r, repeated: r.__repeat, onEdit: onEdit, onToggleItem: onToggleItem, lineUp: on && i > 0 && timed(list[i - 1]), lineDown: on && i < list.length - 1 && timed(list[i + 1]), onPin: onPin, selectMode: selectMode, selected: !!selectedIds && selectedIds.has(r.id), onSelect: onSelect }));
+        return (react_1.default.createElement(RecordRow, { key: r.id + (r.__repeat ? "-rep" : ""), r: r, repeated: r.__repeat, onLongSelect: onLongSelect, onEdit: onEdit, onToggleItem: onToggleItem, lineUp: on && i > 0 && timed(list[i - 1]), lineDown: on && i < list.length - 1 && timed(list[i + 1]), onPin: onPin, selectMode: selectMode, selected: !!selectedIds && selectedIds.has(r.id), onSelect: onSelect }));
     })));
 }
 /* ============================================================
@@ -21267,6 +21374,10 @@ function useSelectMode(onDeleteMany, canSelect) {
     const [ids, setIds] = (0, react_1.useState)(() => new Set());
     const [confirm, setConfirm] = (0, react_1.useState)(false);
     const start = () => { setIds(new Set()); setOn(true); };
+    /* 長押しから入るとき。**押した記録を選んだ状態にすること。**
+       えらぶ形にしてから、もういちど押させない。
+       ただし、えらべないもの（フォルダの自動）は選ばない */
+    const startWith = (r, canPick = true) => { setIds(new Set(canPick && r ? [r.id] : [])); setOn(true); };
     const stop = () => { setOn(false); setIds(new Set()); };
     const toggle = (r) => setIds((s) => {
         const n = new Set(s);
@@ -21288,7 +21399,7 @@ function useSelectMode(onDeleteMany, canSelect) {
     const doDelete = () => { if (onDeleteMany)
         onDeleteMany(Array.from(ids)); setConfirm(false); stop(); };
     return {
-        on, ids, start, stop, toggle, setAll, allOf, confirm, setConfirm, doDelete,
+        on, ids, start, startWith, stop, toggle, setAll, allOf, confirm, setConfirm, doDelete,
         can: canSelect === undefined ? !!onDeleteMany : !!canSelect,
         canDelete: !!onDeleteMany,
     };
@@ -21480,18 +21591,22 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 react_1.default.createElement("span", { className: "inline-block" }, s.label)))))),
         react_1.default.createElement("div", { className: "px-5" },
             react_1.default.createElement(MonthNavHeader, { className: "mb-1 mt-1", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
-            span === "day" && (react_1.default.createElement("div", { className: "flex items-center gap-1 mt-1 mb-3" },
+            span === "day" && (sel.on ? (react_1.default.createElement("div", { className: "flex items-center gap-2 mt-1 mb-3" },
+                react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(dayList.filter((r) => !hidden.includes(r.type))), className: "h-9 px-2 -ml-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, sel.allOf(dayList.filter((r) => !hidden.includes(r.type))) ? "すべて解除" : "すべて選択"),
+                react_1.default.createElement("span", { className: "flex-1" }),
+                react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: "h-9 px-2 -mr-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86"))) : (react_1.default.createElement("div", { className: "flex items-center gap-1 mt-1 mb-3" },
                 react_1.default.createElement("button", { type: "button", onClick: () => setFilterOpen(true), "aria-label": "\u7A2E\u985E\u3067\u3057\u307C\u308B", className: "w-11 h-11 flex items-center justify-center rounded-full ft-tap ft-tap-icon relative "
                         + (hidden.length ? "text-th-800" : "text-neutral-500 hover:bg-neutral-100") },
                     react_1.default.createElement(lucide_react_1.Filter, { size: 20 }),
                     hidden.length > 0 && (react_1.default.createElement("span", { className: "absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-th-800" }))),
                 react_1.default.createElement("span", { className: "flex-1" }),
-                react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder })))),
+                react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
+                sel.can && (react_1.default.createElement("button", { type: "button", onClick: sel.start, className: "h-9 px-2 -mr-2 ml-1 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u9078\u629E")))))),
         upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "mb-1" }, upcoming.map(({ plan, list }) => (react_1.default.createElement("div", { key: plan.id, className: CARD_SLOT },
             react_1.default.createElement(PlanDueCard, { plan: plan, list: list, onOpen: () => onOpenPlan(plan) })))))),
         react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
             react_1.default.createElement("div", { key: span === "day" ? span + date : span, className: span === "day" ? pageCls : "" },
-                span === "day" && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin })),
+                span === "day" && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
                 span === "week" && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(WeekView, { start: weekStart, records: records, onOpenDay: (d) => { setDate(d); setSpan("day"); }, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selected: weekSel, onSelect: setWeekSel }),
                     react_1.default.createElement(DayPanel, { date: weekSel || todayInWeek, records: records, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, onOpenDay: (d) => { setDate(d); setSpan("day"); } }))),
@@ -21627,7 +21742,7 @@ function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDele
                     react_1.default.createElement(SelectButton, { sel: sel }),
                     react_1.default.createElement("span", { className: "flex-1" }),
                     react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }))),
-                react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle })),
+                react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
             react_1.default.createElement(SelectBar, { sel: sel, list: dayList }))));
 }
 /* ============================================================
@@ -21762,7 +21877,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
         react_1.default.createElement("div", { className: "px-5 max-w-2xl mx-auto w-full" }, !hasCriteria ? null : results.length === 0 ? (react_1.default.createElement("div", { className: "ft-noresult py-10 text-center" },
             react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement(ListHeadRow, { sel: sel, list: results, right: `${results.length}件`, sort: react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }) }),
-            react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle }))))))),
+            react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle, onLongSelect: sel.can ? (r2) => sel.startWith(r2) : null }))))))),
         react_1.default.createElement(SelectBar, { sel: sel, list: results }),
         tagOpen && (react_1.default.createElement(TagPickDialog, { title: "\u30BF\u30B0\u3067\u7D5E\u308A\u8FBC\u3080", selected: tags, known: knownTags, onApply: (v) => { setTags(v); setTagOpen(false); }, onCancel: () => setTagOpen(false) }))));
 }
@@ -21789,21 +21904,21 @@ function NameIconSheet({ title, initialName, initialIcon, placeholder, fallback,
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                 react_1.default.createElement(TextInput, { value: name, onChange: (e) => setName(e.target.value), placeholder: placeholder }))),
         react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-2" }, "\u30A2\u30A4\u30B3\u30F3"),
-        react_1.default.createElement(IconPicker, { value: icon, onChange: setIcon, fallback: fallback, color: c, presets: presets, photo: photo })));
+        react_1.default.createElement(IconPicker, { value: icon, onChange: setIcon, fallback: fallback, color: c, baseColor: base, presets: presets, photo: photo })));
 }
 /* 切り抜きの窓。えらんだ絵を、指で動かして・つまんで大きさを変えて、決まった形に収める。
    **えらんだ絵をそのまま入れないこと。** どこが写るかを自分で決められるほうがよい */
 /* 絵をえらぶ欄。用意した5つか、自分の写真か、しるしだけ（なし）。
    **並べて見せること。** どれになるかを、押す前に分かるように */
-function IconPicker({ value, onChange, fallback, color, presets = true, photo = true }) {
+function IconPicker({ value, onChange, fallback, color, baseColor, presets = true, photo = true }) {
     const [file, setFile] = (0, react_1.useState)(null);
     const [busy, setBusy] = (0, react_1.useState)(false);
     const custom = !!value && !ICON_ART[value];
     return (react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("div", { className: "flex flex-wrap gap-2" },
             react_1.default.createElement("button", { type: "button", onClick: () => onChange(""), "aria-pressed": !value, className: "w-14 h-14 rounded-2xl border-2 flex items-center justify-center overflow-hidden ft-tap ft-tap-card "
-                    + (!value ? "border-th-800" : "border-neutral-200"), style: { background: color ? color.soft : "#F3F3F5" } },
-                react_1.default.createElement(ItemIcon, { fallback: fallback, color: color })),
+                    + (!value ? "border-th-800" : "border-neutral-200"), style: { background: (baseColor || color) ? (baseColor || color).soft : "#F3F3F5" } },
+                react_1.default.createElement(ItemIcon, { fallback: fallback, color: baseColor || color })),
             presets && ICON_KEYS.map((k) => (react_1.default.createElement("button", { key: k, type: "button", onClick: () => onChange(k), "aria-pressed": value === k, "aria-label": ICON_ART[k].label, className: "w-14 h-14 rounded-2xl border-2 flex items-center justify-center overflow-hidden ft-tap ft-tap-card "
                     + (value === k ? "border-th-800" : "border-neutral-200"), style: { background: ICON_ART[k].bg } },
                 react_1.default.createElement(ItemIcon, { icon: k })))),
@@ -21976,15 +22091,15 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
 }
 /* 絵をえらぶ欄。用意した5つか、自分の写真か、しるしだけ（なし）。
    **並べて見せること。** どれになるかを、押す前に分かるように */
-function IconPicker({ value, onChange, fallback, color, presets = true, photo = true }) {
+function IconPicker({ value, onChange, fallback, color, baseColor, presets = true, photo = true }) {
     const [file, setFile] = (0, react_1.useState)(null);
     const [busy, setBusy] = (0, react_1.useState)(false);
     const custom = !!value && !ICON_ART[value];
     return (react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("div", { className: "flex flex-wrap gap-2" },
             react_1.default.createElement("button", { type: "button", onClick: () => onChange(""), "aria-pressed": !value, className: "w-14 h-14 rounded-2xl border-2 flex items-center justify-center overflow-hidden ft-tap ft-tap-card "
-                    + (!value ? "border-th-800" : "border-neutral-200"), style: { background: color ? color.soft : "#F3F3F5" } },
-                react_1.default.createElement(ItemIcon, { fallback: fallback, color: color })),
+                    + (!value ? "border-th-800" : "border-neutral-200"), style: { background: (baseColor || color) ? (baseColor || color).soft : "#F3F3F5" } },
+                react_1.default.createElement(ItemIcon, { fallback: fallback, color: baseColor || color })),
             presets && ICON_KEYS.map((k) => (react_1.default.createElement("button", { key: k, type: "button", onClick: () => onChange(k), "aria-pressed": value === k, "aria-label": ICON_ART[k].label, className: "w-14 h-14 rounded-2xl border-2 flex items-center justify-center overflow-hidden ft-tap ft-tap-card "
                     + (value === k ? "border-th-800" : "border-neutral-200"), style: { background: ICON_ART[k].bg } },
                 react_1.default.createElement(ItemIcon, { icon: k })))),
@@ -22019,7 +22134,7 @@ function PlanSettingsSheet({ plan, onCancel, onSave }) {
                 react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setD({ ...d, name: e.target.value }), placeholder: "\u8A08\u753B\u306E\u540D\u524D" }))),
         react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-2" }, "\u30A2\u30A4\u30B3\u30F3"),
         react_1.default.createElement("div", { className: "mb-5" },
-            react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(lucide_react_1.Target, { size: 24 }), color: c, photo: false }))));
+            react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(lucide_react_1.Target, { size: 24 }), color: c, baseColor: planC, photo: false }))));
 }
 /* 計画の札 */
 function PlanCard({ plan, records, onOpen, onPin, pressProps }) {
@@ -22377,10 +22492,10 @@ function PlanDashboard({ plan, records, onClose, onChange, onDelete, onAddRecord
                     react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1 flex items-center gap-1" },
                         react_1.default.createElement(lucide_react_1.Pin, { size: 12 }),
                         " \u4E0A\u306B\u56FA\u5B9A"),
-                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, pinned.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))),
+                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, pinned.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle, onLongSelect: sel.can ? (r2) => sel.startWith(r2) : null })))))),
                 byDate.length === 0 ? (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                     react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "space-y-4" }, byDate.map(([d, list]) => (react_1.default.createElement("div", { key: d },
-                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle })))))))))),
+                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle, onLongSelect: sel.can ? (r2) => sel.startWith(r2) : null })))))))))),
             react_1.default.createElement(SelectBar, { sel: sel, list: planRecords }),
             !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 })),
@@ -22653,8 +22768,14 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
     const hasCond = folderHasCond(folder);
     const condText = folderCondText(folder, N);
     /* 手動で入れたぶん。**これだけが外せる** */
+    /* **自動を優位とすること。** 手動で入れた記録があとから条件に当てはまれば、
+       それは自動あつかい。えらべる（外せる）のは、手動のぶんだけ */
+    const autoSet = (0, react_1.useMemo)(() => new Set(folderRecords({ ...folder, picked: [] }, records).map((r) => r.id)), [folder, records]);
+    const canPick = (r) => (folder.picked || []).includes(r.id) && !autoSet.has(r.id);
     const pickedSet = (0, react_1.useMemo)(() => new Set(folder.picked || []), [folder.picked]);
     const pickedList = (0, react_1.useMemo)(() => list.filter((r) => pickedSet.has(r.id)), [list, pickedSet]);
+    /* えらべるもの（手動だけ）。「すべて選択」はこれに対して働く */
+    const pickableList = (0, react_1.useMemo)(() => list.filter((r) => canPick(r)), [list, folder.picked, autoSet]); // eslint-disable-line
     /* 日ごとにまとめる。Todayと同じ並び方にそろえてある */
     const byDate = (0, react_1.useMemo)(() => {
         const m = new Map();
@@ -22690,8 +22811,8 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                                 react_1.default.createElement(lucide_react_1.Search, { size: 14 })),
                             react_1.default.createElement("span", { className: "text-[12.5px] font-bold", style: { color: pickedList.length ? fc.deep : "#737373" } }, "\u624B\u52D5\u3067\u5165\u308C\u308B")),
                         react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 truncate tabular-nums" }, pickedList.length ? `${pickedList.length}件` : "さがして選ぶ"))),
-                list.length > 0 && (react_1.default.createElement("div", { className: "-mx-5 px-4" }, pickedList.length > 0
-                    ? react_1.default.createElement(ListHeadRow, { sel: sel, list: pickedList, right: `${list.length}件`, sort: react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }) })
+                list.length > 0 && (react_1.default.createElement("div", { className: "-mx-5 px-4" }, pickableList.length > 0
+                    ? react_1.default.createElement(ListHeadRow, { sel: sel, list: pickableList, right: `${list.length}件`, sort: react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }) })
                     : (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
                         react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-500 tabular-nums" },
                             list.length,
@@ -22699,10 +22820,10 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                         react_1.default.createElement("span", { className: "flex-1" }),
                         react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }))))),
                 byDate.length === 0 ? (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A18\u9332\u304C\u5165\u3063\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selectable: pickedSet.has(r.id), selected: sel.ids.has(r.id), onSelect: sel.toggle })))))),
+                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A18\u9332\u304C\u5165\u3063\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, selectMode: sel.on, selectable: canPick(r), onLongSelect: (r2) => sel.startWith(r2, canPick(r2)), selected: sel.ids.has(r.id), onSelect: sel.toggle })))))),
             !sel.on && (react_1.default.createElement("button", { type: "button", onClick: () => setSetup("manual"), "aria-label": "\u8A18\u9332\u3092\u3055\u304C\u3057\u3066\u5165\u308C\u308B", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
-            react_1.default.createElement(SelectBar, { sel: sel, list: pickedList, extraLabel: "\u30D5\u30A9\u30EB\u30C0\u304B\u3089\u5916\u3059", onExtra: removeFromFolder }),
+            react_1.default.createElement(SelectBar, { sel: sel, list: pickableList, extraLabel: "\u30D5\u30A9\u30EB\u30C0\u304B\u3089\u5916\u3059", onExtra: removeFromFolder }),
             menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", 
                 /* **「記録を入れる」をここに置かないこと。** 画面の上の札と右下の＋で足りる */
                 types: ["__rename", "__delete"], labels: { __rename: "フォルダの設定", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
@@ -22820,15 +22941,19 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
    **色の丸をずらりと並べないこと。** 場所を取るうえ、押し分けにくい */
 function ColorSelect({ value, options, onChange, title }) {
     const [open, setOpen] = (0, react_1.useState)(false);
-    const [tmp, setTmp] = (0, react_1.useState)(value);
     const cur = options.find((c) => c.key === value) || options[0];
     return (react_1.default.createElement(react_1.default.Fragment, null,
-        react_1.default.createElement("button", { type: "button", onClick: () => { setTmp(value); setOpen(true); }, style: { width: 150 }, className: "min-h-[46px] pl-3 pr-2 rounded-xl bg-neutral-100 flex items-center gap-2 shrink-0 ft-tap ft-tap-card" },
-            react_1.default.createElement("span", { className: "w-6 h-6 rounded-full shrink-0", style: { background: cur.mid } }),
-            react_1.default.createElement("span", { className: "text-[14.5px] text-neutral-900 flex-1 min-w-0 truncate text-left" }, cur.label),
-            react_1.default.createElement(lucide_react_1.ChevronDown, { size: 17, className: "text-neutral-400 shrink-0" })),
-        open && (react_1.default.createElement(WheelSheet, { title: title, onClose: () => setOpen(false), onConfirm: () => { onChange(tmp); setOpen(false); } },
-            react_1.default.createElement(WheelColumn, { items: options.map((c) => ({ value: c.key, label: c.label, swatch: c.mid })), value: tmp, onChange: setTmp, minWidth: 180 })))));
+        react_1.default.createElement("button", { type: "button", onClick: () => setOpen(true), style: { width: 126 }, className: "min-h-[46px] px-3 rounded-xl border border-neutral-200 bg-white flex items-center gap-2 shrink-0 ft-tap ft-tap-card" },
+            react_1.default.createElement("span", { className: "w-7 h-7 rounded-full shrink-0", style: { background: cur.mid } }),
+            react_1.default.createElement("span", { className: "text-[13.5px] text-neutral-600 flex-1 min-w-0 truncate text-left" }, cur.label)),
+        open && (react_1.default.createElement(SheetDialog, { title: title, onCancel: () => setOpen(false), hideConfirm: true },
+            react_1.default.createElement("div", { className: "grid grid-cols-4 gap-2.5" }, options.map((c) => {
+                const on = c.key === value;
+                return (react_1.default.createElement("button", { key: c.key || "base", type: "button", onClick: () => { onChange(c.key); setOpen(false); }, "aria-label": c.label, "aria-pressed": on, className: "rounded-2xl border-2 px-1 py-2.5 flex flex-col items-center gap-1.5 ft-tap ft-tap-card "
+                        + (on ? "border-th-800" : "border-neutral-200") },
+                    react_1.default.createElement("span", { className: "w-9 h-9 rounded-full", style: { background: c.mid } }),
+                    react_1.default.createElement("span", { className: "text-[11.5px] text-neutral-600 truncate w-full text-center" }, c.label)));
+            }))))));
 }
 function SettingsScreen({ prefs, onSave, onClose }) {
     const headRef = (0, react_1.useRef)(null);
@@ -22852,6 +22977,10 @@ function SettingsScreen({ prefs, onSave, onClose }) {
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u8868\u793A\u8A2D\u5B9A", onBack: leave, hideMenu: true }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full pb-16" },
+                react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u753B\u9762\u306E\u8272"),
+                react_1.default.createElement(RowCard, { className: "mb-5" },
+                    react_1.default.createElement(SheetRow, { label: "\u57FA\u8ABF\u306E\u8272", last: true },
+                        react_1.default.createElement(ColorSelect, { value: draft.theme, title: "\u753B\u9762\u306E\u8272", theme: true, options: THEMES.map((th) => ({ key: th.key, label: th.label, mid: th.swatch, deep: th.vars[800], soft: th.vars[50] })), onChange: (v) => set({ theme: v }) }))),
                 react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u8A18\u9332\u306E\u8272"),
                 react_1.default.createElement(RowCard, { className: "mb-5" }, COLORED_TYPES.map((t, i) => {
                     const cur = colorOf(draft.typeColor[t]);
@@ -22860,6 +22989,25 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                         react_1.default.createElement("span", { className: "text-[15.5px] text-neutral-900 flex-1 min-w-0 truncate" }, TYPE_LABELS[t]),
                         react_1.default.createElement(ColorSelect, { value: draft.typeColor[t], title: TYPE_LABELS[t] + "の色", options: COLORS, onChange: (v) => set({ typeColor: { ...draft.typeColor, [t]: v } }) })));
                 })),
+                react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u30B9\u30B1\u30B8\u30E5\u30FC\u30EB\u306E\u8272"),
+                react_1.default.createElement(RowCard, { className: "mb-5" }, SCHEDULE_SLOTS.map((slot, i) => {
+                    const cur = colorOf((draft.schedColor || DEFAULT_SCHEDULE_COLORS)[slot]);
+                    return (react_1.default.createElement("div", { key: slot, className: "flex items-center gap-2.5 px-4 py-2 min-h-[64px] " + (i === SCHEDULE_SLOTS.length - 1 ? "" : "border-b border-neutral-100") },
+                        react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { background: cur.soft, color: cur.deep } }, typeIcon("schedule", 17)),
+                        react_1.default.createElement("span", { className: "text-[15.5px] text-neutral-900 flex-1 min-w-0 truncate" },
+                            i + 1,
+                            "\u3064\u3081"),
+                        react_1.default.createElement(ColorSelect, { value: (draft.schedColor || DEFAULT_SCHEDULE_COLORS)[slot], title: `スケジュールの色 ${i + 1}`, options: COLORS, onChange: (v) => set({ schedColor: { ...(draft.schedColor || DEFAULT_SCHEDULE_COLORS), [slot]: v } }) })));
+                })),
+                react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u6587\u5B57\u3068\u52D5\u304D"),
+                react_1.default.createElement(RowCard, null,
+                    react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-100" },
+                        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, "\u6587\u5B57\u306E\u5927\u304D\u3055"),
+                        react_1.default.createElement("div", { className: "flex gap-2.5" }, FONT_SIZES.map((f) => (react_1.default.createElement("button", { key: f.key, type: "button", onClick: () => set({ fontSize: f.key }), "aria-pressed": draft.fontSize === f.key, className: "flex-1 h-[44px] rounded-xl border flex items-center justify-center font-bold text-[15px] ft-tap ft-tap-card "
+                                + (draft.fontSize === f.key ? "border-th-800 bg-th-50 text-th-900" : "border-neutral-200 bg-white text-neutral-600") }, f.label))))),
+                    react_1.default.createElement(SheetRow, { label: "\u753B\u9762\u306E\u52D5\u304D", last: true },
+                        react_1.default.createElement(Switch, { on: draft.motion !== false, onChange: (v) => set({ motion: v }), label: "\u753B\u9762\u306E\u52D5\u304D" }))),
+                react_1.default.createElement("div", { className: "h-5", "aria-hidden": "true" }),
                 react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u30D8\u30C3\u30C0\u30FC\u306E\u5199\u771F"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
                     react_1.default.createElement("div", { className: "px-4 py-5" },
@@ -22894,19 +23042,6 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                         setHeadBusy(false);
                         setHeadFile(null);
                     } })),
-                react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u753B\u9762\u306E\u8272"),
-                react_1.default.createElement(RowCard, { className: "mb-5" },
-                    react_1.default.createElement(SheetRow, { label: "\u57FA\u8ABF\u306E\u8272", last: true },
-                        react_1.default.createElement(ColorSelect, { value: draft.theme, title: "\u753B\u9762\u306E\u8272", theme: true, options: THEMES.map((th) => ({ key: th.key, label: th.label, mid: th.swatch, deep: th.vars[800], soft: th.vars[50] })), onChange: (v) => set({ theme: v }) }))),
-                react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u6587\u5B57\u3068\u52D5\u304D"),
-                react_1.default.createElement(RowCard, null,
-                    react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-100" },
-                        react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, "\u6587\u5B57\u306E\u5927\u304D\u3055"),
-                        react_1.default.createElement("div", { className: "flex gap-2.5" }, FONT_SIZES.map((f) => (react_1.default.createElement("button", { key: f.key, type: "button", onClick: () => set({ fontSize: f.key }), "aria-pressed": draft.fontSize === f.key, className: "flex-1 h-[44px] rounded-xl border flex items-center justify-center font-bold text-[15px] ft-tap ft-tap-card "
-                                + (draft.fontSize === f.key ? "border-th-800 bg-th-50 text-th-900" : "border-neutral-200 bg-white text-neutral-600") }, f.label))))),
-                    react_1.default.createElement(SheetRow, { label: "\u753B\u9762\u306E\u52D5\u304D", last: true },
-                        react_1.default.createElement(Switch, { on: draft.motion !== false, onChange: (v) => set({ motion: v }), label: "\u753B\u9762\u306E\u52D5\u304D" }))),
-                react_1.default.createElement("div", { className: "h-5", "aria-hidden": "true" }),
                 react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u4E26\u3073\u9806"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
                     react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-200" },
@@ -23399,6 +23534,8 @@ html { scrollbar-gutter: stable; }
 .-right-0\\.5 { right: -.125rem; }
 .flex-\\[1\\.4\\] { flex: 1.4 1 0%; }
 .pt-5 { padding-top: 1.25rem; }
+.mr-1 { margin-right: .25rem; }
+.grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .mt-4 { margin-top: 1rem; }
 /* 大きさを変える棒。**押せる大きさを保つこと** */
 .ft-range { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px;
