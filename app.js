@@ -22532,7 +22532,7 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
                     + (effectiveTab === t.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") }, t.label))))),
         /* **キーで作り直して動きを付けないこと。** フォルダのタブと同じ、ただの出し分けにする。
            作り直しをやめることで、繰り返し払っても止まらず、軽いままにする */
-        react_1.default.createElement("div", { ref: areaRef, className: "px-4 pt-1 ft-col space-y-2.5" },
+        react_1.default.createElement("div", { ref: areaRef, className: "px-4 pt-1 ft-col space-y-2.5", style: { minHeight: "60vh" } },
             effectiveTab === "live" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, live.map(renderPlan))),
             effectiveTab === "done" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, done.map(renderPlan))),
             effectiveTab === "all" && (react_1.default.createElement(react_1.default.Fragment, null,
