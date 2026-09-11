@@ -17628,6 +17628,12 @@ function useSchedColor() {
 function useTypeColor(type) {
     const map = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
     const prefs = react_1.default.useContext(PrefsContext);
+    /* **予定の色を、ここで別に決めないこと。** しるしと札で色が食い違う。
+       予定は「スケジュールの色」の1つめのわくにそろえる */
+    if (type === "schedule") {
+        const sc = (prefs && prefs.schedColor) || DEFAULT_SCHEDULE_COLORS;
+        return colorOf(sc.c1);
+    }
     const key = map[type] || DEFAULT_TYPE_COLOR[type];
     return key ? colorOf(key) : themeColorOf(prefs && prefs.theme);
 }
@@ -17688,7 +17694,8 @@ function migrateRecord(r) {
         tags: normalizeTags(r.tags),
         comment: typeof r.comment === "string" ? r.comment : "",
         /* 予定だけが持てる「色のわく」。ほかの種類では空のまま */
-        color: (r.type === "schedule" && SCHEDULE_SLOTS.includes(r.color)) ? r.color : "",
+        /* 古い予定に色が無ければ、1つめのわくとみなす */
+        color: r.type === "schedule" ? (SCHEDULE_SLOTS.includes(r.color) ? r.color : "c1") : "",
         mark: markOf(r.mark) ? r.mark : null,
         scope: (r.scope === "week" || r.scope === "month") ? r.scope : "day",
         pinned: !!r.pinned,
@@ -20455,17 +20462,17 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                             react_1.default.createElement("span", { className: "flex items-center gap-1.5" }, SCHEDULE_SLOTS.map((slot) => {
                                 const c = slotColor(slot);
                                 const on = (rec.color || "") === slot;
-                                return (react_1.default.createElement("button", { key: slot, type: "button", onClick: () => set({ color: on ? "" : slot }), "aria-label": c.label, "aria-pressed": on, className: "w-10 h-10 rounded-full border-2 flex items-center justify-center ft-tap "
+                                return (react_1.default.createElement("button", { key: slot, type: "button", onClick: () => set({ color: slot }), "aria-label": c.label, "aria-pressed": on, className: "w-10 h-10 rounded-full border-2 flex items-center justify-center ft-tap "
                                         + (on ? "border-th-800" : "border-transparent") },
                                     react_1.default.createElement("span", { className: "w-6 h-6 rounded-full", style: { background: c.mid } })));
                             })))),
                     react_1.default.createElement(TextArea, { value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 3, placeholder: "\u4E88\u5B9A\u306E\u5185\u5BB9" }),
-                    react_1.default.createElement("div", { className: "mt-3 space-y-2" },
+                    react_1.default.createElement("div", { className: "mt-3 space-y-3" },
                         react_1.default.createElement(TextInput, { value: rec.place, onChange: (e) => set({ place: e.target.value }), placeholder: "\u5834\u6240" }),
                         react_1.default.createElement(TextInput, { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u306E\u30EA\u30F3\u30AF", inputMode: "url" })))),
                 plans && plans.length > 0 && rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(DrumSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), options: plans.map((p) => ({ value: p.id, label: p.name || "（名前なし）" })), placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" }))),
-                react_1.default.createElement("div", { className: "mt-10" },
+                react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(TagField, { value: rec.tags, onChange: (v) => set({ tags: v }), knownTags: knownTags, onCreateTag: onCreateTag }))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: cancel, className: BTN_SECONDARY + " flex-1 btn-h-lg text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
@@ -21796,7 +21803,7 @@ function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDele
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: fmtDateFull(date), onBack: close }),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 max-w-2xl mx-auto w-full pb-24" },
+            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 max-w-2xl mx-auto w-full ft-pb-safe" },
                 dayList.length > 0 && (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-1" },
                     react_1.default.createElement(SelectButton, { sel: sel }),
                     react_1.default.createElement("span", { className: "flex-1" }),
@@ -21957,7 +21964,7 @@ function NameIconSheet({ title, initialName, initialIcon, placeholder, fallback,
     const base = useTypeColor(presets ? PLAN_TYPE : FOLDER_TYPE);
     const c = color || (presets ? planColorOf({ icon }, base) : base);
     return (react_1.default.createElement(SheetDialog, { title: title, onCancel: onCancel, onConfirm: () => onSave(name.trim(), icon), confirmLabel: confirmLabel, disabled: !name.trim() },
-        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-5" },
+        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-3" },
             react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (icon && ICON_ART[icon]) ? ICON_ART[icon].bg : c.soft, color: c.deep } },
                 react_1.default.createElement(ItemIcon, { icon: icon, fallback: fallback, color: c })),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -22127,8 +22134,9 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
                 react_1.default.createElement("span", { className: "font-display text-[15.5px] text-neutral-900 tracking-wide flex-1" }, title),
                 react_1.default.createElement("button", { type: "button", onClick: onCancel, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.X, { size: 24 }))),
-            react_1.default.createElement("div", { className: "px-4 py-4" },
-                react_1.default.createElement("div", { ref: boxRef, className: "relative w-full overflow-hidden bg-neutral-900 ft-press", "data-lim": `${Math.round(limX)},${Math.round(limY)},${Math.round(dispW)},${Math.round(box.w)},${nat ? 1 : 0}`, style: { aspectRatio: `${aspect}`, borderRadius: round ? "50%" : 16, touchAction: "none" }, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up },
+            react_1.default.createElement("div", { className: "px-4 py-4 flex justify-center" },
+                react_1.default.createElement("div", { ref: boxRef, className: "relative w-full overflow-hidden bg-neutral-900 ft-press", "data-lim": `${Math.round(limX)},${Math.round(limY)},${Math.round(dispW)},${Math.round(box.w)},${nat ? 1 : 0}`, style: { aspectRatio: `${aspect}`, maxHeight: "36vh", maxWidth: `calc(36vh * ${aspect})`,
+                        borderRadius: round ? "50%" : 16, touchAction: "none" }, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up },
                     !url && !ng && (react_1.default.createElement("span", { className: "absolute inset-0 flex items-center justify-center text-white" },
                         react_1.default.createElement(Spinner, { size: 26 }))),
                     ng && (react_1.default.createElement("span", { className: "absolute inset-0 flex items-center justify-center text-[13px] text-white px-6 text-center" }, "\u3053\u306E\u5199\u771F\u306F\u8AAD\u307F\u8FBC\u3081\u307E\u305B\u3093\u3067\u3057\u305F")),
@@ -22139,8 +22147,8 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
                             top: (box.h - dispH) / 2 + pos.y,
                             transition: start.current ? "none" : "left .18s ease-out, top .18s ease-out",
                             maxWidth: "none",
-                        } }))),
-                react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 mt-3 text-center" }, "\u6307\u3067\u52D5\u304B\u3059\uFF0F\u3064\u307E\u3093\u3067\u5927\u304D\u3055\u3092\u5909\u3048\u308B")),
+                        } })))),
+            react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 pb-3 text-center" }, "\u6307\u3067\u52D5\u304B\u3059\uFF0F\u3064\u307E\u3093\u3067\u5927\u304D\u3055\u3092\u5909\u3048\u308B"),
             react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: onCancel, className: BTN_SECONDARY + " flex-1 " + BTN_H + " text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: done, disabled: busy || !url, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " text-[14.5px]" },
@@ -22186,7 +22194,7 @@ function PlanSettingsSheet({ plan, onCancel, onSave }) {
     const [d, setD] = (0, react_1.useState)(plan);
     const c = planColorOf(d, planC);
     return (react_1.default.createElement(SheetDialog, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
-        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-5" },
+        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-3" },
             react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (d.icon && ICON_ART[d.icon]) ? ICON_ART[d.icon].bg : c.soft, color: c.deep } },
                 react_1.default.createElement(ItemIcon, { icon: d.icon, fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), color: c })),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -23035,7 +23043,7 @@ function SettingsScreen({ prefs, onSave, onClose }) {
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u8868\u793A\u8A2D\u5B9A", onBack: leave, hideMenu: true }),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full pb-16" },
+            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full ft-pb-safe" },
                 react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u753B\u9762\u306E\u8272"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
                     react_1.default.createElement(SheetRow, { label: "\u57FA\u8ABF\u306E\u8272", last: true },
@@ -23136,7 +23144,7 @@ function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onR
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30BF\u30B0\u306E\u7DE8\u96C6", onBack: close, hideMenu: true }),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full pb-16" },
+            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full ft-pb-safe" },
                 react_1.default.createElement("div", { className: "flex gap-2 mb-4" },
                     react_1.default.createElement("div", { className: "flex-1 min-w-0" },
                         react_1.default.createElement(TextInput, { value: draft, onChange: (e) => setDraft(e.target.value), placeholder: "\u65B0\u3057\u3044\u30BF\u30B0", onKeyDown: (e) => { if (e.key === "Enter" && draft.trim()) {
@@ -23349,7 +23357,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", onBack: close, hideMenu: true }),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full pb-16" },
+            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full ft-pb-safe" },
                 react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft p-4 mb-7" },
                     react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                         react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-neutral-900" }, "\u3044\u307E\u306E\u8A18\u9332"),
@@ -23467,7 +23475,7 @@ function HelpScreen({ onClose }) {
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30D8\u30EB\u30D7", onBack: close, hideMenu: true }),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full pb-16 space-y-2 ft-seq" }, HELP_SECTIONS.map((s, i) => (react_1.default.createElement("div", { key: s.title, className: "rounded-2xl bg-white border border-neutral-200 overflow-hidden" },
+            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 max-w-2xl mx-auto w-full ft-pb-safe space-y-2 ft-seq" }, HELP_SECTIONS.map((s, i) => (react_1.default.createElement("div", { key: s.title, className: "rounded-2xl bg-white border border-neutral-200 overflow-hidden" },
                 react_1.default.createElement("button", { type: "button", onClick: () => setOpen(open === i ? null : i), className: "w-full flex items-center gap-2 px-3.5 py-3 text-left min-h-[56px] ft-tap ft-tap-card hover:bg-neutral-50" },
                     react_1.default.createElement("span", { className: "flex-1 font-display text-[16px] text-neutral-900" }, s.title),
                     react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-400 ft-chev " + (open === i ? "ft-chev-on" : "") })),
@@ -23596,6 +23604,10 @@ html { scrollbar-gutter: stable; }
 .grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .mt-6 { margin-top: 1.5rem; }
 .mt-10 { margin-top: 2.5rem; }
+.pb-3 { padding-bottom: .75rem; }
+/* かぶさる画面の中身の下。**画面のはしぎりぎりで終わらせないこと。**
+   最後の部品が下タブやホームバーに触れて見え、押しづらい */
+.ft-pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 72px); }
 .mt-4 { margin-top: 1rem; }
 /* 大きさを変える棒。**押せる大きさを保つこと** */
 .ft-range { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px;
