@@ -18491,7 +18491,7 @@ const BTN_QUIET = BTN_BASE + " text-neutral-500 hover:bg-neutral-100";
    ・CARD_LIST … 札をならべる箱に付ける
    ・CARD_SLOT … 札ひとつぶんの外わくに付ける */
 const CARD_LIST = "ft-seq -mx-5 pt-1";
-const CARD_SLOT = "relative flex gap-2 pb-2.5 px-4";
+const CARD_SLOT = "relative flex gap-2 pb-2.5 px-4 ft-slot";
 function TextInput(props) { return react_1.default.createElement("input", { ...props, className: inputCls + " " + (props.className || "") }); }
 /* bare ＝ 枠なしの書き味。メモ本文のように、紙に書くように使う欄で使う。
    **枠を消すのに border-0 を足さないこと。** もとの枠の指定と重なって
@@ -19767,7 +19767,22 @@ function ScreenHeader({ title, right, sub }) {
         put();
         const ro = new ResizeObserver(put);
         ro.observe(el);
-        return () => ro.disconnect();
+        /* **見張りだけに任せないこと。** 画面を回したとき、
+           高さが変わらないと見張りが動かず、下に貼りつけた帯の位置が古いまま残る。
+           回した直後はまだ並べ替えの途中なので、**少しあとにもう一度測る** */
+        const later = () => {
+            put();
+            requestAnimationFrame(put);
+            setTimeout(put, 160);
+            setTimeout(put, 420);
+        };
+        window.addEventListener("resize", later);
+        window.addEventListener("orientationchange", later);
+        return () => {
+            ro.disconnect();
+            window.removeEventListener("resize", later);
+            window.removeEventListener("orientationchange", later);
+        };
     }, [photo]);
     return (react_1.default.createElement("div", { ref: headRef, className: "px-2 pb-2 relative overflow-hidden sticky top-0 ft-bleed " + (photo ? "" : "bg-head"), style: { ...SAFE_TOP(18), zIndex: 25 } },
         photo && (react_1.default.createElement(react_1.default.Fragment, null,
@@ -19995,6 +20010,29 @@ function LinkCard({ link }) {
                 react_1.default.createElement("span", { className: "block text-[13px] font-bold text-neutral-800 truncate" }, link.site),
                 react_1.default.createElement("span", { className: "block text-[11.5px] text-neutral-400 truncate" }, link.detail || link.host)),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 16, className: "text-neutral-300 shrink-0" }))));
+}
+/* 長い本文を、はじめはたたんでおく。
+   **全部そのまま出さないこと。** ひとつの記録が画面を埋めて、
+   ほかの記録が見えなくなる。X と同じく「さらに表示」で開く */
+const LONG_CHARS = 140;
+const LONG_LINES = 10;
+function isLongText(t) {
+    const v = String(t || "");
+    return v.length > LONG_CHARS || v.split("\n").length > LONG_LINES;
+}
+function headOfText(t) {
+    const v = String(t || "");
+    /* 行が多いときは行で、字が多いときは字で切る。**どちらか短いほう** */
+    const byLine = v.split("\n").slice(0, LONG_LINES).join("\n");
+    const cut = byLine.length > LONG_CHARS ? byLine.slice(0, LONG_CHARS) : byLine;
+    return cut.replace(/\s+$/, "");
+}
+function LongText({ text, className }) {
+    const [open, setOpen] = (0, react_1.useState)(false);
+    const long = isLongText(text);
+    return (react_1.default.createElement(react_1.default.Fragment, null,
+        react_1.default.createElement(LinkedText, { text: open || !long ? text : headOfText(text), className: className }),
+        long && !open && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setOpen(true); }, className: "block mt-1 text-[13.5px] text-sky-700 ft-tap" }, "\u3055\u3089\u306B\u8868\u793A"))));
 }
 /* 本文に入っている住所を、あとから札で見せる。
    **本文の字を置き換えないこと。** 書いたとおりが残っているほうが読みやすい。
@@ -20718,7 +20756,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             r.type !== "memo" && recordTitle(r, N) && recordTitle(r, N) !== (N[r.type] || TYPE_LABELS[r.type]) && (react_1.default.createElement("p", { className: "text-[15px] font-bold leading-snug break-words mb-1 "
                     + (allDone ? "text-neutral-400" : "text-neutral-900") }, recordTitle(r, N))),
             r.type === "memo" && (r.text || "").trim() && (react_1.default.createElement(react_1.default.Fragment, null,
-                react_1.default.createElement(LinkedText, { text: r.text, className: "text-[14.5px] leading-relaxed text-neutral-800" }),
+                react_1.default.createElement(LongText, { text: r.text, className: "text-[14.5px] leading-relaxed text-neutral-800" }),
                 react_1.default.createElement(LinkCards, { text: r.text }))),
             r.type !== "memo" && body && (react_1.default.createElement(react_1.default.Fragment, null,
                 react_1.default.createElement(LinkedText, { text: body, className: "text-[14.5px] leading-relaxed text-neutral-800 mb-1.5" }),
@@ -23522,7 +23560,12 @@ html { scrollbar-gutter: stable; }
    ============================================================ */
 @media (min-width: 820px) and (orientation: landscape) {
   /* 記録の並び、フォルダや計画の札を、2段に流し込む */
-  .ft-spread { column-count: 2; column-gap: 24px; }
+  /* **たてとよこの余白を、ちがう値にしないこと。**
+     札じたいが左右に16pxの余白を持っているので、そのままだと
+     よこだけ 24+16+16＝56px も空いて、間の抜けた並びに見える。
+     2段のときは札の左右の余白をやめ、たて・よことも16pxにそろえる */
+  .ft-spread { column-count: 2; column-gap: 16px; margin-left: 0; margin-right: 0; }
+  .ft-spread .ft-slot { padding-left: 0; padding-right: 0; padding-bottom: 16px; }
   .ft-spread > * { break-inside: avoid; -webkit-column-break-inside: avoid; }
   /* 下の帯は幅いっぱいに広げず、真ん中へ寄せる */
   .ft-tabbar-wrap > div { max-width: var(--ft-colw); margin-left: auto; margin-right: auto; }
