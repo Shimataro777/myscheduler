@@ -17934,7 +17934,7 @@ function migratePlan(p) {
             pinned: !!g.pinned,
             /* カレンダー（Today）に出すか。**ここに書き足すのを忘れないこと。**
                このつくりは一行ずつ写しているので、書かないと読むたびに消える */
-            onCal: stepOnCal(g),
+            onCal: !!g.onCal,
             /* 期日を入れていないものの並びが、開くたびに変わらないようにする */
             createdAt: typeof g.createdAt === "string" && g.createdAt ? g.createdAt : "1970-01-01T00:00:00.000Z",
             items: Array.isArray(g.items) ? g.items.filter((i) => i && typeof i === "object")
@@ -17980,7 +17980,7 @@ function scopedRepeatsOn(r, key) {
    逆に、中が残っていても達成にできる（もうやらなくてよくなったとき） */
 /* カレンダー（Today）に出すか。**印が無いときは出すこと。**
    前からあるイベントが、急に消えてしまわないように */
-function stepOnCal(g) { return !g || g.onCal === undefined || !!g.onCal; }
+function stepOnCal(g) { return !!(g && g.onCal); }
 function stepDone(s) {
     return !!(s && s.done);
 }
@@ -18505,7 +18505,9 @@ const BTN_QUIET = BTN_BASE + " text-neutral-500 hover:bg-neutral-100";
    CARD_SLOT の 16px を当てる。どの画面でも、札は画面の端から16px。
    ・CARD_LIST … 札をならべる箱に付ける
    ・CARD_SLOT … 札ひとつぶんの外わくに付ける */
-const CARD_LIST = "ft-seq -mx-5 pt-1";
+/* **ft-seq を付けないこと。** 固定などで並びが変わるたびに
+   「出てくる動き」がやり直されて、札が点滅する（タグで同じことが起きた） */
+const CARD_LIST = "-mx-5 pt-1";
 const CARD_SLOT = "relative flex gap-2 pb-2.5 px-4 ft-slot";
 function TextInput(props) { return react_1.default.createElement("input", { ...props, className: inputCls + " " + (props.className || "") }); }
 /* bare ＝ 枠なしの書き味。メモ本文のように、紙に書くように使う欄で使う。
@@ -19766,7 +19768,7 @@ function NeedBackupBanner({ onOpen, dim }) {
         react_1.default.createElement("span", { className: "flex-1 min-w-0" },
             react_1.default.createElement("span", { className: "block text-[13.5px] font-bold text-amber-900" }, "\u66F8\u304D\u51FA\u3057\u3066\u3044\u306A\u3044\u8A18\u9332\u304C\u3042\u308A\u307E\u3059"),
             backupAt && (react_1.default.createElement("span", { className: "block text-[12px] text-amber-700 tabular-nums" },
-                "\u524D\u56DE ",
+                "\u524D\u56DE\u306E\u4FDD\u5B58\uFF1A",
                 fmtDate(backupAt.slice(0, 10))))),
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-amber-400 shrink-0" })));
 }
@@ -20277,20 +20279,36 @@ function DragHandle(props) {
     return react_1.default.createElement("button", { type: "button", ...props },
         react_1.default.createElement(lucide_react_1.GripVertical, { size: 18 }));
 }
-/* 見積もりの時間。**分で持つこと**（時と分に分けると計算のたびに戻す手間が増える） */
-const MIN_OPTIONS = [{ value: "0", label: "なし" },
-    ...[5, 10, 15, 20, 30, 40, 45, 50, 60, 75, 90, 105, 120, 150, 180, 210, 240, 300, 360, 420, 480]
-        .map((m) => ({ value: String(m), label: minLabel(m) }))];
+/* 見積もりの時間。**分で持つこと**（時と分に分けると計算のたびに戻す手間が増える）。
+   えらぶときだけ、時刻と同じように「時」と「分」に分けて見せる */
+const MIN_HOURS = Array.from({ length: 13 }, (_, i) => ({ value: String(i), label: `${i}時間` }));
+const MIN_MINUTES = [0, 15, 30, 45].map((m) => ({ value: String(m), label: `${m}分` }));
+/* **どの画面でも「0.0h」の形にそろえること。** 字数がそろって、行の端がずれない */
 function minLabel(m) {
     const n = Number(m) || 0;
     if (!n)
         return "";
-    const h = Math.floor(n / 60), mm = n % 60;
-    if (h && mm)
-        return `${h}時間${mm}分`;
-    if (h)
-        return `${h}時間`;
-    return `${mm}分`;
+    return (n / 60).toFixed(1) + "h";
+}
+/* かかる時間をえらぶ紙。時刻と同じ作りにそろえる */
+function MinSelect({ value, onChange, className }) {
+    const [open, setOpen] = (0, react_1.useState)(false);
+    const n = Number(value) || 0;
+    const [h, setH] = (0, react_1.useState)(String(Math.floor(n / 60)));
+    const [mm, setMm] = (0, react_1.useState)(String(n % 60));
+    const openSheet = () => {
+        const v = Number(value) || 0;
+        setH(String(Math.floor(v / 60)));
+        setMm(String(v % 60));
+        setOpen(true);
+    };
+    return (react_1.default.createElement(react_1.default.Fragment, null,
+        react_1.default.createElement("button", { type: "button", onClick: openSheet, className: "rounded-xl border border-neutral-200 bg-white flex items-center justify-center gap-1 ft-min text-[12.5px] tabular-nums shrink-0 ft-tap ft-tap-card "
+                + (n ? "text-neutral-900 " : "text-neutral-300 ") + (className || "") }, n ? minLabel(n) : "0.0h"),
+        open && (react_1.default.createElement(WheelSheet, { title: "\u304B\u304B\u308B\u6642\u9593", onClose: () => setOpen(false), onClear: () => { onChange(0); setOpen(false); }, onConfirm: () => { onChange(Number(h) * 60 + Number(mm)); setOpen(false); } },
+            react_1.default.createElement("div", { className: "flex justify-center gap-2" },
+                react_1.default.createElement(WheelColumn, { items: MIN_HOURS, value: h, onChange: setH, minWidth: 110 }),
+                react_1.default.createElement(WheelColumn, { items: MIN_MINUTES, value: mm, onChange: setMm, minWidth: 110 }))))));
 }
 /* ひとまとまりの見積もりと実績。
    **実績は、印の付いたものの見積もりを足したもの**（別に入れさせない）。
@@ -20306,17 +20324,22 @@ function itemsTime(items) {
     });
     return { plan, done };
 }
-/* 見積もりと実績を、小さく1行で見せる。**画面ごとに書き方を変えないこと** */
-function TimeLine({ items, color, className }) {
+/* 値 ＋ 進み具合の棒。**値の幅をそろえること。**
+   行が変わるたびに棒のはじまりがずれると、見くらべられない */
+function ProgressLine({ label, sub, ratio, color, strong }) {
+    return (react_1.default.createElement("div", { className: "flex items-center gap-2" },
+        react_1.default.createElement("span", { className: "w-[72px] shrink-0 text-[12px] tabular-nums leading-tight" },
+            react_1.default.createElement("span", { className: "font-bold", style: { color: strong ? color.deep : "#737373" } }, label),
+            sub && react_1.default.createElement("span", { className: "text-neutral-400" }, sub)),
+        react_1.default.createElement("span", { className: "flex-1" },
+            react_1.default.createElement(ProgressBar, { ratio: ratio, color: color.mid }))));
+}
+/* 見積もりと実績。**画面ごとに書き方を変えないこと** */
+function TimeLine({ items, color }) {
     const { plan, done } = itemsTime(items);
     if (!plan)
         return null;
-    return (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[12px] tabular-nums " + (className || "") },
-        react_1.default.createElement(lucide_react_1.Clock, { size: 12, className: "shrink-0" }),
-        react_1.default.createElement("span", { style: color ? { color: color.deep } : undefined, className: "font-bold" }, minLabel(done) || "0分"),
-        react_1.default.createElement("span", { className: "text-neutral-400" },
-            "/ ",
-            minLabel(plan))));
+    return (react_1.default.createElement(ProgressLine, { label: minLabel(done) || "0.0h", sub: ` / ${minLabel(plan)}`, ratio: plan ? done / plan : 0, color: color, strong: done >= plan }));
 }
 function ChecklistEditor({ items, onChange }) {
     const [draft, setDraft] = (0, react_1.useState)("");
@@ -20331,16 +20354,19 @@ function ChecklistEditor({ items, onChange }) {
     };
     const setText = (i, v) => { const next = items.slice(); next[i] = { ...next[i], text: v }; onChange(next); };
     const setMin = (i, v) => { const next = items.slice(); next[i] = { ...next[i], min: Number(v) || 0 }; onChange(next); };
+    /* **確かめずに消さないこと。** 書いた字が、ひと押しで消える */
+    const [delIdx, setDelIdx] = (0, react_1.useState)(-1);
     const remove = (i) => onChange(items.filter((_, k) => k !== i));
     return (react_1.default.createElement("div", { ref: boxRef },
         items.length > 0 && (react_1.default.createElement("div", { className: "mb-1" }, items.map((it, i) => (react_1.default.createElement("div", { key: it.id, ref: setRow(it.id), style: rowStyle(it.id), className: "flex items-center gap-1 rounded-xl " + (dragId === it.id ? "bg-white" : "") },
             react_1.default.createElement("span", { className: "w-6 shrink-0 flex items-center justify-center" },
                 react_1.default.createElement("span", { className: "w-2 h-2 rounded-full bg-neutral-300" })),
             react_1.default.createElement(TextArea, { bare: true, value: it.text, onChange: (e) => setText(i, e.target.value), placeholder: "\u3084\u308B\u3053\u3068", minRows: 1, className: "flex-1 min-w-0 py-2.5 placeholder-neutral-300" }),
-            react_1.default.createElement(DrumSelect, { value: String(it.min || 0), onChange: (v) => setMin(i, v), options: MIN_OPTIONS, noEmpty: true, title: "\u304B\u304B\u308B\u6642\u9593", className: "w-[96px] shrink-0 ft-min text-[12.5px] " + (it.min ? "" : "opacity-60") }),
-            react_1.default.createElement("button", { type: "button", onClick: () => remove(i), "aria-label": "\u524A\u9664", className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-xl text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
+            react_1.default.createElement(MinSelect, { value: it.min || 0, onChange: (v) => setMin(i, v), className: "w-[58px]" }),
+            react_1.default.createElement("button", { type: "button", onClick: () => setDelIdx(i), "aria-label": "\u524A\u9664", className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-xl text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
                 react_1.default.createElement(lucide_react_1.X, { size: 17 })),
-            items.length > 1 && react_1.default.createElement(DragHandle, { ...handleProps(it.id) })))))),
+            react_1.default.createElement(DragHandle, { ...handleProps(it.id) })))))),
+        delIdx >= 0 && items[delIdx] && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u884C\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: items[delIdx].text ? `「${items[delIdx].text}」が消えます。` : "書きかけの行が消えます。", confirmLabel: "\u524A\u9664", onCancel: () => setDelIdx(-1), onConfirm: () => { const i = delIdx; setDelIdx(-1); remove(i); } })),
         react_1.default.createElement("div", { className: "flex items-center gap-1" },
             react_1.default.createElement("span", { className: "w-6 shrink-0 flex items-center justify-center text-neutral-300" },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 15 })),
@@ -20886,14 +20912,9 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14 }),
                 " \u5834\u6240\u3092\u3072\u3089\u304F")),
             ratio && (react_1.default.createElement("div", { className: "mb-1" },
-                ratio.total > 0 && (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-1" },
-                    react_1.default.createElement("span", { className: "text-[12px] font-bold tabular-nums", style: { color: allDone ? color.deep : "#737373" } },
-                        ratio.done,
-                        "/",
-                        ratio.total),
-                    react_1.default.createElement(TimeLine, { items: r.items, color: color, className: "text-neutral-500 ml-1" }),
-                    react_1.default.createElement("span", { className: "flex-1" },
-                        react_1.default.createElement(ProgressBar, { ratio: ratio.ratio, color: color.mid })))),
+                ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1.5 space-y-1" },
+                    react_1.default.createElement(ProgressLine, { label: `${ratio.done}/${ratio.total}`, ratio: ratio.ratio, color: color, strong: allDone }),
+                    react_1.default.createElement(TimeLine, { items: r.items, color: color }))),
                 react_1.default.createElement("div", { className: "-ml-1.5" }, (r.items || []).map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-center gap-1" },
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                         react_1.default.createElement(CheckRow, { item: it, size: "l", onToggle: () => { if (!selectMode)
@@ -21364,6 +21385,7 @@ function WeekView({ start, records, onOpenDay, onEdit, onToggleItem, onPin, sele
        **この受け取りを map の中に書かないこと。**（React の決まりで、
        繰り返しの中で受け取ると数が変わったときに壊れる） */
     const colorMap = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
+    const slotColor = useSchedColor();
     const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
     const today = todayStr();
     /* **マスに何もかも出さないこと。** 小さいマスが字で埋まって読めない。
@@ -21389,7 +21411,7 @@ function WeekView({ start, records, onOpenDay, onEdit, onToggleItem, onPin, sele
                     react_1.default.createElement("span", { className: "flex-1" }),
                     list.length > 0 && react_1.default.createElement("span", { className: "text-[10px] text-neutral-400 tabular-nums" }, list.length)),
                 react_1.default.createElement("div", { className: "px-1.5 pb-1.5 space-y-[2px]", style: { minHeight: 26 } }, list.map((r) => {
-                    const c = colorOf(colorMap[r.type]);
+                    const c = (r.type === "schedule" && slotColor(r.color)) || colorOf(colorMap[r.type]);
                     const t = timeLabel(r);
                     return (react_1.default.createElement("span", { key: r.id + (r.__repeat ? "-rep" : ""), className: "flex items-center gap-1 rounded-[3px] px-1 py-[1px]", style: { background: c.soft } },
                         t && react_1.default.createElement("span", { className: "text-[9px] font-bold tabular-nums shrink-0", style: { color: c.deep } }, t.slice(0, 5)),
@@ -21464,6 +21486,7 @@ function DayPanel({ date, records, onEdit, onToggleItem, onPin, onOpenDay }) {
    ============================================================ */
 function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPin }) {
     const colorMap = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
+    const slotColor = useSchedColor();
     const firstDow = new Date(year, month - 1, 1).getDay();
     const lastDay = new Date(year, month, 0).getDate();
     const cells = [...Array(firstDow).fill(null), ...Array.from({ length: lastDay }, (_, i) => i + 1)];
@@ -21522,7 +21545,9 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
                         react_1.default.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center text-[12px] tabular-nums "
                                 + (isToday ? "bg-th-800 text-white font-bold" : (isSel ? "font-bold " : "") + weekColor(dow)) }, d)),
                     react_1.default.createElement("span", { className: "space-y-[2px]" }, sched.map((r) => {
-                        const c = colorOf(colorMap[r.type]);
+                        /* **予定だけ別あつかいにしないこと。** 札で見た色と、
+                           カレンダーで見る色が食い違うと、どれがどれだか分からない */
+                        const c = (r.type === "schedule" && slotColor(r.color)) || colorOf(colorMap[r.type]);
                         const part = spanPart(r, ds);
                         /* 日をまたぐ予定は、**1本の帯につなげて見せる。**
                            マスの境目の線は、左右へはみ出して覆い隠す。
@@ -22531,10 +22556,10 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
                         items.length > 0 && (react_1.default.createElement("span", { className: "text-[12.5px] font-bold text-neutral-400 tabular-nums" },
                             doneCount,
                             "/",
-                            items.length)),
-                        react_1.default.createElement(TimeLine, { items: items, color: color, className: "text-neutral-500" })),
-                    items.length > 0 && react_1.default.createElement("span", { className: "block mt-1.5" },
-                        react_1.default.createElement(ProgressBar, { ratio: doneCount / items.length, color: color.mid }))),
+                            items.length))),
+                    items.length > 0 && (react_1.default.createElement("span", { className: "block mt-1.5 space-y-1" },
+                        react_1.default.createElement(ProgressLine, { label: `${doneCount}/${items.length}`, ratio: doneCount / items.length, color: color, strong: doneCount === items.length }),
+                        react_1.default.createElement(TimeLine, { items: items, color: color })))),
                 react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-0.5 mt-0.5 shrink-0" },
                     onPin && (react_1.default.createElement("button", { type: "button", onClick: () => onPin(step), "aria-label": step.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!step.pinned, className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: step.pinned ? { background: color.soft, color: color.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
                         react_1.default.createElement("span", { key: step.pinned ? "on" : "off", className: "flex " + (step.pinned ? "ft-mark" : "") },
@@ -22644,7 +22669,8 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     /* **作った時点で計画に入れないこと。** 記録と同じで、
        「保存」を押すまでは、まだどこにも無い。やめれば何も残らない */
     const addStep = () => setStepEdit({
-        step: { id: uid(), title: "", dueDate: "", done: false, pinned: false, onCal: true, createdAt: new Date().toISOString(), items: [] },
+        /* **はじめから入れておかないこと。** Today がイベントで埋まる */
+        step: { id: uid(), title: "", dueDate: "", done: false, pinned: false, onCal: false, createdAt: new Date().toISOString(), items: [] },
         isNew: true,
     });
     const editStep = (s) => setStepEdit({ step: s, isNew: false });
@@ -22679,21 +22705,12 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
                 steps.length > 0 && (react_1.default.createElement("div", { className: "-mx-5 px-4 mb-3" },
-                    react_1.default.createElement("div", { className: "rounded-[14px] p-4 flex items-end gap-3", style: { background: color.soft, border: `1px solid ${color.line}` } },
-                        react_1.default.createElement("span", { className: "flex-1" },
-                            react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 mb-0.5" }, "\u9054\u6210\u3057\u305F\u3082\u306E"),
-                            react_1.default.createElement("span", { className: "block font-display text-[20px] tabular-nums", style: { color: color.deep } },
-                                doneSteps,
-                                react_1.default.createElement("span", { className: "text-[15px] text-neutral-400" },
-                                    " / ",
-                                    steps.length)),
-                            allTime.plan > 0 && (react_1.default.createElement("span", { className: "block text-[12px] tabular-nums mt-1", style: { color: color.deep } },
-                                minLabel(allTime.done) || "0分",
-                                react_1.default.createElement("span", { className: "text-neutral-400" },
-                                    " / ",
-                                    minLabel(allTime.plan))))),
-                        react_1.default.createElement("span", { className: "flex-[2] pb-1.5" },
-                            react_1.default.createElement(ProgressBar, { ratio: steps.length ? doneSteps / steps.length : 0, color: color.mid }))))),
+                    react_1.default.createElement("div", { className: "rounded-[14px] p-4 flex items-stretch gap-3", style: { background: color.soft, border: `1px solid ${color.line}` } },
+                        react_1.default.createElement("span", { className: "flex-1 min-w-0" },
+                            react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 mb-1.5" }, "\u5B9F\u7E3E"),
+                            react_1.default.createElement("span", { className: "block space-y-1.5" },
+                                react_1.default.createElement(ProgressLine, { label: `${doneSteps}/${steps.length}`, ratio: steps.length ? doneSteps / steps.length : 0, color: color, strong: doneSteps === steps.length }),
+                                allTime.plan > 0 && (react_1.default.createElement(ProgressLine, { label: minLabel(allTime.done) || "0.0h", sub: ` / ${minLabel(allTime.plan)}`, ratio: allTime.plan ? allTime.done / allTime.plan : 0, color: color, strong: allTime.done >= allTime.plan }))))))),
                 react_1.default.createElement("div", { className: "mb-5" },
                     react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, openSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, onChange: setStep, onEdit: () => editStep(s), onPin: (x) => setStep({ ...x, pinned: !x.pinned }) })))),
                     closedSteps.length > 0 && (react_1.default.createElement("div", { className: "-mx-5 px-4" },
@@ -23548,7 +23565,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         Math.max(0, Math.floor((room.quota - room.used) / PHOTO_BYTES)).toLocaleString(),
                         " \u679A\u307B\u3069\u5165\u308A\u307E\u3059")),
                     backupAt && (react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-400 mt-1.5" },
-                        "\u524D\u56DE ",
+                        "\u524D\u56DE\u306E\u4FDD\u5B58\uFF1A",
                         fmtDate(backupAt.slice(0, 10))))),
                 needBackup && (react_1.default.createElement("div", { className: "rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 mb-5 ft-noresult" },
                     react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-amber-800" }, backupAt ? "前回の書き出しのあとに、書きかえがあります" : "まだ一度も書き出していません"),
@@ -23798,10 +23815,10 @@ html { scrollbar-gutter: stable; }
 .opacity-55 { opacity: .55; }
 .top-1 { top: .25rem; }
 .opacity-60 { opacity: .6; }
-.w-\\[96px\\] { width: 96px; }
+.w-\\[58px\\] { width: 58px; }
+.w-\\[72px\\] { width: 72px; }
 /* 見積もりの欄だけ、行に収まる高さにする。**中の余白も詰めること**（字が切れる） */
-.ft-min { height: 2.25rem !important; min-height: 2.25rem !important;
-  padding: 0 .4rem 0 .6rem !important; }
+.ft-min { height: 2.25rem; min-height: 2.25rem; padding: 0 .25rem; }
 .w-\\[calc\\(100\\%\\+8px\\)\\] { width: calc(100% + 8px); }
 .bg-amber-500 { background-color: #F59E0B; }
 .pb-3 { padding-bottom: .75rem; }
@@ -24701,7 +24718,7 @@ function AppMain() {
         {
             label: "バックアップ",
             /* **字で「未書き出し」と書かないこと。** 件数はしるしの肩の数で分かる */
-            desc: backupAt ? `前回 ${fmtDate(backupAt.slice(0, 10))}` : "まだ書き出していません",
+            desc: backupAt ? `前回の保存：${fmtDate(backupAt.slice(0, 10))}` : "まだ書き出していません",
             count: needBackup ? unsavedCount : 0,
             icon: react_1.default.createElement(lucide_react_1.Download, { size: 19 }), onClick: () => goFromMenu(() => setBackupOpen(true)),
         },
