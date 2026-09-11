@@ -20076,49 +20076,99 @@ function MarkDot({ mark, size = 15 }) {
 /* つまんで並べ替えるしくみ。
    **並べ替えのやり方を、一覧ごとに変えないこと。**
    リストの中身・イベントの中身・タグ、どれも同じ持ち手（GripVertical）でそろえる */
+/* つまんで並べ替え。
+   **つまんでいる最中に、並びを入れ替えないこと。**
+   そのたびに札が作り直されて、指の下の中身が変わり、
+   カクカク・チカチカする。押さえている札は指について浮き、
+   まわりの札はすっと寄る。**決まるのは、指を離したとき** */
 function useReorder(items, onChange) {
-    const [dragId, setDragId] = (0, react_1.useState)(null);
+    const [drag, setDrag] = (0, react_1.useState)(null); // { id, from, to, dy }
     const rowsRef = (0, react_1.useRef)({});
     const setRow = (id) => (el) => { rowsRef.current[id] = el; };
-    /* 指の位置から「いま何番目にいるか」を出して、その場で入れ替える */
-    const moveTo = (id, clientY) => {
-        const from = items.findIndex((x) => x.id === id);
-        if (from < 0)
-            return;
-        let to = from;
-        items.forEach((it, k) => {
-            const el = rowsRef.current[it.id];
-            if (!el)
-                return;
-            const r = el.getBoundingClientRect();
-            if (clientY > r.top && clientY < r.bottom)
-                to = k;
-        });
-        if (to === from)
-            return;
-        const next = items.slice();
-        const [moved] = next.splice(from, 1);
-        next.splice(to, 0, moved);
-        onChange(next);
-    };
+    const startRef = (0, react_1.useRef)(null);
+    const dragId = drag ? drag.id : null;
+    const measure = () => items.map((it) => {
+        const el = rowsRef.current[it.id];
+        const r = el ? el.getBoundingClientRect() : null;
+        return { id: it.id, top: r ? r.top : 0, h: r ? r.height : 0, mid: r ? r.top + r.height / 2 : 0 };
+    });
     const handleProps = (id) => ({
         "aria-label": "つまんで並べ替え",
         onPointerDown: (e) => {
             e.preventDefault();
-            setDragId(id);
+            const rows = measure();
+            const from = items.findIndex((x) => x.id === id);
+            if (from < 0)
+                return;
+            startRef.current = { y: e.clientY, rows, from };
+            setDrag({ id, from, to: from, dy: 0 });
             try {
                 e.currentTarget.setPointerCapture(e.pointerId);
             }
             catch (err) { /* 使えない端末は無視 */ }
         },
-        onPointerMove: (e) => { if (dragId)
-            moveTo(dragId, e.clientY); },
-        onPointerUp: () => setDragId(null),
-        onPointerCancel: () => setDragId(null),
+        onPointerMove: (e) => {
+            const st = startRef.current;
+            if (!st)
+                return;
+            const dy = e.clientY - st.y;
+            /* 指のいるところが、いま何番目かを出す（並びはまだ変えない） */
+            const y = st.rows[st.from].mid + dy;
+            let to = st.from;
+            st.rows.forEach((r, k) => {
+                if (k === st.from)
+                    return;
+                if (k < st.from && y < r.mid)
+                    to = Math.min(to, k);
+                if (k > st.from && y > r.mid)
+                    to = Math.max(to, k);
+            });
+            setDrag((d) => (d ? { ...d, dy, to } : d));
+        },
+        onPointerUp: () => {
+            const d = drag;
+            startRef.current = null;
+            setDrag(null);
+            if (!d || d.to === d.from)
+                return;
+            const next = items.slice();
+            const [moved] = next.splice(d.from, 1);
+            next.splice(d.to, 0, moved);
+            onChange(next);
+        },
+        onPointerCancel: () => { startRef.current = null; setDrag(null); },
         className: "w-10 h-10 shrink-0 flex items-center justify-center rounded-xl text-neutral-300",
         style: { touchAction: "none", cursor: "grab" },
     });
-    return { dragId, setRow, handleProps };
+    /* 札ごとの見え方。つまんでいる札は指について動き、
+       またぐことになる札はその場でひとつぶん寄る */
+    const rowStyle = (id) => {
+        if (!drag)
+            return undefined;
+        const st = startRef.current;
+        const k = items.findIndex((x) => x.id === id);
+        if (id === drag.id) {
+            return {
+                transform: `translateY(${drag.dy}px)`,
+                zIndex: 30, position: "relative",
+                transition: "none",
+                boxShadow: "0 6px 18px rgba(0,0,0,.14)",
+            };
+        }
+        if (!st)
+            return undefined;
+        const h = st.rows[drag.from] ? st.rows[drag.from].h : 0;
+        let shift = 0;
+        if (drag.to > drag.from && k > drag.from && k <= drag.to)
+            shift = -h;
+        if (drag.to < drag.from && k >= drag.to && k < drag.from)
+            shift = h;
+        return {
+            transform: `translateY(${shift}px)`,
+            transition: "transform .18s cubic-bezier(0.22,1,0.36,1)",
+        };
+    };
+    return { dragId, setRow, handleProps, rowStyle };
 }
 /* 並べ替えの持ち手。**別の絵にしないこと** */
 function DragHandle(props) {
@@ -20128,7 +20178,7 @@ function DragHandle(props) {
 function ChecklistEditor({ items, onChange }) {
     const [draft, setDraft] = (0, react_1.useState)("");
     const boxRef = (0, react_1.useRef)(null);
-    const { dragId, setRow, handleProps } = useReorder(items, onChange);
+    const { dragId, setRow, handleProps, rowStyle } = useReorder(items, onChange);
     const add = () => {
         const t = draft.trim();
         if (!t)
@@ -20139,7 +20189,7 @@ function ChecklistEditor({ items, onChange }) {
     const setText = (i, v) => { const next = items.slice(); next[i] = { ...next[i], text: v }; onChange(next); };
     const remove = (i) => onChange(items.filter((_, k) => k !== i));
     return (react_1.default.createElement("div", { ref: boxRef },
-        items.length > 0 && (react_1.default.createElement("div", { className: "mb-1" }, items.map((it, i) => (react_1.default.createElement("div", { key: it.id, ref: setRow(it.id), className: "flex items-center gap-1 rounded-xl " + (dragId === it.id ? "bg-th-50" : "") },
+        items.length > 0 && (react_1.default.createElement("div", { className: "mb-1" }, items.map((it, i) => (react_1.default.createElement("div", { key: it.id, ref: setRow(it.id), style: rowStyle(it.id), className: "flex items-center gap-1 rounded-xl " + (dragId === it.id ? "bg-white" : "") },
             react_1.default.createElement("span", { className: "w-6 shrink-0 flex items-center justify-center" },
                 react_1.default.createElement("span", { className: "w-2 h-2 rounded-full bg-neutral-300" })),
             react_1.default.createElement(TextArea, { bare: true, value: it.text, onChange: (e) => setText(i, e.target.value), placeholder: "\u3084\u308B\u3053\u3068", minRows: 1, className: "flex-1 min-w-0 py-2.5 placeholder-neutral-300" }),
@@ -20390,7 +20440,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                         react_1.default.createElement(ImagesField, { images: rec.images, onChange: (v) => set({ images: v }), onError: setErr })))),
                 rec.type === "checklist" && (react_1.default.createElement("div", { className: "mb-3" },
                     react_1.default.createElement(ChecklistEditor, { items: rec.items || [], onChange: (v) => set({ items: v }) }),
-                    react_1.default.createElement("div", { className: "mt-2" },
+                    react_1.default.createElement("div", { className: "mt-6" },
                         react_1.default.createElement(TextArea, { value: rec.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" })))),
                 rec.type === "schedule" && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(RowCard, { className: "mb-3" },
@@ -23071,7 +23121,7 @@ function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onR
     const [menu, setMenu] = (0, react_1.useState)(null);
     /* タグは文字そのものが id。並べ替えは、リストの中身と同じしくみを使う */
     const rows = (0, react_1.useMemo)(() => tags.map((t) => ({ id: t })), [tags]);
-    const { dragId, setRow, handleProps } = useReorder(rows, (v) => onReorder(v.map((x) => x.id)));
+    const { dragId, setRow, handleProps, rowStyle } = useReorder(rows, (v) => onReorder(v.map((x) => x.id)));
     const count = (t) => records.filter((r) => normalizeTags(r.tags).some((x) => x.toLowerCase() === t.toLowerCase())).length;
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
@@ -23089,8 +23139,7 @@ function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onR
                         react_1.default.createElement(lucide_react_1.Plus, { size: 15 }),
                         " \u4F5C\u308B")),
                 react_1.default.createElement("div", { className: "space-y-2 ft-seq" },
-                    tags.map((t) => (react_1.default.createElement("div", { key: t, ref: setRow(t), className: "flex items-center gap-1 rounded-2xl border border-neutral-200 pl-3 pr-1.5 py-2 min-h-[56px] "
-                            + (dragId === t ? "bg-th-50" : "bg-white") },
+                    tags.map((t) => (react_1.default.createElement("div", { key: t, ref: setRow(t), style: rowStyle(t), className: "flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white pl-3 pr-1.5 py-2 min-h-[56px]" },
                         react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
                             react_1.default.createElement(lucide_react_1.Tag, { size: 16 })),
                         react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -23536,6 +23585,7 @@ html { scrollbar-gutter: stable; }
 .pt-5 { padding-top: 1.25rem; }
 .mr-1 { margin-right: .25rem; }
 .grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.mt-6 { margin-top: 1.5rem; }
 .mt-4 { margin-top: 1rem; }
 /* 大きさを変える棒。**押せる大きさを保つこと** */
 .ft-range { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px;
