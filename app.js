@@ -20342,22 +20342,17 @@ function itemsTime(items) {
     });
     return { plan, done };
 }
-/* 値 ＋ 進み具合の棒。**値の幅をそろえること。**
-   行が変わるたびに棒のはじまりがずれると、見くらべられない */
-function ProgressLine({ label, sub, ratio, color, strong }) {
-    return (react_1.default.createElement("div", { className: "flex items-center gap-2" },
-        react_1.default.createElement("span", { className: "w-[104px] shrink-0 text-[12px] tabular-nums leading-tight whitespace-nowrap" },
-            react_1.default.createElement("span", { className: "font-bold", style: { color: strong ? color.deep : "#737373" } }, label),
-            sub && react_1.default.createElement("span", { className: "text-neutral-400" }, sub)),
-        react_1.default.createElement("span", { className: "flex-1" },
-            react_1.default.createElement(ProgressBar, { ratio: ratio, color: color.mid }))));
-}
-/* 見積もりと実績。**画面ごとに書き方を変えないこと** */
-function TimeLine({ items, color }) {
-    const { plan, done } = itemsTime(items);
-    if (!plan)
-        return null;
-    return (react_1.default.createElement(ProgressLine, { label: minLabel(done) || "0.0h", sub: ` / ${minLabel(plan)}`, ratio: plan ? done / plan : 0, color: color, strong: done >= plan }));
+/* 件数＋時間の進み具合。**バーは件数だけで作ること。** 時間は登録があるときだけ、
+   同じ行にかっこ書きで添える（時間だけの棒は持たない。数字がふたつあっても、
+   進み具合はいつも「件数」で読む）。
+   桁が増えても位置がずれないよう、数字は等幅（tabular-nums）でそろえる */
+function ProgressLine({ done, total, items, time, color, strong }) {
+    const t = time || itemsTime(items || []);
+    const label = `${done}/${total}` + (t.plan > 0 ? `\uFF08${minLabel(t.done) || "0.0h"}/${minLabel(t.plan)}\uFF09` : "");
+    const ratio = total ? done / total : 0;
+    return (react_1.default.createElement("div", { className: "space-y-1" },
+        react_1.default.createElement("p", { className: "text-[12px] font-bold tabular-nums leading-tight whitespace-nowrap", style: { color: strong ? color.deep : "#737373" } }, label),
+        react_1.default.createElement(ProgressBar, { ratio: ratio, color: color.mid })));
 }
 function ChecklistEditor({ items, onChange }) {
     const [draft, setDraft] = (0, react_1.useState)("");
@@ -20741,7 +20736,10 @@ function CheckRow({ item, onToggle, size = "m" }) {
         react_1.default.createElement("span", { className: "shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5 " + (big ? "w-6 h-6" : "w-5 h-5"), style: item.done ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4" } }, item.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
             react_1.default.createElement(lucide_react_1.Check, { size: big ? 14 : 12, strokeWidth: 3.5, className: "thick" }))),
         react_1.default.createElement("span", { className: (big ? "text-[15.5px]" : "text-[13.5px]") + " leading-snug flex-1 min-w-0 break-words "
-                + (item.done ? "text-neutral-400 line-through" : "text-neutral-800") }, item.text)));
+                + (item.done ? "text-neutral-400 line-through" : "text-neutral-800") }, item.text),
+        /* **時間の桁が増えても、やることの字と重ならないこと。**
+           「00.0h」がまるごと入る幅を、はじめから確保しておく */
+        item.min > 0 && (react_1.default.createElement("span", { className: "shrink-0 tabular-nums mt-0.5 " + (big ? "text-[13px]" : "text-[11.5px]") + " " + (item.done ? "text-neutral-300" : "text-neutral-400"), style: { minWidth: big ? 44 : 38, textAlign: "right" } }, minLabel(item.min)))));
 }
 /* コメントは吹き出しで、記録の下部に出す */
 /* コメントの吹き出し。
@@ -20931,9 +20929,8 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14 }),
                 " \u5834\u6240\u3092\u3072\u3089\u304F")),
             ratio && (react_1.default.createElement("div", { className: "mb-1" },
-                ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1.5 space-y-1" },
-                    react_1.default.createElement(ProgressLine, { label: `${ratio.done}/${ratio.total}`, ratio: ratio.ratio, color: color, strong: allDone }),
-                    react_1.default.createElement(TimeLine, { items: r.items, color: color }))),
+                ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1.5" },
+                    react_1.default.createElement(ProgressLine, { done: ratio.done, total: ratio.total, items: r.items, color: color, strong: allDone }))),
                 react_1.default.createElement("div", { className: "-ml-1.5" }, (r.items || []).map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-center gap-1" },
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                         react_1.default.createElement(CheckRow, { item: it, size: "l", onToggle: () => { if (!selectMode)
@@ -22506,7 +22503,7 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
         const i = Math.max(0, Math.min(PLAN_TABS.length - 1, tabIndex + dir));
         setTab(PLAN_TABS[i].key);
     };
-    const { areaRef, pageCls } = useSwipePages(() => stepTab(-1), () => stepTab(1));
+    const { areaRef } = useSwipePages(() => stepTab(-1), () => stepTab(1));
     /* **カテゴリで分けないこと。** 入れ物をこしらえるより、
        いま進めているものが上にそろっているほうが探しやすい。
        名前だけでなく、中のイベントの名前もヒットする対象に含める */
@@ -22520,20 +22517,30 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
             : "\u898B\u3064\u304B\u308A\u307E\u305B\u3093";
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
-        react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u8A08\u753B\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
-        react_1.default.createElement("div", { className: "px-4 pt-1 pb-2" },
-            react_1.default.createElement("div", { className: "flex rounded-full bg-th-50 p-1" }, PLAN_TABS.map((t) => (react_1.default.createElement("button", { key: t.key, type: "button", onClick: () => goTab(t.key), "aria-pressed": effectiveTab === t.key, style: { minHeight: 42 }, className: "flex-1 rounded-full text-[14px] font-bold flex items-center justify-center ft-tap "
+        /* **検索バーとタブを、ふたつの帯にしないこと。** 別々に sticky を付けると、
+           重なりの計算がずれて隙間や被りが出る。ひとつの帯にまとめて、
+           Today 画面の見出しと同じ決まり（top は帯の高さの変数、bg-appで下地を隠す）で貼り付ける */
+        react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 sticky bg-app ft-col", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 76px))", zIndex: 20 } },
+            react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
+                react_1.default.createElement("div", { className: "flex-1 min-w-0 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
+                    react_1.default.createElement(lucide_react_1.Search, { size: 17, className: q ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
+                    react_1.default.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\u8A08\u753B\u3092\u3055\u304C\u3059", className: "flex-1 min-w-0 bg-transparent outline-none text-[14.5px] text-neutral-900 placeholder-neutral-400" }),
+                    q && (react_1.default.createElement("button", { type: "button", onClick: () => setQ(""), "aria-label": "\u6D88\u3059", className: "w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-neutral-400 ft-tap ft-tap-icon" },
+                        react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
+                react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })),
+            react_1.default.createElement("div", { className: "flex rounded-full bg-th-50 p-1 mt-2" }, PLAN_TABS.map((t) => (react_1.default.createElement("button", { key: t.key, type: "button", onClick: () => goTab(t.key), "aria-pressed": effectiveTab === t.key, style: { minHeight: 42 }, className: "flex-1 rounded-full text-[14px] font-bold flex items-center justify-center ft-tap "
                     + (effectiveTab === t.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") }, t.label))))),
-        react_1.default.createElement("div", { ref: areaRef, className: "overflow-hidden" },
-            react_1.default.createElement("div", { key: effectiveTab, className: "px-4 ft-col space-y-2.5 " + pageCls },
-                effectiveTab === "live" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, live.map(renderPlan))),
-                effectiveTab === "done" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, done.map(renderPlan))),
-                effectiveTab === "all" && (react_1.default.createElement(react_1.default.Fragment, null,
-                    live.length > 0 && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, live.map(renderPlan))),
-                    done.length > 0 && (react_1.default.createElement("div", { className: (live.length ? "pt-3 " : "") + "space-y-2.5 ft-seq ft-spread" }, done.map(renderPlan))))),
-                plans.length === 0 ? (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))) : ((effectiveTab === "live" ? live.length : effectiveTab === "done" ? done.length : live.length + done.length) === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                    react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, emptyText)))))),
+        /* **キーで作り直して動きを付けないこと。** フォルダのタブと同じ、ただの出し分けにする。
+           作り直しをやめることで、繰り返し払っても止まらず、軽いままにする */
+        react_1.default.createElement("div", { ref: areaRef, className: "px-4 pt-1 ft-col space-y-2.5" },
+            effectiveTab === "live" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, live.map(renderPlan))),
+            effectiveTab === "done" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, done.map(renderPlan))),
+            effectiveTab === "all" && (react_1.default.createElement(react_1.default.Fragment, null,
+                live.length > 0 && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, live.map(renderPlan))),
+                done.length > 0 && (react_1.default.createElement("div", { className: (live.length ? "pt-3 " : "") + "space-y-2.5 ft-seq ft-spread" }, done.map(renderPlan))))),
+            plans.length === 0 ? (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))) : ((effectiveTab === "live" ? live.length : effectiveTab === "done" ? done.length : live.length + done.length) === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400" }, emptyText))))),
         menu && (react_1.default.createElement(TypePickSheet, { title: menu.plan.name || "計画", types: menu.plan.doneAt ? ["__undone", "__rename", "__delete"] : ["__done", "__rename", "__delete"], labels: {
                 __done: "この計画をやり遂げた", __undone: "やり遂げたのを取り消す",
                 __rename: "計画の設定", __delete: "この計画を削除"
@@ -22587,9 +22594,8 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
                         step.dueDate && !allDone && (react_1.default.createElement("span", { className: "text-[13.5px] font-bold tabular-nums rounded-lg px-2 py-[3px] leading-tight", style: leftStyle }, stepLeftLabel(left))),
                         step.dueDate && (react_1.default.createElement("span", { className: "text-[12.5px] tabular-nums text-neutral-400" }, shortDate(step.dueDate))),
                         !step.dueDate && react_1.default.createElement("span", { className: "text-[12.5px] text-neutral-400" }, "\u671F\u9650\u306A\u3057")),
-                    items.length > 0 && (react_1.default.createElement("span", { className: "block mt-1.5 space-y-1" },
-                        react_1.default.createElement(ProgressLine, { label: `${doneCount}/${items.length}`, ratio: doneCount / items.length, color: color, strong: doneCount === items.length }),
-                        react_1.default.createElement(TimeLine, { items: items, color: color })))),
+                    items.length > 0 && (react_1.default.createElement("div", { className: "block mt-1.5" },
+                        react_1.default.createElement(ProgressLine, { done: doneCount, total: items.length, items: items, color: color, strong: doneCount === items.length })))),
                 react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-0.5 mt-0.5 shrink-0" },
                     onPin && (react_1.default.createElement("button", { type: "button", onClick: () => onPin(step), "aria-label": step.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!step.pinned, className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: step.pinned ? { background: color.soft, color: color.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
                         react_1.default.createElement("span", { key: step.pinned ? "on" : "off", className: "flex " + (step.pinned ? "ft-mark" : "") },
@@ -22599,7 +22605,8 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
             items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5" }, items.map((it) => (react_1.default.createElement("button", { key: it.id, type: "button", onClick: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-2 min-h-[44px] rounded-xl ft-tap" },
                 react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
-                react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text)))))))));
+                react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text),
+                it.min > 0 && (react_1.default.createElement("span", { className: "shrink-0 text-[11.5px] tabular-nums mt-0.5 " + (it.done ? "text-neutral-300" : "text-neutral-400"), style: { minWidth: 38, textAlign: "right" } }, minLabel(it.min)))))))))));
 }
 /* イベントを書く画面。
    **記録を書く画面と別の作りにしないこと。** 同じ「書くこと」なのに
@@ -22739,9 +22746,8 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                     react_1.default.createElement("p", { className: "text-[13px] text-neutral-400" }, "\u30A4\u30D9\u30F3\u30C8\u304C\u767B\u9332\u3055\u308C\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "rounded-2xl p-4 flex items-stretch gap-3", style: { background: color.soft, border: `1px solid ${color.line}` } },
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                         react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 mb-1.5" }, "\u5B9F\u7E3E"),
-                        react_1.default.createElement("span", { className: "block space-y-1.5" },
-                            react_1.default.createElement(ProgressLine, { label: `${doneSteps}/${steps.length}`, ratio: steps.length ? doneSteps / steps.length : 0, color: color, strong: doneSteps === steps.length }),
-                            allTime.plan > 0 && (react_1.default.createElement(ProgressLine, { label: minLabel(allTime.done) || "0.0h", sub: ` / ${minLabel(allTime.plan)}`, ratio: allTime.plan ? allTime.done / allTime.plan : 0, color: color, strong: allTime.done >= allTime.plan }))))))),
+                        react_1.default.createElement("span", { className: "block" },
+                            react_1.default.createElement(ProgressLine, { done: doneSteps, total: steps.length, time: allTime, color: color, strong: doneSteps === steps.length })))))),
                 /* **ここも、済んだものを灰にしないこと。** おめでたいことなので、
                    計画いろの明るい面を使う（灰にすると祝いに見えなくなる） */
                 plan.doneAt && (react_1.default.createElement("div", { className: "-mx-5 px-4 mb-5" },
