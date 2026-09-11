@@ -20087,11 +20087,17 @@ function useReorder(items, onChange) {
     const setRow = (id) => (el) => { rowsRef.current[id] = el; };
     const startRef = (0, react_1.useRef)(null);
     const dragId = drag ? drag.id : null;
-    const measure = () => items.map((it) => {
-        const el = rowsRef.current[it.id];
-        const r = el ? el.getBoundingClientRect() : null;
-        return { id: it.id, top: r ? r.top : 0, h: r ? r.height : 0, mid: r ? r.top + r.height / 2 : 0 };
-    });
+    const measure = () => {
+        const rows = items.map((it) => {
+            const el = rowsRef.current[it.id];
+            const r = el ? el.getBoundingClientRect() : null;
+            return { id: it.id, top: r ? r.top : 0, h: r ? r.height : 0, mid: r ? r.top + r.height / 2 : 0 };
+        });
+        /* **高さだけで測らないこと。** 札のあいだの余白ぶん足りず、寄せ方がずれる。
+           ひとつ下の札との「上どうしの差」を、ずらす量にする */
+        rows.forEach((r, k) => { r.step = k + 1 < rows.length ? rows[k + 1].top - r.top : r.h; });
+        return rows;
+    };
     const handleProps = (id) => ({
         "aria-label": "つまんで並べ替え",
         onPointerDown: (e) => {
@@ -20157,7 +20163,7 @@ function useReorder(items, onChange) {
         }
         if (!st)
             return undefined;
-        const h = st.rows[drag.from] ? st.rows[drag.from].h : 0;
+        const h = st.rows[drag.from] ? (st.rows[drag.from].step || st.rows[drag.from].h) : 0;
         let shift = 0;
         if (drag.to > drag.from && k > drag.from && k <= drag.to)
             shift = -h;
@@ -20316,18 +20322,21 @@ function AllDayToggle({ on, onToggle }) {
    ============================================================ */
 function WhenRow({ rec, onChange, withTime }) {
     if (rec.scope === "week" || rec.scope === "month") {
-        return (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-3 text-neutral-500" },
-            react_1.default.createElement(lucide_react_1.CalendarDays, { size: 19, className: "shrink-0" }),
-            react_1.default.createElement("span", { className: "text-[15.5px] text-neutral-900" }, rec.scope === "week" ? `${fmtDate(rec.date)} の週` : `${rec.date.slice(0, 4)}年${Number(rec.date.slice(5, 7))}月`)));
+        return (react_1.default.createElement(RowCard, { className: "mb-3" },
+            react_1.default.createElement(SheetRow, { label: rec.scope === "week" ? "この週" : "この月", last: true },
+                react_1.default.createElement("span", { className: "text-[15px] text-neutral-500" }, rec.scope === "week" ? `${fmtDate(rec.date)} の週` : `${rec.date.slice(0, 4)}年${Number(rec.date.slice(5, 7))}月`))));
     }
     const allDay = isAllDay(rec);
-    return (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-3 flex-wrap" },
-        react_1.default.createElement(lucide_react_1.CalendarDays, { size: 19, className: "text-neutral-400 shrink-0" }),
-        react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => onChange({ date: e.target.value }) }),
-        withTime && (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement(AllDayToggle, { on: allDay, onToggle: () => onChange({ time: allDay ? "09:00" : null }) }),
-            react_1.default.createElement("span", { className: allDay ? "opacity-40 pointer-events-none" : "" },
-                react_1.default.createElement(TimeInput, { pill: true, value: rec.time || "", placeholder: "\u6642\u523B", onChange: (v) => onChange({ time: v }) }))))));
+    /* **予定と違う形にしないこと。** 同じ「いつのことか」を決める場所なので、
+       枠のかたち・名前の置き方・切り替えの見た目をそろえる */
+    return (react_1.default.createElement(RowCard, { className: "mb-3" },
+        withTime && (react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
+            react_1.default.createElement(Switch, { on: allDay, label: "\u7D42\u65E5", onChange: (v) => onChange({ time: v ? null : "09:00" }) }))),
+        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8", last: true },
+            react_1.default.createElement("span", { className: "flex items-center gap-2" },
+                react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => onChange({ date: e.target.value }) }),
+                withTime && (react_1.default.createElement("span", { className: allDay ? "opacity-40 pointer-events-none" : "" },
+                    react_1.default.createElement(TimeInput, { pill: true, value: rec.time || "", placeholder: "\u6642\u523B", onChange: (v) => onChange({ time: v }) })))))));
 }
 /* ============================================================
    RecordForm ＝ 記録を書く画面
@@ -20431,8 +20440,6 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                             react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, onChange: (e) => set({ endDate: e.target.value }) }),
                             react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
                                 react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) })))))),
-                react_1.default.createElement("div", { className: "mb-3" },
-                    react_1.default.createElement(TagField, { value: rec.tags, onChange: (v) => set({ tags: v }), knownTags: knownTags, onCreateTag: onCreateTag })),
                 rec.type !== "memo" && (react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope })),
                 rec.type === "memo" && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(TextArea, { bare: true, value: rec.text, onChange: (e) => set({ text: e.target.value }), minRows: 6, placeholder: "\u601D\u3063\u305F\u3053\u3068" }),
@@ -20440,7 +20447,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                         react_1.default.createElement(ImagesField, { images: rec.images, onChange: (v) => set({ images: v }), onError: setErr })))),
                 rec.type === "checklist" && (react_1.default.createElement("div", { className: "mb-3" },
                     react_1.default.createElement(ChecklistEditor, { items: rec.items || [], onChange: (v) => set({ items: v }) }),
-                    react_1.default.createElement("div", { className: "mt-6" },
+                    react_1.default.createElement("div", { className: "mt-10" },
                         react_1.default.createElement(TextArea, { value: rec.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" })))),
                 rec.type === "schedule" && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(RowCard, { className: "mb-3" },
@@ -20457,7 +20464,9 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                         react_1.default.createElement(TextInput, { value: rec.place, onChange: (e) => set({ place: e.target.value }), placeholder: "\u5834\u6240" }),
                         react_1.default.createElement(TextInput, { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u306E\u30EA\u30F3\u30AF", inputMode: "url" })))),
                 plans && plans.length > 0 && rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
-                    react_1.default.createElement(DrumSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), options: plans.map((p) => ({ value: p.id, label: p.name || "（名前なし）" })), placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" })))),
+                    react_1.default.createElement(DrumSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), options: plans.map((p) => ({ value: p.id, label: p.name || "（名前なし）" })), placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" }))),
+                react_1.default.createElement("div", { className: "mt-10" },
+                    react_1.default.createElement(TagField, { value: rec.tags, onChange: (v) => set({ tags: v }), knownTags: knownTags, onCreateTag: onCreateTag }))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: cancel, className: BTN_SECONDARY + " flex-1 btn-h-lg text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 onDelete && (react_1.default.createElement("button", { type: "button", onClick: () => setConfirmDel(true), className: BTN_DANGER_SOFT + " flex-1 btn-h-lg text-[14.5px]" }, "\u524A\u9664")),
@@ -23138,7 +23147,7 @@ function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onR
                             + " " + BTN_H + " px-4 text-[14.5px] shrink-0" },
                         react_1.default.createElement(lucide_react_1.Plus, { size: 15 }),
                         " \u4F5C\u308B")),
-                react_1.default.createElement("div", { className: "space-y-2 ft-seq" },
+                react_1.default.createElement("div", { className: "space-y-2" },
                     tags.map((t) => (react_1.default.createElement("div", { key: t, ref: setRow(t), style: rowStyle(t), className: "flex items-center gap-1 rounded-2xl border border-neutral-200 bg-white pl-3 pr-1.5 py-2 min-h-[56px]" },
                         react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
                             react_1.default.createElement(lucide_react_1.Tag, { size: 16 })),
@@ -23586,6 +23595,7 @@ html { scrollbar-gutter: stable; }
 .mr-1 { margin-right: .25rem; }
 .grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .mt-6 { margin-top: 1.5rem; }
+.mt-10 { margin-top: 2.5rem; }
 .mt-4 { margin-top: 1rem; }
 /* 大きさを変える棒。**押せる大きさを保つこと** */
 .ft-range { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 999px;
