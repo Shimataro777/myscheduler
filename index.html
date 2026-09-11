@@ -32,9 +32,25 @@
         /* アイコンと同じ、白地に水色の手帳。**アプリの帯の色と混ぜないこと** */
         background: #FFFFFF;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        transition: opacity 260ms ease;
+        font-family: system-ui, -apple-system, "Hiragino Sans", sans-serif;
+        transition: opacity 320ms ease;
+      }
+      /* 名前と版数。**版数を大きく出さないこと。**
+         目には入るが、読ませるためのものではない */
+      #app-splash .name {
+        margin-top: 22px;
+        font-size: 22px; font-weight: 700; color: #3E7EA6; letter-spacing: .08em;
+        opacity: 0;
+        animation: hibi-in 520ms cubic-bezier(0.16, 1, 0.3, 1) 220ms forwards;
+      }
+      #app-splash .ver {
+        margin-top: 7px;
+        font-size: 11.5px; color: rgba(62,126,166,.55); letter-spacing: .04em;
+        opacity: 0;
+        animation: hibi-in 520ms cubic-bezier(0.16, 1, 0.3, 1) 300ms forwards;
       }
       #app-splash .mark {
         width: 92px;
@@ -65,21 +81,42 @@
         to   { opacity: 1; transform: none; }
       }
       @media (prefers-reduced-motion: reduce) {
-        #app-splash .mark { animation: none; opacity: 1; }
+        #app-splash .mark, #app-splash .name, #app-splash .ver { animation: none; opacity: 1; }
+        #app-splash { transition: none; }
       }
     </style>
   </head>
   <body>
-    <div id="app-splash"><div class="mark"></div></div>
+    <div id="app-splash">
+      <div class="mark"></div>
+      <p class="name">My手帳</p>
+      <p class="ver" id="app-splash-ver"></p>
+    </div>
     <div id="root"></div>
     <script>
+      /* 版数はここひとつで決める。**あちこちに書かないこと**（食い違う）。
+         アプリの中からも window.__MT_VERSION で読む */
+      /* X＝見た目や操作性の大きな変更・画面の追加
+         Y＝細かな機能向上・部分的な追加・画面の手直し
+         Z＝不具合や誤字の直し */
+      window.__MT_VERSION = "1.1.0";
+      document.getElementById("app-splash-ver").textContent = "v" + window.__MT_VERSION;
+
       /* 消し方は index.html の側に持たせてある。
          こうしておくと、本体の読み込みが失敗しても絵が残り続けない */
+      /* **かならず最低の時間だけ見せること。** 読み込みが速い端末では
+         一瞬だけ光って消え、かえって目ざわりになる */
+      var MT_SPLASH_MS = 1400;
+      var mtSplashFrom = Date.now();
       window.__hibiHideSplash = function () {
         var el = document.getElementById("app-splash");
-        if (!el) return;
-        el.style.opacity = "0";
-        setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 300);
+        if (!el || el.dataset.going) return;
+        el.dataset.going = "1";
+        var wait = Math.max(0, MT_SPLASH_MS - (Date.now() - mtSplashFrom));
+        setTimeout(function () {
+          el.style.opacity = "0";
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 360);
+        }, wait);
       };
       /* 念のため、5秒たったら必ず消す */
       setTimeout(function () { window.__hibiHideSplash(); }, 5000);
