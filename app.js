@@ -17573,7 +17573,7 @@ const DEFAULT_PREFS = {
        （"name" ＝ 名前順／"created" ＝ 作成順） */
     sortOrder: "name",
     /* 記録の並び（"new" ＝ 新しい順／"old" ＝ 古い順）。
-       Today・みつける・フォルダの中で共通 */
+       Today・探す・フォルダの中で共通 */
     recordOrder: "old",
     showWeekNumbers: false,
     weekStart: 0, // 0＝日曜はじまり
@@ -17707,7 +17707,10 @@ function migrateRecord(r) {
     };
     if (type === "checklist") {
         out.items = Array.isArray(r.items)
-            ? r.items.filter((i) => i && typeof i === "object").map((i) => ({ id: i.id || uid(), text: String(i.text || ""), done: !!i.done }))
+            ? r.items.filter((i) => i && typeof i === "object").map((i) => ({ id: i.id || uid(), text: String(i.text || ""), done: !!i.done,
+                /* かかる見積もり（分）。**ここに書き足すのを忘れないこと。**
+                   一行ずつ写しているので、書かないと読むたびに消える */
+                min: Number(i.min) || 0 }))
             : [];
         out.repeat = (r.repeat && typeof r.repeat === "object")
             ? {
@@ -17840,6 +17843,7 @@ const REPEATS = [
     { key: "daily", label: "毎日" },
     { key: "weekly", label: "毎週" },
     { key: "monthly", label: "毎月" },
+    { key: "yearly", label: "毎年" },
 ];
 /* 繰り返しの言い方。**ここ1か所で決めること**（画面ごとに書くと食い違う） */
 function repeatLabel(rep) {
@@ -17850,6 +17854,8 @@ function repeatLabel(rep) {
         base = "毎日";
     else if (rep.freq === "monthly")
         base = "毎月";
+    else if (rep.freq === "yearly")
+        base = "毎年";
     else if (rep.freq === "weekly") {
         const days = (rep.days || []).slice().sort((a, b) => a - b);
         base = days.length ? "毎週 " + days.map((i) => WEEK_LABELS[i]).join("・") : "毎週";
@@ -17895,6 +17901,9 @@ function repeatsOn(r, date) {
     }
     if (rep.freq === "monthly")
         return base.getDate() === d.getDate();
+    /* 毎年は、月と日がそろったとき */
+    if (rep.freq === "yearly")
+        return base.getMonth() === d.getMonth() && base.getDate() === d.getDate();
     return false;
 }
 /* ============================================================
@@ -17929,7 +17938,10 @@ function migratePlan(p) {
             /* 期日を入れていないものの並びが、開くたびに変わらないようにする */
             createdAt: typeof g.createdAt === "string" && g.createdAt ? g.createdAt : "1970-01-01T00:00:00.000Z",
             items: Array.isArray(g.items) ? g.items.filter((i) => i && typeof i === "object")
-                .map((i) => ({ id: i.id || uid(), text: String(i.text || ""), done: !!i.done })) : [],
+                .map((i) => ({ id: i.id || uid(), text: String(i.text || ""), done: !!i.done,
+                /* かかる見積もり（分）。**ここに書き足すのを忘れないこと。**
+                   一行ずつ写しているので、書かないと読むたびに消える */
+                min: Number(i.min) || 0 })) : [],
         })),
         pinned: !!p.pinned,
         doneAt: typeof p.doneAt === "string" ? p.doneAt : "",
@@ -18012,7 +18024,7 @@ function emptyFolder(name) {
 }
 /* **はじめから入っているフォルダは、もう作らないこと。**
    「印つき」を消せない形で置いていたが、要らない人には邪魔なだけだった。
-   印を付けた記録は、みつける画面の「印つき」でしぼれる。
+   印を付けた記録は、探す画面の「印つき」でしぼれる。
    自分で「印つき」のフォルダを作りたい人は、集める条件から選べる */
 const STAR_FOLDER_ID = "folder-marked";
 /* 前に入れておいた「印つき」を、読み込むときに取りのぞく。
@@ -19328,7 +19340,7 @@ function WheelColumn({ items, value, onChange, minWidth = 72 }) {
 }
 /* zIndex＝重なり順。ほかの小窓の上にさらに重ねるときは大きい数を渡すこと */
 /* plain ＝ ドラムではなく、ふつうの中身を入れるとき（帯を出さない） */
-function WheelSheet({ title, onClose, onConfirm, children, zIndex = 2147483000, plain }) {
+function WheelSheet({ title, onClose, onConfirm, onClear, children, zIndex = 2147483000, plain }) {
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center", style: { zIndex }, onClick: onClose },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/40" }),
         react_1.default.createElement("div", { className: "relative w-full max-w-lg bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg anim-sheet", onClick: (e) => e.stopPropagation() },
@@ -19340,11 +19352,12 @@ function WheelSheet({ title, onClose, onConfirm, children, zIndex = 2147483000, 
                 !plain && (react_1.default.createElement("div", { className: "pointer-events-none absolute left-4 right-4 border-y-2 border-th-700/35 bg-th-50/40 rounded-md", style: { height: WHEEL_ITEM_H, top: `calc(0.75rem + ${WHEEL_ITEM_H * ((WHEEL_VISIBLE - 1) / 2)}px)` } })),
                 react_1.default.createElement("div", { className: plain ? "relative" : "relative flex justify-center gap-2" }, children)),
             react_1.default.createElement("div", { className: "px-4 pt-3 flex gap-2.5 border-t border-neutral-200 mt-3", style: SAFE_BOTTOM(14) },
-                react_1.default.createElement("button", { type: "button", onClick: onClose, className: BTN_SECONDARY + " flex-1 " + BTN_H + " text-[15.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                react_1.default.createElement("button", { type: "button", onClick: onConfirm, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " text-[15.5px]" }, "\u6C7A\u5B9A")))));
+                react_1.default.createElement("button", { type: "button", onClick: onClose, className: BTN_SECONDARY + " flex-1 " + BTN_H + " text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
+                onClear && (react_1.default.createElement("button", { type: "button", onClick: onClear, className: BTN_SECONDARY + " flex-1 " + BTN_H + " text-[14.5px]" }, "\u9078\u629E\u89E3\u9664")),
+                react_1.default.createElement("button", { type: "button", onClick: onConfirm, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " text-[14.5px]" }, "\u6C7A\u5B9A")))));
 }
 /* 1列のドラム選択欄 */
-function DrumSelect({ value, onChange, options, placeholder = "選択", title, className, disabled, noEmpty }) {
+function DrumSelect({ value, onChange, options, placeholder = "選択", title, className, disabled, noEmpty, clearable }) {
     const [open, setOpen] = (0, react_1.useState)(false);
     const [temp, setTemp] = (0, react_1.useState)(value !== null && value !== void 0 ? value : "");
     /* noEmpty ＝ 「えらばない」を出さない。並び順のように、必ずどちらかになるもの */
@@ -19361,7 +19374,7 @@ function DrumSelect({ value, onChange, options, placeholder = "選択", title, c
                 + " flex items-center justify-between text-left disabled:opacity-50 " + (className || "") },
             react_1.default.createElement("span", { className: current ? "text-neutral-900 truncate" : "text-neutral-400 truncate" }, current ? current.label : placeholder),
             react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-500 shrink-0 ml-2" })),
-        open && (react_1.default.createElement(WheelSheet, { title: title || placeholder, onClose: () => setOpen(false), onConfirm: confirm },
+        open && (react_1.default.createElement(WheelSheet, { title: title || placeholder, onClose: () => setOpen(false), onConfirm: confirm, onClear: clearable ? () => { onChange(""); setOpen(false); } : null },
             react_1.default.createElement(WheelColumn, { items: items, value: temp, onChange: setTemp, minWidth: 180 })))));
 }
 /* ============================================================
@@ -19648,7 +19661,7 @@ function FilterPill({ on, onClick, children, color }) {
             + (on ? (color ? "" : "border-th-800 bg-th-800 text-white") : "border-neutral-200 bg-white text-neutral-600") }, children));
 }
 /* しぼりこみの欄。
-   **みつける・フォルダの条件・フォルダの手入れで、同じものを使うこと。**
+   **探す・フォルダの条件・フォルダの手入れで、同じものを使うこと。**
    別々に書くと、少しずつ並びがずれていく。
    上から ① キーワード ② 種類と印つき ③ タグ ④ 期間（左に名前、右に日付ふたつ） */
 function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, mark, onMark, from, to, onFrom, onTo, extra }) {
@@ -19745,7 +19758,7 @@ function NeedBackupBanner({ onOpen, dim }) {
     const { need, count, backupAt } = react_1.default.useContext(NeedBackupContext) || {};
     if (!need)
         return null;
-    return (react_1.default.createElement("button", { type: "button", onClick: onOpen, disabled: dim, className: "w-full flex items-center gap-2.5 rounded-2xl bg-amber-50 border border-amber-200 px-3.5 py-3 mb-3 -mx-1 text-left ft-tap ft-tap-card "
+    return (react_1.default.createElement("button", { type: "button", onClick: onOpen, disabled: dim, className: "flex items-center gap-2.5 rounded-2xl bg-amber-50 border border-amber-200 px-3.5 py-3 mb-3 -mx-1 w-[calc(100%+8px)] text-left ft-tap ft-tap-card "
             + (dim ? "opacity-55 pointer-events-none" : "") },
         react_1.default.createElement("span", { className: "relative w-9 h-9 rounded-xl bg-white text-amber-700 flex items-center justify-center shrink-0" },
             react_1.default.createElement(lucide_react_1.Download, { size: 18 }),
@@ -19762,10 +19775,13 @@ function CountBadge({ n }) {
     return (react_1.default.createElement("span", { "aria-hidden": "true", className: "absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center tabular-nums" }, n > 99 ? "99+" : n));
 }
 function NeedBackupDot({ onPhoto }) {
-    const { need } = react_1.default.useContext(NeedBackupContext) || {};
+    const { need, count } = react_1.default.useContext(NeedBackupContext) || {};
     if (!need)
         return null;
-    return (react_1.default.createElement("span", { "aria-hidden": "true", className: "absolute top-1.5 right-1.5 w-2.5 h-2.5 rounded-full bg-amber-500 " + (onPhoto ? "ring-2 ring-white" : "") }));
+    /* **外へはみ出させないこと。** その分だけ三本線の右はしが、
+       ほかの部品とずれて見える。押せる四角の内側に収める */
+    return (react_1.default.createElement("span", { "aria-hidden": "true", className: "absolute top-1 right-0 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[11px] font-bold flex items-center justify-center tabular-nums "
+            + (onPhoto ? "ring-2 ring-white" : "") }, count > 99 ? "99+" : (count || "")));
 }
 const MENU_BTN = 56;
 const MENU_ICON = 32;
@@ -19830,7 +19846,10 @@ function ScreenHeader({ title, right, sub }) {
             react_1.default.createElement("div", { className: "relative flex items-center justify-end gap-0.5 shrink-0", style: { minWidth: 48 } },
                 right,
                 openMenu && (react_1.default.createElement("button", { onClick: openMenu, "aria-label": "\u30E1\u30CB\u30E5\u30FC", className: "relative flex items-center justify-center rounded-xl ft-tap ft-tap-icon shrink-0 "
-                        + (photo ? "text-white" : "text-neutral-800"), style: { minWidth: 48, minHeight: 48, marginRight: -4,
+                        + (photo ? "text-white" : "text-neutral-800"), 
+                    /* **知らせの数は、しるしの内側に収めること。**
+                       外へはみ出すと、その分だけ右はしが他の部品とずれる */
+                    style: { minWidth: 48, minHeight: 48, marginRight: 16,
                         filter: photo ? "drop-shadow(0 1px 3px rgba(0,0,0,.45))" : undefined } },
                     react_1.default.createElement(lucide_react_1.Menu, { size: 28, strokeWidth: 2.4 }),
                     react_1.default.createElement(NeedBackupDot, { onPhoto: !!photo })))))));
@@ -20258,6 +20277,47 @@ function DragHandle(props) {
     return react_1.default.createElement("button", { type: "button", ...props },
         react_1.default.createElement(lucide_react_1.GripVertical, { size: 18 }));
 }
+/* 見積もりの時間。**分で持つこと**（時と分に分けると計算のたびに戻す手間が増える） */
+const MIN_OPTIONS = [{ value: "0", label: "なし" },
+    ...[5, 10, 15, 20, 30, 40, 45, 50, 60, 75, 90, 105, 120, 150, 180, 210, 240, 300, 360, 420, 480]
+        .map((m) => ({ value: String(m), label: minLabel(m) }))];
+function minLabel(m) {
+    const n = Number(m) || 0;
+    if (!n)
+        return "";
+    const h = Math.floor(n / 60), mm = n % 60;
+    if (h && mm)
+        return `${h}時間${mm}分`;
+    if (h)
+        return `${h}時間`;
+    return `${mm}分`;
+}
+/* ひとまとまりの見積もりと実績。
+   **実績は、印の付いたものの見積もりを足したもの**（別に入れさせない）。
+   印を外せば実績も減る。見積もりはあとから直せる */
+function itemsTime(items) {
+    const list = Array.isArray(items) ? items : [];
+    let plan = 0, done = 0;
+    list.forEach((it) => {
+        const m = Number(it && it.min) || 0;
+        plan += m;
+        if (it && it.done)
+            done += m;
+    });
+    return { plan, done };
+}
+/* 見積もりと実績を、小さく1行で見せる。**画面ごとに書き方を変えないこと** */
+function TimeLine({ items, color, className }) {
+    const { plan, done } = itemsTime(items);
+    if (!plan)
+        return null;
+    return (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 text-[12px] tabular-nums " + (className || "") },
+        react_1.default.createElement(lucide_react_1.Clock, { size: 12, className: "shrink-0" }),
+        react_1.default.createElement("span", { style: color ? { color: color.deep } : undefined, className: "font-bold" }, minLabel(done) || "0分"),
+        react_1.default.createElement("span", { className: "text-neutral-400" },
+            "/ ",
+            minLabel(plan))));
+}
 function ChecklistEditor({ items, onChange }) {
     const [draft, setDraft] = (0, react_1.useState)("");
     const boxRef = (0, react_1.useRef)(null);
@@ -20270,13 +20330,15 @@ function ChecklistEditor({ items, onChange }) {
         setDraft("");
     };
     const setText = (i, v) => { const next = items.slice(); next[i] = { ...next[i], text: v }; onChange(next); };
+    const setMin = (i, v) => { const next = items.slice(); next[i] = { ...next[i], min: Number(v) || 0 }; onChange(next); };
     const remove = (i) => onChange(items.filter((_, k) => k !== i));
     return (react_1.default.createElement("div", { ref: boxRef },
         items.length > 0 && (react_1.default.createElement("div", { className: "mb-1" }, items.map((it, i) => (react_1.default.createElement("div", { key: it.id, ref: setRow(it.id), style: rowStyle(it.id), className: "flex items-center gap-1 rounded-xl " + (dragId === it.id ? "bg-white" : "") },
             react_1.default.createElement("span", { className: "w-6 shrink-0 flex items-center justify-center" },
                 react_1.default.createElement("span", { className: "w-2 h-2 rounded-full bg-neutral-300" })),
             react_1.default.createElement(TextArea, { bare: true, value: it.text, onChange: (e) => setText(i, e.target.value), placeholder: "\u3084\u308B\u3053\u3068", minRows: 1, className: "flex-1 min-w-0 py-2.5 placeholder-neutral-300" }),
-            react_1.default.createElement("button", { type: "button", onClick: () => remove(i), "aria-label": "\u524A\u9664", className: "w-10 h-10 shrink-0 flex items-center justify-center rounded-xl text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
+            react_1.default.createElement(DrumSelect, { value: String(it.min || 0), onChange: (v) => setMin(i, v), options: MIN_OPTIONS, noEmpty: true, title: "\u304B\u304B\u308B\u6642\u9593", className: "w-[96px] shrink-0 ft-min text-[12.5px] " + (it.min ? "" : "opacity-60") }),
+            react_1.default.createElement("button", { type: "button", onClick: () => remove(i), "aria-label": "\u524A\u9664", className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-xl text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
                 react_1.default.createElement(lucide_react_1.X, { size: 17 })),
             items.length > 1 && react_1.default.createElement(DragHandle, { ...handleProps(it.id) })))))),
         react_1.default.createElement("div", { className: "flex items-center gap-1" },
@@ -20371,10 +20433,13 @@ function RepeatEditor({ value, onChange, scope = "day" }) {
             react_1.default.createElement(SheetRow, { label: "\u3044\u3064\u307E\u3067", last: true }, v.freq === "none" ? (react_1.default.createElement("span", { className: "min-h-[46px] px-4 py-2 rounded-xl bg-neutral-100 text-[17px] text-neutral-300 flex items-center" }, "\u306A\u3057")) : (react_1.default.createElement(DateInput, { pill: true, value: v.until, allowEmpty: true, placeholder: "\u305A\u3063\u3068", zIndex: 2147483250, onChange: (e) => onChange({ ...v, until: e.target.value }) }))))));
 }
 /* 繰り返しを選ぶ行（「なし ⌄」を押すと小窓が出る） */
-function RepeatRow({ value, onChange, scope = "day" }) {
+function RepeatRow({ value, onChange, scope = "day", bare }) {
     const [open, setOpen] = (0, react_1.useState)(false);
     const [tmp, setTmp] = (0, react_1.useState)(value || { freq: "none", days: [], until: "" });
-    return (react_1.default.createElement(RowCard, { className: "mb-3" },
+    /* bare ＝ 枠を持たない。「いつのことか」の枠の中にそのまま入れるとき */
+    const Wrap = bare ? react_1.default.Fragment : RowCard;
+    const wrapProps = bare ? {} : { className: "mb-3" };
+    return (react_1.default.createElement(Wrap, { ...wrapProps },
         react_1.default.createElement(SheetRow, { label: "\u7E70\u308A\u8FD4\u3057", last: true },
             react_1.default.createElement("button", { type: "button", onClick: () => { setTmp(value || { freq: "none", days: [], until: "" }); setOpen(true); }, className: "min-h-[46px] px-4 py-2 rounded-xl bg-neutral-100 text-[17px] text-neutral-900 flex items-center gap-1.5 ft-tap ft-tap-card" },
                 repeatLabel(value),
@@ -20397,7 +20462,7 @@ function AllDayToggle({ on, onToggle }) {
    日付と時刻の行（メモ・チェックリスト用）
    画像の手帳のように、いちばん上に日付と時刻だけを置く
    ============================================================ */
-function WhenRow({ rec, onChange, withTime }) {
+function WhenRow({ rec, onChange, withTime, withRepeat, repeat }) {
     if (rec.scope === "week" || rec.scope === "month") {
         return (react_1.default.createElement(RowCard, { className: "mb-3" },
             react_1.default.createElement(SheetRow, { label: rec.scope === "week" ? "この週" : "この月", last: true },
@@ -20409,11 +20474,12 @@ function WhenRow({ rec, onChange, withTime }) {
     return (react_1.default.createElement(RowCard, { className: "mb-3" },
         withTime && (react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
             react_1.default.createElement(Switch, { on: allDay, label: "\u7D42\u65E5", onChange: (v) => onChange({ time: v ? null : "09:00" }) }))),
-        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8", last: true },
+        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8", last: !withRepeat },
             react_1.default.createElement("span", { className: "flex items-center gap-2" },
                 react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => onChange({ date: e.target.value }) }),
                 withTime && (react_1.default.createElement("span", { className: allDay ? "opacity-40 pointer-events-none" : "" },
-                    react_1.default.createElement(TimeInput, { pill: true, value: rec.time || "", placeholder: "\u6642\u523B", onChange: (v) => onChange({ time: v }) })))))));
+                    react_1.default.createElement(TimeInput, { pill: true, value: rec.time || "", placeholder: "\u6642\u523B", onChange: (v) => onChange({ time: v }) }))))),
+        withRepeat && repeat));
 }
 /* ============================================================
    RecordForm ＝ 記録を書く画面
@@ -20503,7 +20569,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
                 err && react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-rose-700 mb-3" }, err),
                 (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: rec.type === "schedule" ? "予定の名前" : "リストの題", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-[17px] font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
-                rec.type !== "schedule" && react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true }),
+                rec.type !== "schedule" && (react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: rec.type !== "memo", repeat: react_1.default.createElement(RepeatRow, { bare: true, value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }) })),
                 rec.type === "schedule" && (react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
                         react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
@@ -20517,7 +20583,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                             react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, onChange: (e) => set({ endDate: e.target.value }) }),
                             react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
                                 react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) })))))),
-                rec.type !== "memo" && (react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope })),
+                rec.type === "schedule" && (react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope })),
                 rec.type === "memo" && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(TextArea, { bare: true, value: rec.text, onChange: (e) => set({ text: e.target.value }), minRows: 6, placeholder: "\u601D\u3063\u305F\u3053\u3068" }),
                     react_1.default.createElement("div", { className: "mt-3" },
@@ -20539,9 +20605,9 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                     react_1.default.createElement(TextArea, { value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 3, placeholder: "\u4E88\u5B9A\u306E\u5185\u5BB9" }),
                     react_1.default.createElement("div", { className: "mt-3 space-y-3" },
                         react_1.default.createElement(TextInput, { value: rec.place, onChange: (e) => set({ place: e.target.value }), placeholder: "\u5834\u6240" }),
-                        react_1.default.createElement(TextInput, { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u306E\u30EA\u30F3\u30AF", inputMode: "url" })))),
+                        react_1.default.createElement(TextInput, { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "URL", inputMode: "url" })))),
                 plans && plans.length > 0 && rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
-                    react_1.default.createElement(DrumSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), options: plans.map((p) => ({ value: p.id, label: p.name || "（名前なし）" })), placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" }))),
+                    react_1.default.createElement(DrumSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), options: plans.map((p) => ({ value: p.id, label: p.name || "（名前なし）" })), placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E", clearable: true }))),
                 react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(TagField, { value: rec.tags, onChange: (v) => set({ tags: v }), knownTags: knownTags, onCreateTag: onCreateTag }))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
@@ -20825,6 +20891,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                         ratio.done,
                         "/",
                         ratio.total),
+                    react_1.default.createElement(TimeLine, { items: r.items, color: color, className: "text-neutral-500 ml-1" }),
                     react_1.default.createElement("span", { className: "flex-1" },
                         react_1.default.createElement(ProgressBar, { ratio: ratio.ratio, color: color.mid })))),
                 react_1.default.createElement("div", { className: "-ml-1.5" }, (r.items || []).map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-center gap-1" },
@@ -21559,20 +21626,20 @@ function SelectButton({ sel, onDark }) {
             + (on ? "bg-th-800 text-white" : onDark ? "text-white" : "text-neutral-500 hover:bg-neutral-100") }, on ? react_1.default.createElement(lucide_react_1.X, { size: 20 }) : react_1.default.createElement(lucide_react_1.ListChecks, { size: 20 })));
 }
 /* 結果のすぐ上に置く「全選択」。
-   **画面ごとに形を変えないこと。** みつけるでも、フォルダに入れるときでも同じ。
+   **画面ごとに形を変えないこと。** 探すでも、フォルダに入れるときでも同じ。
    えらんでいないときは、選ぶモードに入るための釦（SelectButton）を出す */
 /* 結果のすぐ上に置く行。左は「えらぶ」の釦、右は件数。
    **全選択をここに置かないこと。** 全選択は下の帯にある（もとの形）。
    釦の左はしは、えらんだときに出るまると同じところに来るようにしてある */
 /* 一覧の頭の行。
    ふだん … 左＝件数、右＝並べかえ、そのとなりに「選択」
-   えらぶあいだ … 左＝「すべて選択／解除」、右＝「完了」
+   えらぶあいだ … 左＝「すべて選択／すべて選択解除」、右＝「完了」
    **アイコンだけにしないこと。** 字のほうが、何が起きるか分かる */
 function ListHeadRow({ sel, list, right, sort }) {
     const all = sel && sel.on ? sel.allOf(list || []) : false;
     if (sel && sel.on) {
         return (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
-            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(list || []), className: "h-9 px-2 -ml-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, all ? "すべて解除" : "すべて選択"),
+            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(list || []), className: "h-9 px-2 -ml-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, all ? "すべて選択解除" : "すべて選択"),
             react_1.default.createElement("span", { className: "flex-1" }),
             sort,
             react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: "h-9 px-2 -mr-2 ml-1 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86")));
@@ -21736,7 +21803,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         react_1.default.createElement("div", { className: "px-5" },
             react_1.default.createElement(MonthNavHeader, { className: "mb-1 mt-1", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
             span === "day" && (sel.on ? (react_1.default.createElement("div", { className: "flex items-center gap-2 mt-1 mb-3" },
-                react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(dayList.filter((r) => !hidden.includes(r.type))), className: "h-9 px-2 -ml-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, sel.allOf(dayList.filter((r) => !hidden.includes(r.type))) ? "すべて解除" : "すべて選択"),
+                react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(dayList.filter((r) => !hidden.includes(r.type))), className: "h-9 px-2 -ml-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, sel.allOf(dayList.filter((r) => !hidden.includes(r.type))) ? "すべて選択解除" : "すべて選択"),
                 react_1.default.createElement("span", { className: "flex-1" }),
                 react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
                 react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: "h-9 px-2 -mr-2 ml-1 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86"))) : (react_1.default.createElement("div", { className: "flex items-center gap-1 mt-1 mb-3" },
@@ -21876,7 +21943,7 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
 function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
-    /* **Today からまとめて消せるようにしないこと。** 消すのはみつけるでやる */
+    /* **Today からまとめて消せるようにしないこと。** 消すのは探すでやる */
     const sel = useSelectMode(onDeleteMany);
     const dayList = (0, react_1.useMemo)(() => records.filter((r) => isDayRec(r) && r.date === date), [records, date]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
@@ -21892,7 +21959,7 @@ function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDele
             react_1.default.createElement(SelectBar, { sel: sel, list: dayList }))));
 }
 /* ============================================================
-   みつける
+   探す
    ・タグ／記録の種類／言葉でしぼりこむ
    ・種類は「どれか」、タグは「すべて含む」。目的が違うのであえて揃えていない
    ・**はじめの状態が1画面に収まること。** 絞り込みは開いた状態で始める
@@ -22002,7 +22069,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
         return out.join("・");
     }, [applied, N]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
-        react_1.default.createElement(ScreenHeader, { title: "\u307F\u3064\u3051\u308B" }),
+        react_1.default.createElement(ScreenHeader, { title: "\u63A2\u3059" }),
         react_1.default.createElement("div", { ref: barRef, className: "px-4 pt-3 pb-2 sticky bg-app ft-col", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 76px))", zIndex: 20 } },
             react_1.default.createElement("button", { type: "button", onPointerDown: onBarDown, onClick: onBarClick, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
                     + (hasCriteria ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
@@ -22016,7 +22083,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
             react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (open ? "" : "hidden") },
                 react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: search, types: types, onToggleType: toggleType, tags: tags, onOpenTags: () => setTagOpen(true), mark: markOnly, onMark: () => setMarkOnly((v) => !v), from: from, to: to, onFrom: setFrom, onTo: setTo }),
                 react_1.default.createElement("div", { className: "flex gap-2" },
-                    hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 text-[14.5px] shrink-0" }, "\u89E3\u9664")),
+                    hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 text-[14.5px] shrink-0" }, "\u9078\u629E\u89E3\u9664")),
                     react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[15.5px]" },
                         react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
                         " \u691C\u7D22\u3059\u308B")))),
@@ -22464,7 +22531,8 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
                         items.length > 0 && (react_1.default.createElement("span", { className: "text-[12.5px] font-bold text-neutral-400 tabular-nums" },
                             doneCount,
                             "/",
-                            items.length))),
+                            items.length)),
+                        react_1.default.createElement(TimeLine, { items: items, color: color, className: "text-neutral-500" })),
                     items.length > 0 && react_1.default.createElement("span", { className: "block mt-1.5" },
                         react_1.default.createElement(ProgressBar, { ratio: doneCount / items.length, color: color.mid }))),
                 react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-0.5 mt-0.5 shrink-0" },
@@ -22488,7 +22556,7 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
    ・足もとは 左から「キャンセル・削除・保存」。**削除を本文に埋めないこと**
    ・書きかけで閉じようとしたら、いちど確かめる
    ・削除も、確かめの窓をひとつ越えてから */
-function StepForm({ initial, onSave, onCancel, onDelete }) {
+function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
     const color = useTypeColor(STEP_TYPE);
     const [step, setStep] = (0, react_1.useState)(initial);
     const [dirty, setDirty] = (0, react_1.useState)(false);
@@ -22496,7 +22564,9 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
     const [confirmLeave, setConfirmLeave] = (0, react_1.useState)(false);
     const items = step.items || [];
     const set = (patch) => { setStep((s) => ({ ...s, ...patch })); setDirty(true); };
-    const finish = () => onSave(step);
+    /* どの計画のものか。**別の計画へ移せること**（作り直させない） */
+    const [toPlan, setToPlan] = (0, react_1.useState)(planId || "");
+    const finish = () => onSave(step, toPlan);
     const cancel = () => { if (dirty)
         setConfirmLeave(true);
     else
@@ -22518,8 +22588,10 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
                 react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u671F\u9650" },
                         react_1.default.createElement(DateInput, { pill: true, value: step.dueDate, allowEmpty: true, placeholder: "\u306A\u3057", onChange: (e) => set({ dueDate: e.target.value }) })),
-                    react_1.default.createElement(SheetRow, { label: "\u30AB\u30EC\u30F3\u30C0\u30FC\u306B\u51FA\u3059", last: true },
-                        react_1.default.createElement(Switch, { on: stepOnCal(step), label: "\u30AB\u30EC\u30F3\u30C0\u30FC\u306B\u51FA\u3059", onChange: (v) => set({ onCal: v }) }))),
+                    react_1.default.createElement(SheetRow, { label: "\u30AB\u30EC\u30F3\u30C0\u30FC\u306B\u51FA\u3059", last: !(plans && plans.length > 1) },
+                        react_1.default.createElement(Switch, { on: stepOnCal(step), label: "\u30AB\u30EC\u30F3\u30C0\u30FC\u306B\u51FA\u3059", onChange: (v) => set({ onCal: v }) })),
+                    plans && plans.length > 1 && (react_1.default.createElement(SheetRow, { label: "\u8A08\u753B", last: true },
+                        react_1.default.createElement(DrumSelect, { value: toPlan, onChange: (v) => { setToPlan(v || planId || ""); setDirty(true); }, options: plans.map((p) => ({ value: p.id, label: p.name || "（名前なし）" })), placeholder: "\u8A08\u753B\u3092\u9078\u3076", title: "\u8A08\u753B\u3092\u9078\u3076", noEmpty: true, className: "w-[150px] shrink-0" })))),
                 react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-1.5" }, "\u305D\u306E\u305F\u3081\u306B\u3084\u308B\u3053\u3068"),
                 react_1.default.createElement(ChecklistEditor, { items: items, onChange: (v) => set({ items: v }) })),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
@@ -22536,7 +22608,7 @@ function StepForm({ initial, onSave, onCancel, onDelete }) {
    ①イベント（2段のチェックリスト） ②日々の記録
    がひと続きに見える。**ここを細かく分けすぎないこと。**
    画面が増えるほど、書く気持ちが遠のく */
-function PlanDashboard({ plan, records, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
+function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, onDeleteMany, order, onOrder, onMoveStep }) {
     const sel = useSelectMode(onDeleteMany);
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
@@ -22577,11 +22649,25 @@ function PlanDashboard({ plan, records, onClose, onChange, onDelete, onAddRecord
     });
     const editStep = (s) => setStepEdit({ step: s, isNew: false });
     const delStep = (id) => onChange({ ...plan, steps: steps.filter((x) => x.id !== id) });
-    const saveStep = (s) => {
-        onChange({ ...plan, steps: stepEdit && stepEdit.isNew ? [...steps, s] : steps.map((x) => (x.id === s.id ? s : x)) });
+    const saveStep = (s, toPlanId) => {
+        const isNew = stepEdit && stepEdit.isNew;
+        /* **別の計画へ移すときは、元から外してから入れること。**
+           両方に残ると、同じイベントが2か所に出る */
+        if (toPlanId && toPlanId !== plan.id && onMoveStep) {
+            onMoveStep(s, plan.id, toPlanId, !!isNew);
+            setStepEdit(null);
+            return;
+        }
+        onChange({ ...plan, steps: isNew ? [...steps, s] : steps.map((x) => (x.id === s.id ? s : x)) });
         setStepEdit(null);
     };
     const doneSteps = steps.filter((s) => stepDone(s)).length;
+    /* 計画ぜんたいの見積もりと実績。**イベントをまたいで足すこと** */
+    const allTime = (0, react_1.useMemo)(() => {
+        let plan = 0, done = 0;
+        steps.forEach((st) => { const t = itemsTime(st.items); plan += t.plan; done += t.done; });
+        return { plan, done };
+    }, [steps]);
     /* まだのものと、済んだもの。
        **済んだものを混ぜて並べないこと。** いま何をすればよいかが読めなくなる */
     const openSteps = (0, react_1.useMemo)(() => steps.filter((s) => !stepDone(s)).sort(compareSteps), [steps]);
@@ -22600,7 +22686,12 @@ function PlanDashboard({ plan, records, onClose, onChange, onDelete, onAddRecord
                                 doneSteps,
                                 react_1.default.createElement("span", { className: "text-[15px] text-neutral-400" },
                                     " / ",
-                                    steps.length))),
+                                    steps.length)),
+                            allTime.plan > 0 && (react_1.default.createElement("span", { className: "block text-[12px] tabular-nums mt-1", style: { color: color.deep } },
+                                minLabel(allTime.done) || "0分",
+                                react_1.default.createElement("span", { className: "text-neutral-400" },
+                                    " / ",
+                                    minLabel(allTime.plan))))),
                         react_1.default.createElement("span", { className: "flex-[2] pb-1.5" },
                             react_1.default.createElement(ProgressBar, { ratio: steps.length ? doneSteps / steps.length : 0, color: color.mid }))))),
                 react_1.default.createElement("div", { className: "mb-5" },
@@ -22632,7 +22723,7 @@ function PlanDashboard({ plan, records, onClose, onChange, onDelete, onAddRecord
                     planRecords.length > 0 && !sel.on && react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
                     planRecords.length > 0 && (sel.on
                         ? react_1.default.createElement(react_1.default.Fragment, null,
-                            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(planRecords), className: "h-9 px-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, sel.allOf(planRecords) ? "すべて解除" : "すべて選択"),
+                            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(planRecords), className: "h-9 px-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, sel.allOf(planRecords) ? "すべて選択解除" : "すべて選択"),
                             react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: "h-9 px-2 -mr-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86"))
                         : react_1.default.createElement("button", { type: "button", onClick: sel.start, className: "h-9 px-2 -mr-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u9078\u629E"))),
                 pinned.length > 0 && (react_1.default.createElement("div", { className: "mb-4" },
@@ -22646,7 +22737,7 @@ function PlanDashboard({ plan, records, onClose, onChange, onDelete, onAddRecord
             react_1.default.createElement(SelectBar, { sel: sel, list: planRecords }),
             !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 })),
-            stepEdit && (react_1.default.createElement(StepForm, { initial: stepEdit.step, onCancel: () => setStepEdit(null), onSave: saveStep, onDelete: stepEdit.isNew ? null : () => { delStep(stepEdit.step.id); setStepEdit(null); } })),
+            stepEdit && (react_1.default.createElement(StepForm, { initial: stepEdit.step, plans: plans, planId: plan.id, onCancel: () => setStepEdit(null), onSave: saveStep, onDelete: stepEdit.isNew ? null : () => { delStep(stepEdit.step.id); setStepEdit(null); } })),
             addOpen && (react_1.default.createElement(TypePickSheet, { title: "\u306A\u306B\u3092\u8FFD\u52A0\u3057\u307E\u3059\u304B", types: [STEP_TYPE, ...TYPES], onCancel: () => setAddOpen(false), onPick: (k) => {
                     setAddOpen(false);
                     if (k === STEP_TYPE) {
@@ -22702,7 +22793,7 @@ function PlanDashboard({ plan, records, onClose, onChange, onDelete, onAddRecord
    上のタブで「自動で集める」と「手動で入れる」を行き来する。
    **別々の入口に分けないこと。** どちらもこのフォルダの集め方なので、
    ひとつの画面で並べて見せたほうが、違いが分かる。
-   手動で入れるほうは、みつける画面と同じ道具（言葉・種類・タグ・印・期間）を使う
+   手動で入れるほうは、探す画面と同じ道具（言葉・種類・タグ・印・期間）を使う
    ============================================================ */
 const FOLDER_TABS = [{ key: "auto", label: "自動で集める" }, { key: "manual", label: "手動で入れる" }];
 function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, onSave }) {
@@ -22795,7 +22886,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
         setApplied(null);
         setFOpen(true);
     };
-    /* みつける画面と同じ。**click を待たないこと** */
+    /* 探す画面と同じ。**click を待たないこと** */
     const tapRef = (0, react_1.useRef)(0);
     const openBar = () => {
         const next = !fOpen;
@@ -22867,13 +22958,13 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                                 react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3, className: "thick" }),
                                 " \u624B\u52D5")) }),
                         react_1.default.createElement("div", { className: "flex gap-2" },
-                            hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 text-[14.5px] shrink-0" }, "\u89E3\u9664")),
+                            hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 text-[14.5px] shrink-0" }, "\u9078\u629E\u89E3\u9664")),
                             react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[15.5px]" },
                                 react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
                                 " \u691C\u7D22\u3059\u308B"))),
                     !hasCriteria ? null : results.length === 0 ? (react_1.default.createElement("p", { className: "text-[14.5px] text-neutral-400 py-10 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093")) : (react_1.default.createElement(react_1.default.Fragment, null,
                         react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
-                            react_1.default.createElement("button", { type: "button", onClick: pickAll, className: "h-9 px-2 -ml-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, allShown ? "すべて解除" : "すべて選択"),
+                            react_1.default.createElement("button", { type: "button", onClick: pickAll, className: "h-9 px-2 -ml-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, allShown ? "すべて選択解除" : "すべて選択"),
                             react_1.default.createElement("span", { className: "flex-1" }),
                             react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-500 tabular-nums" },
                                 results.length,
@@ -23524,7 +23615,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
 const HELP_SECTIONS = [
     {
         title: "記録する",
-        body: "右下の＋から、メモ・リスト・スケジュールを書けます。\nメモには絵を4枚まで入れられます。\n右上の星を押すと印が付き、みつける画面の「印つき」でまとめて見られます。",
+        body: "右下の＋から、メモ・リスト・スケジュールを書けます。\nメモには絵を4枚まで入れられます。\n右上の星を押すと印が付き、探す画面の「印つき」でまとめて見られます。",
     },
     {
         title: "Today",
@@ -23705,6 +23796,13 @@ html { scrollbar-gutter: stable; }
 .min-w-\\[18px\\] { min-width: 18px; }
 .h-\\[18px\\] { height: 18px; }
 .opacity-55 { opacity: .55; }
+.top-1 { top: .25rem; }
+.opacity-60 { opacity: .6; }
+.w-\\[96px\\] { width: 96px; }
+/* 見積もりの欄だけ、行に収まる高さにする。**中の余白も詰めること**（字が切れる） */
+.ft-min { height: 2.25rem !important; min-height: 2.25rem !important;
+  padding: 0 .4rem 0 .6rem !important; }
+.w-\\[calc\\(100\\%\\+8px\\)\\] { width: calc(100% + 8px); }
 .bg-amber-500 { background-color: #F59E0B; }
 .pb-3 { padding-bottom: .75rem; }
 /* 中身の柱の幅。**画面ごとにばらばらの max-w-* を書かないこと。**
@@ -24130,7 +24228,7 @@ button:active { transition-duration: 60ms; }
    ============================================================ */
 const TABS = [
     { key: "today", label: "Today", icon: lucide_react_1.CalendarDays },
-    { key: "find", label: "みつける", icon: lucide_react_1.Search },
+    { key: "find", label: "探す", icon: lucide_react_1.Search },
     { key: "plan", label: "計画", icon: lucide_react_1.Target },
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
@@ -24473,6 +24571,22 @@ function AppMain() {
         setRecords(records.map((r) => (r.id === rec.id ? { ...r, pinned: !r.pinned } : r)));
     };
     const changePlan = (p) => setPlans(plans.map((x) => (x.id === p.id ? p : x)));
+    /* イベントを、別の計画へ移す。
+       **元から外してから入れること。** 両方に残ると2か所に出る */
+    const moveStep = (step, fromId, toId, isNew) => {
+        setPlans(plans.map((p) => {
+            if (p.id === fromId) {
+                return { ...p, steps: (p.steps || []).filter((x) => x.id !== step.id) };
+            }
+            if (p.id === toId) {
+                const rest = (p.steps || []).filter((x) => x.id !== step.id);
+                return { ...p, steps: [...rest, step] };
+            }
+            return p;
+        }));
+        const to = plans.find((p) => p.id === toId);
+        tell(`「${(to && to.name) || "計画"}」に移しました`);
+    };
     const deletePlan = (id) => { setPlans(plans.filter((x) => x.id !== id)); setPlanOpen(null); tell("計画を削除しました"); };
     /* 複数の日付に、同じチェックリストをまとめて作る */
     /* --- フォルダ --- */
@@ -24630,7 +24744,7 @@ function AppMain() {
                                 addFolderOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: false, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 28 }), onCancel: () => setAddFolderOpen(false), onSave: (n, ic) => { addFolder(n, ic); setAddFolderOpen(false); } })),
                                 editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
                                 dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                                planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
+                                planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, plans: plans, onMoveStep: moveStep, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
                                         if (type) {
                                             setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
                                             return;
