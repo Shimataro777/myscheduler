@@ -22625,12 +22625,12 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
                 react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
                 react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text),
-                it.min > 0 && (react_1.default.createElement("span", { className: "shrink-0 text-[11.5px] tabular-nums mt-0.5 " + (it.done ? "text-neutral-300" : "text-neutral-400"), style: { minWidth: 38, textAlign: "right" } }, minLabel(it.min))))))))),
+                it.min > 0 && (react_1.default.createElement("span", { className: "shrink-0 text-[11.5px] tabular-nums mt-0.5 " + (it.done ? "text-neutral-300" : "text-neutral-400"), style: { minWidth: 38, textAlign: "right" } }, minLabel(it.min)))))))),
             /* イベントのメモ。**リスト画面のメモ欄と同じ見た目にそろえる。**
                イベントはたたまない（スケジュール／イベントは常にそのまま表示） */
             (step.body || "").trim() && (react_1.default.createElement("div", { className: "mx-2.5 mb-2.5 mt-0.5 pl-1.5 border-l-2 border-neutral-200" },
                 react_1.default.createElement(LinkedText, { text: step.body, className: "text-[13.5px] leading-relaxed text-neutral-600" }),
-                react_1.default.createElement(LinkCards, { text: step.body, small: true })))));
+                react_1.default.createElement(LinkCards, { text: step.body, small: true }))))));
 }
 /* イベントを書く画面。
    **記録を書く画面と別の作りにしないこと。** 同じ「書くこと」なのに
