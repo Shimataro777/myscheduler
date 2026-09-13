@@ -17522,6 +17522,17 @@ function compareCreated(a, b) {
 }
 /* 記録の並べかえ。日付が同じときは、いつもの並び（compareTimeline）にする */
 function sortRecords(list, order) {
+    /* 最新順は、日付も時刻も見ない。**更新日時だけで並べること。**
+       固定した記録は、ほかの並びと同じくまっ先に出す */
+    if (order === "recent") {
+        return list.slice().sort((a, b) => {
+            if (!!a.pinned !== !!b.pinned)
+                return a.pinned ? -1 : 1;
+            const ua = a.updatedAt || a.createdAt || "";
+            const ub = b.updatedAt || b.createdAt || "";
+            return ub.localeCompare(ua);
+        });
+    }
     /* **日のあいだだけを入れ替えて終わらせないこと。**
        同じ日の中も向きをそろえないと、押しても何も変わらないように見える。
        「古い順」＝ いつもの並び。「新しい順」＝ 日も、その中もひっくり返す。
@@ -17548,12 +17559,14 @@ function sortRecords(list, order) {
     });
     return out;
 }
-/* 新しい順・古い順の切り替え。**並べかえの部品は、いつも右はしに置くこと** */
+/* 新しい順・古い順・最新順の切り替え。**並べかえの部品は、いつも右はしに置くこと** */
+const ORDER_CYCLE = { old: "new", new: "recent", recent: "old" };
+const ORDER_LABEL = { old: "\u53E4\u3044\u9806", new: "\u65B0\u3057\u3044\u9806", recent: "\u66F4\u65B0\u9806" };
 function OrderToggle({ value, onChange }) {
-    const isNew = value !== "old";
-    return (react_1.default.createElement("button", { type: "button", onClick: () => onChange(isNew ? "old" : "new"), "aria-label": `並べかえ：いま${isNew ? "新しい順" : "古い順"}`, className: "h-9 pl-2 pr-2.5 flex items-center gap-1 rounded-full text-[12.5px] font-bold text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon shrink-0" },
+    const cur = ORDER_LABEL[value] ? value : "old";
+    return (react_1.default.createElement("button", { type: "button", onClick: () => onChange(ORDER_CYCLE[cur]), "aria-label": `\u4E26\u3079\u304B\u3048\uFF1A\u3044\u307E${ORDER_LABEL[cur]}`, className: "h-9 pl-2 pr-2.5 flex items-center gap-1 rounded-full text-[12.5px] font-bold text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon shrink-0" },
         react_1.default.createElement(lucide_react_1.ArrowRightLeft, { size: 14, style: { transform: "rotate(90deg)" } }),
-        isNew ? "新しい順" : "古い順"));
+        ORDER_LABEL[cur]));
 }
 /* 並べかえ。**固定したものを、まっ先に出すこと**（記録の並びと同じ考え方） */
 const sortItems = (list, mode) => list.slice().sort((a, b) => {
@@ -17680,7 +17693,7 @@ function emptyRecord(type, date, scope) {
     /* body ＝ リストの下に添える覚え書き。**予定の body と同じ名前にすること。**
        名前を分けると、読むところ・書くところの両方で場合分けが増える */
     if (type === "checklist")
-        return { ...base, title: "", items: [], body: "", repeat: { freq: "none", days: [], until: "", skip: [] } };
+        return { ...base, title: "", items: [], body: "", endDate: "", repeat: { freq: "none", days: [], until: "", skip: [] } };
     /* **終日を別の項目として持たないこと。** time が空なら、それが終日。
        二か所で覚えると必ず食い違う（isAllDay ひとつで見る） */
     if (type === "schedule")
@@ -17732,6 +17745,9 @@ function migrateRecord(r) {
                 skip: Array.isArray(r.repeat.skip) ? r.repeat.skip.filter((x) => typeof x === "string") : [],
             }
             : { freq: "none", days: [], until: "", skip: [] };
+        /* 終了日は開始日以降のときだけ持たせる。**それより前は捨てること。**
+           持たせたままだと、期間の判定（coversDay）が食い違う */
+        out.endDate = /^\d{4}-\d{2}-\d{2}$/.test(String(r.endDate || "")) && r.endDate >= out.date ? r.endDate : "";
     }
     if (out.type === "memo") {
         out.images = (Array.isArray(r.images) ? r.images.filter((s) => typeof s === "string") : []).slice(0, MAX_IMAGES);
@@ -17816,6 +17832,13 @@ function compareTimeline(a, b) {
     const ta = typeRank(a), tb = typeRank(b);
     if (ta !== tb)
         return ta - tb;
+    /* 時刻のない記録どうし（メモ・リスト）が同じ日に並ぶときは、
+       **更新日時の古い順にすること。** 最後に手を入れたものが、その日の1番下にくる */
+    if (!a.time && !b.time) {
+        const ua = a.updatedAt || a.createdAt || "";
+        const ub = b.updatedAt || b.createdAt || "";
+        return ua.localeCompare(ub);
+    }
     return (a.createdAt || "").localeCompare(b.createdAt || "");
 }
 /* チェックリストの達成度 */
@@ -17826,7 +17849,7 @@ function doneRatio(r) {
 }
 /* 日をまたぐ予定かどうか。終わりの日が、始まりの日より後ろにあるもの */
 function spansDays(r) {
-    return r && r.type === "schedule" && r.endDate && r.date && r.endDate > r.date;
+    return r && (r.type === "schedule" || r.type === "checklist") && r.endDate && r.date && r.endDate > r.date;
 }
 /* その日に、この予定がかかっているか。
    **始まりの日にだけ出さないこと。** 旅行や出張が、途中の日から消えてしまう */
@@ -20134,6 +20157,14 @@ function LinkCards({ text, small }) {
    **自前で確認を出さないこと・自前のiframeで映さないこと。**
    iPhoneは必ず「このリンクを開きますか？」を出すので二度手間になる */
 const URL_REGEX = /https?:\/\/[^\s<>"'）)】」、。]+/g;
+/* 場所欄が、URLか・ふつうの場所名かを見分ける。
+   URLなら押すとブラウザ、名前ならマップを開く */
+function isPlaceUrl(s) {
+    return /^https?:\/\//i.test(String(s || "").trim());
+}
+function placeMapUrl(text) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(text || "").trim())}`;
+}
 function LinkedText({ text, className }) {
     if (!text)
         return null;
@@ -20506,7 +20537,7 @@ function AllDayToggle({ on, onToggle }) {
    日付と時刻の行（メモ・チェックリスト用）
    画像の手帳のように、いちばん上に日付と時刻だけを置く
    ============================================================ */
-function WhenRow({ rec, onChange, withTime, withRepeat, repeat }) {
+function WhenRow({ rec, onChange, withTime, withRepeat, repeat, withEndDate }) {
     if (rec.scope === "week" || rec.scope === "month") {
         return (react_1.default.createElement(RowCard, { className: "mb-3" },
             react_1.default.createElement(SheetRow, { label: rec.scope === "week" ? "この週" : "この月", last: true },
@@ -20518,11 +20549,14 @@ function WhenRow({ rec, onChange, withTime, withRepeat, repeat }) {
     return (react_1.default.createElement(RowCard, { className: "mb-3" },
         withTime && (react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
             react_1.default.createElement(Switch, { on: allDay, label: "\u7D42\u65E5", onChange: (v) => onChange({ time: v ? null : "09:00" }) }))),
-        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8", last: !withRepeat },
+        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8", last: !withEndDate && !withRepeat },
             react_1.default.createElement("span", { className: "flex items-center gap-2" },
                 react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => onChange({ date: e.target.value }) }),
                 withTime && (react_1.default.createElement("span", { className: allDay ? "opacity-40 pointer-events-none" : "" },
                     react_1.default.createElement(TimeInput, { pill: true, value: rec.time || "", placeholder: "\u6642\u523B", onChange: (v) => onChange({ time: v }) }))))),
+        /* 期間のあるリスト（旅行の持ち物など）向け。**空なら単日のまま**（開始日と同じあつかい） */
+        withEndDate && (react_1.default.createElement(SheetRow, { label: "\u7D42\u4E86\u65E5", last: !withRepeat },
+            react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, allowEmpty: true, placeholder: "\u540C\u3058\u65E5", onChange: (e) => onChange({ endDate: e.target.value }) }))),
         withRepeat && repeat));
 }
 /* ============================================================
@@ -20613,7 +20647,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
                 err && react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-rose-700 mb-3" }, err),
                 (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: rec.type === "schedule" ? "予定の名前" : "リストの題", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-[17px] font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
-                rec.type !== "schedule" && (react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: rec.type !== "memo", repeat: react_1.default.createElement(RepeatRow, { bare: true, value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }) })),
+                rec.type !== "schedule" && (react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: rec.type !== "memo", withEndDate: rec.type === "checklist", repeat: react_1.default.createElement(RepeatRow, { bare: true, value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }) })),
                 rec.type === "schedule" && (react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
                         react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
@@ -20934,7 +20968,9 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             r.type === "schedule" && r.endDate && r.endDate !== r.date && (react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-500 mb-1.5 tabular-nums" }, scheduleWhen(r))),
             r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "text-[13px] mb-1.5 flex items-center gap-1" },
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14, className: "text-neutral-400 shrink-0" }),
-                react_1.default.createElement(LinkedText, { text: r.placeUrl || r.place, className: "text-neutral-800 min-w-0" }))),
+                isPlaceUrl(r.placeUrl || r.place)
+                    ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", className: "ft-link text-sky-700 min-w-0 break-words" }, r.placeUrl || r.place)
+                    : react_1.default.createElement("a", { href: placeMapUrl(r.placeUrl || r.place), target: "_blank", rel: "noopener noreferrer", className: "ft-link text-neutral-800 min-w-0 break-words" }, r.placeUrl || r.place))),
             (r.images || []).length > 0 && (react_1.default.createElement("div", { className: "grid gap-[3px] mt-3 mb-2 rounded-2xl overflow-hidden bg-neutral-100", style: {
                     gridTemplateColumns: r.images.length === 1 ? "1fr" : "1fr 1fr",
                     gridTemplateRows: r.images.length > 2 ? "1fr 1fr" : "1fr",
@@ -20942,9 +20978,6 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 } }, r.images.slice(0, 4).map((src, i) => (react_1.default.createElement("button", { key: i, type: "button", "aria-label": "\u62E1\u5927", onClick: (e) => { e.stopPropagation(); if (!selectMode)
                     setPhoto(i); }, className: "block overflow-hidden ft-tap ft-tap-card", style: r.images.length === 3 && i === 0 ? { gridRow: "span 2" } : undefined },
                 react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } })))))),
-            r.type === "schedule" && r.placeUrl && (react_1.default.createElement("a", { href: r.placeUrl, target: "_blank", rel: "noopener noreferrer", onClick: (e) => selectMode && e.preventDefault(), className: "inline-flex items-center gap-1.5 text-[13px] text-th-800 mb-2 ft-link" },
-                react_1.default.createElement(lucide_react_1.MapPin, { size: 14 }),
-                " \u5834\u6240\u3092\u3072\u3089\u304F")),
             ratio && (react_1.default.createElement("div", { className: "mb-1" },
                 ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1" },
                     react_1.default.createElement(ProgressLine, { done: ratio.done, total: ratio.total, items: r.items, color: color, strong: allDone }))),
@@ -21362,7 +21395,7 @@ function scheduleWhen(r) {
    ============================================================ */
 function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selectedIds, onSelect, onPin, hidden, order, onLongSelect }) {
     const list = (0, react_1.useMemo)(() => {
-        const own = records.filter((r) => isDayRec(r) && r.date === date);
+        const own = records.filter((r) => isDayRec(r) && coversDay(r, date));
         /* 繰り返しの記録は、その日ぶんの控えを作って並べる（元の記録は書き換えない） */
         /* 繰り返しから作る仮の札には、**表示している日付を入れること。**
            元の日付のままだと、チェックを入れたとき別の日の記録が作られてしまう */
@@ -21383,7 +21416,17 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
             all = all.filter((r) => !hidden.includes(r.type));
         /* いつもの並び（終日 → 時刻 → リスト → メモ）が「古い順」。
            「新しい順」は、それをそのままひっくり返す。
+           「最新順」は、日付・時刻を見ずに更新日時だけで並べる。
            **固定した記録は、どちらでも先に出すこと** */
+        if (order === "recent") {
+            return all.slice().sort((a, b) => {
+                if (!!a.pinned !== !!b.pinned)
+                    return a.pinned ? -1 : 1;
+                const ua = a.updatedAt || a.createdAt || "";
+                const ub = b.updatedAt || b.createdAt || "";
+                return ub.localeCompare(ua);
+            });
+        }
         const sorted = all.sort(compareTimeline);
         if (order !== "new")
             return sorted;
@@ -21732,7 +21775,7 @@ function SelectBar({ sel, list, extraLabel, onExtra }) {
    ============================================================ */
 /* 並び順のえらびもの。**画面ごとに字を変えないこと** */
 const SORT_NAME_OPTIONS = [{ value: "name", label: "名前順" }, { value: "created", label: "作成順" }];
-const SORT_RECORD_OPTIONS = [{ value: "new", label: "新しい順" }, { value: "old", label: "古い順" }];
+const SORT_RECORD_OPTIONS = [{ value: "new", label: "新しい順" }, { value: "old", label: "古い順" }, { value: "recent", label: "更新順" }];
 const SPANS = [{ key: "day", label: "日" }, { key: "week", label: "週" }, { key: "month", label: "月" }];
 /* Today の上に出す、期日が近いイベントの札。
    ひとつの計画ぶんを1枚にまとめる。**同じ計画名を何度も出さないこと。**
@@ -21786,7 +21829,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
     (0, react_1.useEffect)(() => { if (onSelecting)
         onSelecting(sel.on); }, [sel.on]); // eslint-disable-line
     /* いま日の画面に出ている記録。「全選択」はこれに対して働く */
-    const dayList = (0, react_1.useMemo)(() => records.filter((r) => isDayRec(r) && r.date === date), [records, date]);
+    const dayList = (0, react_1.useMemo)(() => records.filter((r) => isDayRec(r) && coversDay(r, date)), [records, date]);
     const weekStart = startOfWeek(date);
     /* 週の中に今日があればその日、なければ週のはじめを選んでおく */
     const todayInWeek = (0, react_1.useMemo)(() => {
@@ -22005,7 +22048,7 @@ function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDele
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
     /* **Today からまとめて消せるようにしないこと。** 消すのは探すでやる */
     const sel = useSelectMode(onDeleteMany);
-    const dayList = (0, react_1.useMemo)(() => records.filter((r) => isDayRec(r) && r.date === date), [records, date]);
+    const dayList = (0, react_1.useMemo)(() => records.filter((r) => isDayRec(r) && coversDay(r, date)), [records, date]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
@@ -22788,8 +22831,6 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                                 ? { background: stepColor.soft, border: `1px solid ${stepColor.line}` }
                                 : { background: "#FFFFFF", border: "1px solid #E5E5E5" } },
                             react_1.default.createElement("button", { type: "button", onClick: () => setDoneOpen((v) => !v), "aria-expanded": doneOpen, className: "w-full flex items-center gap-2 px-3.5 min-h-[46px] text-left ft-tap" },
-                                react_1.default.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center shrink-0", style: { background: stepColor.deep, color: "#FFFFFF" } },
-                                    react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })),
                                 react_1.default.createElement("span", { className: "flex-1 text-[14px] font-bold", style: { color: doneOpen ? stepColor.deep : "#737373" } },
                                     "\u3084\u308A\u7D42\u3048\u305F ",
                                     closedSteps.length,
@@ -23104,9 +23145,10 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                 m.set(k, []);
             m.get(k).push(r);
         });
-        /* 日のまとまりも、えらんだ向きにそろえる */
-        return [...m.entries()].sort((a, b) => (order === "old" ? a[0].localeCompare(b[0]) : b[0].localeCompare(a[0])));
-    }, [list, order]);
+        /* **ここで日付を並べ直さないこと。** list がすでに
+           えらんだ向き（新しい順・古い順・更新順）にそろえてある */
+        return [...m.entries()];
+    }, [list]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
