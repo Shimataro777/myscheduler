@@ -20885,7 +20885,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             react_1.default.createElement("span", { className: "absolute rounded-full", "aria-hidden": "true", style: { left: 3, top: "50%", marginTop: -5, width: 10, height: 10, background: color.mid } }))),
         selectMode && (react_1.default.createElement("span", { className: "w-11 shrink-0 relative flex justify-center" }, selectable ? (react_1.default.createElement("span", { className: "absolute top-3 w-6 h-6 rounded-full border-2 flex items-center justify-center", style: selected ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4", background: "#FFFFFF" } }, selected && react_1.default.createElement("span", { key: "on", className: "flex text-white ft-check-in" },
             react_1.default.createElement(lucide_react_1.Check, { size: 15, strokeWidth: 3.5, className: "thick" })))) : (react_1.default.createElement("span", { className: "absolute top-3 w-6 h-6 rounded-full border-2 border-dashed", style: { borderColor: "#D4D4D4" } })))),
-        react_1.default.createElement("article", { onClick: toggleFold, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl border relative overflow-hidden ft-tap "
+        react_1.default.createElement("article", { onClick: toggleFold, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl border relative overflow-hidden ft-tap ft-tap-card "
                 + (pressing ? "ft-pressing " : "")
                 + (selectMode
                     ? (selected ? "bg-th-50 border-th-800" : "bg-white border-dashed border-neutral-300")
@@ -24049,17 +24049,19 @@ button:active { transition-duration: 60ms; }
 .ft-tap:active { transform: scale(0.955); filter: brightness(0.95); transition-duration: 70ms; }
 /* 大きなカード（記録カード）は、沈みをごくごく控えめに。
    **廃止はしない。** タップした手ごたえは残しつつ、
-   右上のボタン等のタップ判定がずれるのを防ぐため、動きの量を最小限にする */
-.ft-tap.ft-tap-card:active { transform: scale(0.994); filter: brightness(0.98); }
-/* 長押しの最中・選択モードの操作中も、同じくごく控えめに */
-.ft-pressing { transform: scale(0.994); filter: brightness(0.98); }
+   右上のボタン等のタップ判定がずれるのを防ぐため、動きの量を最小限にする。
+   **通常時・選択モード時・長押し中で、沈む加減をひとつにそろえること。**
+   （記録カードは、いつ／どのボタンで沈んでも同じ .ft-tap-card 系の値ひとつだけを使う） */
+.ft-tap.ft-tap-card:active { transform: scale(0.997); filter: brightness(0.99); }
+/* 長押しの最中・選択モードの操作中も、まったく同じ値で沈める */
+.ft-pressing { transform: scale(0.997); filter: brightness(0.99); }
 .ft-tap.ft-tap-icon:active { transform: scale(0.88); }
 .ft-tap:disabled { transform: none; filter: none; }
 /* 押されてから画面が変わるまでの、ひと呼吸のあいだ沈めておく状態。
    ここは素早く暗くする。既定の0.24秒のままだと、
    暗くなりきる前に画面が切り替わってしまい、押した手ごたえが見えない */
 .ft-tap-pressed { transform: scale(0.96); filter: brightness(0.9); transition-duration: 45ms; }
-.ft-tap-card.ft-tap-pressed { transform: scale(0.994); }
+.ft-tap-card.ft-tap-pressed { transform: scale(0.997); }
 
 @keyframes ft-bloom { 0% { opacity: 0; transform: scale(0.7); } 100% { opacity: 1; transform: scale(1); } }
 .ft-chip { animation: ft-bloom 0.26s cubic-bezier(0.34,1.45,0.5,1) backwards; }
