@@ -20087,23 +20087,26 @@ function LinkCard({ link }) {
    ほかの記録が見えなくなる。X と同じく「さらに表示」で開く */
 const LONG_CHARS = 140;
 const LONG_LINES = 10;
-function isLongText(t) {
+/* メモの記録だけは、もっと早めにたたむ。
+   **改行を含めて5行目まで／100文字までを目安にすること。**（絵は含めない、絵は別枠で常に出す） */
+const MEMO_LONG_CHARS = 100;
+const MEMO_LONG_LINES = 5;
+function isLongText(t, maxChars = LONG_CHARS, maxLines = LONG_LINES) {
     const v = String(t || "");
-    return v.length > LONG_CHARS || v.split("\n").length > LONG_LINES;
+    return v.length > maxChars || v.split("\n").length > maxLines;
 }
-function headOfText(t) {
+function headOfText(t, maxChars = LONG_CHARS, maxLines = LONG_LINES) {
     const v = String(t || "");
     /* 行が多いときは行で、字が多いときは字で切る。**どちらか短いほう** */
-    const byLine = v.split("\n").slice(0, LONG_LINES).join("\n");
-    const cut = byLine.length > LONG_CHARS ? byLine.slice(0, LONG_CHARS) : byLine;
+    const byLine = v.split("\n").slice(0, maxLines).join("\n");
+    const cut = byLine.length > maxChars ? byLine.slice(0, maxChars) : byLine;
     return cut.replace(/\s+$/, "");
 }
-function LongText({ text, className }) {
-    const [open, setOpen] = (0, react_1.useState)(false);
-    const long = isLongText(text);
-    return (react_1.default.createElement(react_1.default.Fragment, null,
-        react_1.default.createElement(LinkedText, { text: open || !long ? text : headOfText(text), className: className }),
-        long && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setOpen((v) => !v); }, className: "block mt-1 text-[13.5px] text-sky-700" }, open ? "折りたたむ ▲" : "全て表示 ▼"))));
+/* **見た目だけの箱にすること。** 開く/たたむの状態は、
+   カード側（RecordRow）が持つ。カード本体をタップしても切り替わるようにするため、
+   ここに専用のボタンや自前の state を持たせない */
+function LongText({ text, className, open, long }) {
+    return (react_1.default.createElement(LinkedText, { text: open || !long ? text : headOfText(text, MEMO_LONG_CHARS, MEMO_LONG_LINES), className: className }));
 }
 /* 本文に入っている住所を、あとから札で見せる。
    **本文の字を置き換えないこと。** 書いたとおりが残っているほうが読みやすい。
@@ -20374,7 +20377,7 @@ function ChecklistEditor({ items, onChange }) {
         items.length > 0 && (react_1.default.createElement("div", { className: "mb-1" }, items.map((it, i) => (react_1.default.createElement("div", { key: it.id, ref: setRow(it.id), style: rowStyle(it.id), className: "flex items-center gap-1 rounded-xl " + (dragId === it.id ? "bg-white" : "") },
             react_1.default.createElement("span", { className: "w-6 shrink-0 flex items-center justify-center" },
                 react_1.default.createElement("span", { className: "w-2 h-2 rounded-full bg-neutral-300" })),
-            react_1.default.createElement(TextArea, { bare: true, value: it.text, onChange: (e) => setText(i, e.target.value), placeholder: "\u3084\u308B\u3053\u3068", minRows: 1, className: "flex-1 min-w-0 py-2.5 placeholder-neutral-300" }),
+            react_1.default.createElement(TextArea, { bare: true, value: it.text, onChange: (e) => setText(i, e.target.value), placeholder: "\u3084\u308B\u3053\u3068", minRows: 1, className: "flex-1 min-w-0 py-2 placeholder-neutral-300" }),
             react_1.default.createElement(MinSelect, { value: it.min || 0, onChange: (v) => setMin(i, v), className: "w-[58px]" }),
             react_1.default.createElement("button", { type: "button", onClick: () => setDelIdx(i), "aria-label": "\u524A\u9664", className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-xl text-neutral-300 hover:text-rose-700 ft-tap ft-tap-icon" },
                 react_1.default.createElement(lucide_react_1.X, { size: 17 })),
@@ -20383,7 +20386,7 @@ function ChecklistEditor({ items, onChange }) {
         react_1.default.createElement("div", { className: "flex items-center gap-1" },
             react_1.default.createElement("span", { className: "w-6 shrink-0 flex items-center justify-center text-neutral-300" },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 15 })),
-            react_1.default.createElement(TextArea, { bare: true, value: draft, onChange: (e) => setDraft(e.target.value), placeholder: "\u3084\u308B\u3053\u3068\u3092\u8FFD\u52A0", minRows: 1, className: "flex-1 min-w-0 py-2.5 placeholder-neutral-300", onKeyDown: (e) => { if (e.key === "Enter") {
+            react_1.default.createElement(TextArea, { bare: true, value: draft, onChange: (e) => setDraft(e.target.value), placeholder: "\u3084\u308B\u3053\u3068\u3092\u8FFD\u52A0", minRows: 1, className: "flex-1 min-w-0 py-2 placeholder-neutral-300", onKeyDown: (e) => { if (e.key === "Enter") {
                     e.preventDefault();
                     add();
                 } }, onBlur: add }),
@@ -20643,7 +20646,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                                         + (on ? "border-th-800" : "border-transparent") },
                                     react_1.default.createElement("span", { className: "w-6 h-6 rounded-full", style: { background: c.mid } })));
                             })))),
-                    react_1.default.createElement(TextArea, { value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 3, placeholder: "\u30E1\u30E2" }),
+                    react_1.default.createElement(TextArea, { value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" }),
                     react_1.default.createElement("div", { className: "mt-3 space-y-3" },
                         react_1.default.createElement(TextInput, { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u3001\u30D3\u30C7\u30AA\u901A\u8A71\u306A\u3069", inputMode: "url" })))),
                 rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
@@ -20806,9 +20809,23 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
     const t = timeLabel(r);
     const canMove = !!(acts && acts.onMoveItem) && r.type === "checklist" && !r.__repeat;
     const body = r.type === "memo" ? restOfLines(r) : "";
+    /* 折りたたみ／展開。**種類ごとに、たたむ場所とたたむかどうかが違う。**
+       ・イベント／スケジュール：たたまない
+       ・リスト：メモの部分だけを丸ごとたたむ（既定はたたんだ状態）
+       ・メモ：5行目／100文字を超えたら、そこから先をたたむ（絵はたたまない） */
+    const [expanded, setExpanded] = (0, react_1.useState)(false);
+    const memoLong = r.type === "memo" && isLongText(r.text, MEMO_LONG_CHARS, MEMO_LONG_LINES);
+    const listBody = r.type === "checklist" ? (r.body || "").trim() : "";
+    const hasFold = memoLong || !!listBody;
     /* えらべない札（フォルダで条件により入っているもの）は、押しても何も起きない */
     const tap = () => { if (selectMode && selectable)
         onSelect(r); };
+    /* カード本体をタップしたら、開く/たたむを切り替える。
+       **右上のボタンやチェックなどは、それぞれ e.stopPropagation() 済みなので、
+       ここまで伝わってこない。** 選べる状態のときはここでは何もしない
+       （そちらは上の tap がえらぶ役目を持っている） */
+    const toggleFold = () => { if (!selectMode && hasFold)
+        setExpanded((v) => !v); };
     /* **長押しで、えらぶ形に入れること。** 上の「選択」まで指を運ばせない */
     /* 押している間、札が沈んで色が変わる。**「いま何か始まる」と分かること。**
        計画やフォルダの札を長押ししたときと、同じ手ざわりにそろえる */
@@ -20859,7 +20876,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             }
         },
     };
-    return (react_1.default.createElement("div", { onClick: tap, ...pressProps, className: (selectMode ? "relative flex gap-1.5 pb-2.5 pl-4 pr-4 " + (selectable ? "ft-tap cursor-pointer" : "") : CARD_SLOT), style: selectMode && !selectable ? { opacity: 0.55 } : undefined },
+    return (react_1.default.createElement("div", { onClick: tap, ...pressProps, className: (selectMode ? "relative flex gap-1.5 pb-2.5 pl-4 pr-4 " + (selectable ? "ft-tap ft-tap-card cursor-pointer" : "") : CARD_SLOT), style: selectMode && !selectable ? { opacity: 0.55 } : undefined },
         !selectMode && (lineUp || lineDown) && (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("span", { className: "absolute", "aria-hidden": "true", style: {
                     left: 7, width: 2, background: color.mid, opacity: 0.45,
@@ -20868,7 +20885,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             react_1.default.createElement("span", { className: "absolute rounded-full", "aria-hidden": "true", style: { left: 3, top: "50%", marginTop: -5, width: 10, height: 10, background: color.mid } }))),
         selectMode && (react_1.default.createElement("span", { className: "w-11 shrink-0 relative flex justify-center" }, selectable ? (react_1.default.createElement("span", { className: "absolute top-3 w-6 h-6 rounded-full border-2 flex items-center justify-center", style: selected ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4", background: "#FFFFFF" } }, selected && react_1.default.createElement("span", { key: "on", className: "flex text-white ft-check-in" },
             react_1.default.createElement(lucide_react_1.Check, { size: 15, strokeWidth: 3.5, className: "thick" })))) : (react_1.default.createElement("span", { className: "absolute top-3 w-6 h-6 rounded-full border-2 border-dashed", style: { borderColor: "#D4D4D4" } })))),
-        react_1.default.createElement("article", { className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl border relative overflow-hidden ft-tap "
+        react_1.default.createElement("article", { onClick: toggleFold, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl border relative overflow-hidden ft-tap "
                 + (pressing ? "ft-pressing " : "")
                 + (selectMode
                     ? (selected ? "bg-th-50 border-th-800" : "bg-white border-dashed border-neutral-300")
@@ -20906,13 +20923,13 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             r.type !== "memo" && recordTitle(r, N) && recordTitle(r, N) !== (N[r.type] || TYPE_LABELS[r.type]) && (react_1.default.createElement("p", { className: "text-[15px] font-bold leading-snug break-words mb-1 "
                     + (allDone ? "text-neutral-400" : "text-neutral-900") }, recordTitle(r, N))),
             r.type === "memo" && (r.text || "").trim() && (react_1.default.createElement(react_1.default.Fragment, null,
-                react_1.default.createElement(LongText, { text: r.text, className: "text-[14.5px] leading-relaxed text-neutral-800" }),
+                react_1.default.createElement(LongText, { text: r.text, open: expanded, long: memoLong, className: "text-[14.5px] leading-relaxed text-neutral-800" }),
                 react_1.default.createElement(LinkCards, { text: r.text }))),
             r.type !== "memo" && body && (react_1.default.createElement(react_1.default.Fragment, null,
                 react_1.default.createElement(LinkedText, { text: body, className: "text-[14.5px] leading-relaxed text-neutral-800 mb-1.5" }),
                 react_1.default.createElement(LinkCards, { text: body }))),
-            r.type === "schedule" && (r.body || "").trim() && (react_1.default.createElement(react_1.default.Fragment, null,
-                react_1.default.createElement(LinkedText, { text: r.body, className: "text-[14.5px] leading-relaxed text-neutral-800 mb-1.5" }),
+            r.type === "schedule" && (r.body || "").trim() && (react_1.default.createElement("div", { className: "mt-1.5 mb-1.5 pl-1.5 border-l-2 border-neutral-200" },
+                react_1.default.createElement(LinkedText, { text: r.body, className: "text-[13.5px] leading-relaxed text-neutral-600" }),
                 react_1.default.createElement(LinkCards, { text: r.body }))),
             r.type === "schedule" && r.endDate && r.endDate !== r.date && (react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-500 mb-1.5 tabular-nums" }, scheduleWhen(r))),
             r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "text-[13px] mb-1.5 flex items-center gap-1" },
@@ -20929,7 +20946,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14 }),
                 " \u5834\u6240\u3092\u3072\u3089\u304F")),
             ratio && (react_1.default.createElement("div", { className: "mb-1" },
-                ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1.5" },
+                ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1" },
                     react_1.default.createElement(ProgressLine, { done: ratio.done, total: ratio.total, items: r.items, color: color, strong: allDone }))),
                 react_1.default.createElement("div", { className: "-ml-1.5" }, (r.items || []).map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-center gap-1" },
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -20937,12 +20954,14 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                                 onToggleItem(r, it.id); } })),
                     canMove && !selectMode && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setMoving(it); }, "aria-label": "\u5225\u306E\u30EA\u30B9\u30C8\u3078\u79FB\u3059", className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-full text-neutral-300 hover:text-th-800 hover:bg-neutral-100 ft-tap ft-tap-icon" },
                         react_1.default.createElement(lucide_react_1.ArrowRightLeft, { size: 15 }))))))),
-                r.type === "checklist" && (r.body || "").trim() && (react_1.default.createElement("div", { className: "mt-2 pl-1.5 border-l-2 border-neutral-200" },
+                listBody && expanded && (react_1.default.createElement("div", { className: "mt-2 pl-1.5 border-l-2 border-neutral-200" },
                     react_1.default.createElement(LinkedText, { text: r.body, className: "text-[13.5px] leading-relaxed text-neutral-600" }),
                     react_1.default.createElement(LinkCards, { text: r.body, small: true }))),
                 r.repeat && r.repeat.freq !== "none" && (react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 mt-0.5 flex items-center gap-1" },
                     react_1.default.createElement(lucide_react_1.Repeat, { size: 12 }),
                     repeatLabel(r.repeat))))),
+            /* カード下部の「すべて表示／折りたたむ」。**折りたためる中身があるときだけ出す** */
+            hasFold && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, className: "block mt-1.5 text-[13.5px] font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")),
             normalizeTags(r.tags).length > 0 && react_1.default.createElement(TagChips, { tags: r.tags, className: "mt-2" })),
         photo !== null && (react_1.default.createElement(PhotoViewer, { images: r.images || [], index: photo, onClose: () => setPhoto(null) })),
         moving && acts && (react_1.default.createElement(MoveItemSheet, { item: moving, from: r, records: acts.records || [], onCancel: () => setMoving(null), onMove: (toId) => { acts.onMoveItem(r, moving, toId); setMoving(null); }, onCreate: (name, date) => { acts.onCreateAndMove(r, moving, name, date); setMoving(null); } }))));
@@ -22606,7 +22625,12 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
                 react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
                 react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text),
-                it.min > 0 && (react_1.default.createElement("span", { className: "shrink-0 text-[11.5px] tabular-nums mt-0.5 " + (it.done ? "text-neutral-300" : "text-neutral-400"), style: { minWidth: 38, textAlign: "right" } }, minLabel(it.min)))))))))));
+                it.min > 0 && (react_1.default.createElement("span", { className: "shrink-0 text-[11.5px] tabular-nums mt-0.5 " + (it.done ? "text-neutral-300" : "text-neutral-400"), style: { minWidth: 38, textAlign: "right" } }, minLabel(it.min))))))))),
+            /* イベントのメモ。**リスト画面のメモ欄と同じ見た目にそろえる。**
+               イベントはたたまない（スケジュール／イベントは常にそのまま表示） */
+            (step.body || "").trim() && (react_1.default.createElement("div", { className: "mx-2.5 mb-2.5 mt-0.5 pl-1.5 border-l-2 border-neutral-200" },
+                react_1.default.createElement(LinkedText, { text: step.body, className: "text-[13.5px] leading-relaxed text-neutral-600" }),
+                react_1.default.createElement(LinkCards, { text: step.body, small: true })))));
 }
 /* イベントを書く画面。
    **記録を書く画面と別の作りにしないこと。** 同じ「書くこと」なのに
@@ -24023,18 +24047,19 @@ button:active { transition-duration: 60ms; }
    沈むのは速く、戻りはゆっくり。これだけで指に返る感じが出る */
 .ft-tap { transition: transform 0.24s cubic-bezier(0.22,1,0.36,1), filter 0.22s ease-out; }
 .ft-tap:active { transform: scale(0.955); filter: brightness(0.95); transition-duration: 70ms; }
-/* 大きなカードは沈みを控えめに、小さなアイコンは深めにすると同じ強さに感じる */
-.ft-tap.ft-tap-card:active { transform: scale(0.982); }
-/* 長押しの最中。**押したその場で沈むこと。**
-   「いま何か始まる」と分かってから、設定やえらぶ形に入る */
-.ft-pressing { transform: scale(0.982); filter: brightness(0.96); }
+/* 大きなカード（記録カード）は、沈みをごくごく控えめに。
+   **廃止はしない。** タップした手ごたえは残しつつ、
+   右上のボタン等のタップ判定がずれるのを防ぐため、動きの量を最小限にする */
+.ft-tap.ft-tap-card:active { transform: scale(0.994); filter: brightness(0.98); }
+/* 長押しの最中・選択モードの操作中も、同じくごく控えめに */
+.ft-pressing { transform: scale(0.994); filter: brightness(0.98); }
 .ft-tap.ft-tap-icon:active { transform: scale(0.88); }
 .ft-tap:disabled { transform: none; filter: none; }
 /* 押されてから画面が変わるまでの、ひと呼吸のあいだ沈めておく状態。
    ここは素早く暗くする。既定の0.24秒のままだと、
    暗くなりきる前に画面が切り替わってしまい、押した手ごたえが見えない */
 .ft-tap-pressed { transform: scale(0.96); filter: brightness(0.9); transition-duration: 45ms; }
-.ft-tap-card.ft-tap-pressed { transform: scale(0.982); }
+.ft-tap-card.ft-tap-pressed { transform: scale(0.994); }
 
 @keyframes ft-bloom { 0% { opacity: 0; transform: scale(0.7); } 100% { opacity: 1; transform: scale(1); } }
 .ft-chip { animation: ft-bloom 0.26s cubic-bezier(0.34,1.45,0.5,1) backwards; }
