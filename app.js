@@ -20798,33 +20798,48 @@ function WhenRow({ rec, onChange, withTime, withRepeat, repeat }) {
    この欄のせいで離れすぎないようにする**のがねらい。
    要約行をタップすると、いつもの詳しい欄が開く。
    ============================================================ */
-/* リスト・スケジュール用の要約：日付・時刻（終日ならその旨）・繰り返し */
+/* 「9月15日(火)」ではなく「9/15」の、いちばん短い日付表記。
+   **要約専用。** ほかの場所（見出しなど）の fmtDate はそのまま */
+const fmtDateShort = (s) => { const d = parseYmd(s); return d ? `${d.getMonth() + 1}/${d.getDate()}` : ""; };
+/* リスト・スケジュール用の要約：日付［・時刻］［・繰り返し］。
+   **既定（終日／繰り返しなし）は文字を出さないこと。**
+   多くの記録がここに当てはまるので、出しっぱなしだと逆に読みにくい。
+   時刻や繰り返しを「決めた」ときだけ、そのぶんを足していく */
 function checklistWhenSummary(rec) {
     const allDay = isAllDay(rec);
     const sameDay = !rec.endDate || rec.endDate === rec.date;
-    const datePart = sameDay ? fmtDate(rec.date) : `${fmtDate(rec.date)}\u301C${fmtDate(rec.endDate)}`;
-    const timePart = allDay ? "\u7D42\u65E5" : (rec.endTime ? `${rec.time}\u301C${rec.endTime}` : (rec.time || "\u7D42\u65E5"));
+    let s = sameDay ? fmtDateShort(rec.date) : `${fmtDateShort(rec.date)}\u301C${fmtDateShort(rec.endDate)}`;
+    if (!allDay) {
+        const t = rec.endTime ? `${rec.time}\u301C${rec.endTime}` : (rec.time || "");
+        if (t)
+            s += ` ${t}`;
+    }
     const rl = repeatLabel(rec.repeat);
-    return `${datePart}\u30FB${timePart}\u30FB\u7E70\u308A\u8FD4\u3057${rl === "\u306A\u3057" ? "\u306A\u3057" : rl}`;
+    if (rl !== "\u306A\u3057")
+        s += `\u30FB${rl}`;
+    return s;
 }
-/* メモ用の要約：繰り返しは持たないので、日付・時刻（または週／月）だけ */
+/* メモ用の要約：繰り返しは持たないので、日付［・時刻］（または週／月）だけ。
+   こちらも終日（既定）のときは時刻を足さない */
 function memoWhenSummary(rec) {
     if (rec.scope === "week")
-        return `${fmtDate(rec.date)} \u306E\u9031`;
+        return `${fmtDateShort(rec.date)}\u306E\u9031`;
     if (rec.scope === "month")
-        return `${rec.date.slice(0, 4)}\u5E74${Number(rec.date.slice(5, 7))}\u6708`;
+        return `${rec.date.slice(0, 4)}/${Number(rec.date.slice(5, 7))}`;
     const allDay = isAllDay(rec);
-    return allDay ? `${fmtDate(rec.date)}\u30FB\u7D42\u65E5` : `${fmtDate(rec.date)}\u30FB${rec.time}`;
+    return allDay ? fmtDateShort(rec.date) : `${fmtDateShort(rec.date)} ${rec.time}`;
 }
 /* 折りたたみの箱そのもの。**中身（children）は開いたときにしか描かないこと。**
    閉じているあいだも描いてしまうと、日付や時刻えらびの小窓の重なり順（z-index）が
-   予期せず前面に出てくることがある */
+   予期せず前面に出てくることがある。
+   **要約の文字には必ず truncate を付けること。** 長い繰り返し文言などで
+   1行に収まりきらないときは、末尾を…で隠して箱の高さを崩さない */
 function WhenCollapse({ summary, open, onToggle, children }) {
     return (react_1.default.createElement("div", { className: "mb-3" },
-        react_1.default.createElement("button", { type: "button", onClick: onToggle, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-4 min-h-[52px] text-left ft-tap ft-tap-card" },
-            react_1.default.createElement(lucide_react_1.CalendarClock, { size: 16, className: "text-neutral-400 shrink-0" }),
-            react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[14.5px] text-neutral-700 truncate" }, summary),
-            react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-400 shrink-0 transition-all " + (open ? "rotate-180" : "") })),
+        react_1.default.createElement("button", { type: "button", onClick: onToggle, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-4 min-h-[46px] text-left ft-tap ft-tap-card" },
+            react_1.default.createElement(lucide_react_1.CalendarClock, { size: 15, className: "text-neutral-400 shrink-0" }),
+            react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[13.5px] text-neutral-500 truncate whitespace-nowrap" }, summary),
+            react_1.default.createElement(lucide_react_1.ChevronDown, { size: 16, className: "text-neutral-400 shrink-0 transition-all " + (open ? "rotate-180" : "") })),
         open && (react_1.default.createElement("div", { className: "mt-2" }, children))));
 }
 /* ============================================================
@@ -20940,22 +20955,22 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                 rec.type === "checklist" && (react_1.default.createElement("div", { className: "mb-3" },
                     react_1.default.createElement(ChecklistEditor, { items: rec.items || [], onChange: (v) => set({ items: v }) }))),
                 rec.type === "checklist" && (react_1.default.createElement(TextArea, { value: rec.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2", className: "mb-3 ft-gap-tasknote" })),
-                /* ---- スケジュール（②終日・開始・終了） ---- */
-                rec.type === "schedule" && (react_1.default.createElement(RowCard, { className: "mb-3" },
-                    react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
-                        react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
-                    react_1.default.createElement(SheetRow, { label: "\u958B\u59CB" },
-                        react_1.default.createElement("span", { className: "flex items-center gap-2" },
-                            react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => set({ date: e.target.value }) }),
-                            react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
-                                react_1.default.createElement(TimeInput, { pill: true, value: rec.time, placeholder: "\u6642\u523B", onChange: (v) => setStart(v) })))),
-                    react_1.default.createElement(SheetRow, { label: "\u7D42\u4E86", last: true },
-                        react_1.default.createElement("span", { className: "flex items-center gap-2" },
-                            react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, onChange: (e) => set({ endDate: e.target.value }) }),
-                            react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
-                                react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) })))))),
-                /* ③繰り返し（RepeatRow 自身のかたちのまま） */
-                rec.type === "schedule" && (react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope })),
+                /* ---- スケジュール（②終日・開始・終了・繰り返し）。既定は折りたたみ、要約タップで展開 ---- */
+                rec.type === "schedule" && (react_1.default.createElement(WhenCollapse, { summary: checklistWhenSummary(rec), open: whenOpen, onToggle: () => setWhenOpen((v) => !v) },
+                    react_1.default.createElement(RowCard, { className: "mb-3" },
+                        react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
+                            react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
+                        react_1.default.createElement(SheetRow, { label: "\u958B\u59CB" },
+                            react_1.default.createElement("span", { className: "flex items-center gap-2" },
+                                react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => set({ date: e.target.value }) }),
+                                react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
+                                    react_1.default.createElement(TimeInput, { pill: true, value: rec.time, placeholder: "\u6642\u523B", onChange: (v) => setStart(v) })))),
+                        react_1.default.createElement(SheetRow, { label: "\u7D42\u4E86", last: true },
+                            react_1.default.createElement("span", { className: "flex items-center gap-2" },
+                                react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, onChange: (e) => set({ endDate: e.target.value }) }),
+                                react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
+                                    react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) }))))),
+                    react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }))),
                 /* ④色・場所・メモ を、ひとつの白いカードにまとめる */
                 rec.type === "schedule" && (react_1.default.createElement(GroupCard, { className: "mb-3" },
                     react_1.default.createElement("div", { className: "flex items-center gap-2" },
