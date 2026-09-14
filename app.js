@@ -17264,7 +17264,7 @@ async function storageGet(key) {
         return null;
     }
 }
-async function storageSet(key, value) {
+async function storageSetRaw(key, value) {
     let firstError = null;
     try {
         if (typeof window !== "undefined" && window.storage && window.storage.set) {
@@ -17287,6 +17287,32 @@ async function storageSet(key, value) {
         const err = firstError || e;
         return { ok: false, message: (err && err.message) ? err.message : String(err) };
     }
+}
+/* 同じキーへの書き込みは、**かならず一列に並べること。**
+   置き場によっては書き込みが非同期（await）になる。
+   続けて押されると、1回目（古い中身）と2回目（新しい中身）の書き込みが
+   同時に走り、**1回目のほうが後に着く**ことがある。
+   そうなると、画面は正しいのに置き場だけが古い中身で塗り替えられ、
+   開き直したときにチェックが先祖返りする。
+   ここで、キーごとに順番待ちの列を作って追い越しを止める。
+   待っているあいだに新しい中身が来たら、古いほうは捨てて
+   いちばん新しい中身だけを書く（途中の姿は書く必要がない） */
+const writeLatest = new Map();
+const writeChain = new Map();
+function storageSet(key, value) {
+    writeLatest.set(key, value);
+    const prev = writeChain.get(key) || Promise.resolve();
+    const next = prev.then(async () => {
+        /* 自分より新しい書き込みに追い越されていたら、ここは書かずに譲る */
+        if (!writeLatest.has(key))
+            return { ok: true };
+        const v = writeLatest.get(key);
+        writeLatest.delete(key);
+        return await storageSetRaw(key, v);
+    });
+    /* 失敗しても列そのものは止めないこと（以後いっさい保存されなくなる） */
+    writeChain.set(key, next.then(() => undefined, () => undefined));
+    return next;
 }
 /* 壊れた中身でも必ず配列を返す。
    **この防御を外さないこと。** 保存された中身が配列でなかったり null が混ざったりすると
