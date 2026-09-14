@@ -19939,55 +19939,12 @@ const MenuContext = react_1.default.createContext(null);
    知らせるのは、メニューの三本線に付ける小さな丸ひとつでよい */
 /* { need, count, backupAt } を配る。**真偽だけにしないこと**（件数も見せたい） */
 const NeedBackupContext = react_1.default.createContext({ need: false, count: 0, backupAt: "" });
-/* 画面に指が触れた、いちばん最後の時刻。
-   知らせの札を、押している最中に割り込ませないために見る */
-let lastTapAt = 0;
-if (typeof document !== "undefined") {
-    try {
-        document.addEventListener("pointerdown", () => { lastTapAt = Date.now(); }, true);
-    }
-    catch (e) { /* 使えなくても構わない */ }
-}
 /* 書き出していない書きかえがあるときだけ、Today のいちばん上に出す。
    **えらぶ最中や、日をさかのぼっているときは出さないこと。**
    いま見ているものの邪魔になる */
 function NeedBackupBanner({ onOpen, dim }) {
     const { need, count, backupAt } = react_1.default.useContext(NeedBackupContext) || {};
-    /* **押している最中に、割り込んで出てこないこと。**
-       この知らせは、はじめて書きかえたその瞬間に現れる。
-       すると下の記録がまるごと 74px ほど押し下げられ、
-       たったいま押した札の位置に、別の札がすべり込む。
-       リストの印を続けて付けていくと、二度目の指が
-       ひとつ前に押した項目に当たり、付けたばかりの印が外れる。
-       ――そこで、書きかえが止んで少し経ってから出す。
-       画面に来た時点ですでに要るぶんは、待たずにそのまま出す
-       （そちらは、まだ誰も指を置いていない） */
-    const [shown, setShown] = (0, react_1.useState)(false);
-    (0, react_1.useEffect)(() => {
-        if (!need) {
-            setShown(false);
-            return undefined;
-        }
-        if (shown)
-            return undefined;
-        /* **ただ待たせるだけにしないこと。** 開いた直後はまだ誰も指を置いていない。
-           そこで待つと、何もないところへ札が遅れて割り込むだけになる。
-           見るのは「最後に触れてから、どれだけ経ったか」 */
-        const QUIET = 1200;
-        let timer = null;
-        const check = () => {
-            const since = Date.now() - lastTapAt;
-            if (since >= QUIET) {
-                setShown(true);
-                return;
-            }
-            timer = setTimeout(check, QUIET - since + 20);
-        };
-        check();
-        return () => { if (timer)
-            clearTimeout(timer); };
-    }, [need, count, shown]);
-    if (!need || !shown)
+    if (!need)
         return null;
     return (react_1.default.createElement("button", { type: "button", onClick: onOpen, disabled: dim, className: "flex items-center gap-2.5 rounded-2xl bg-amber-50 border border-amber-200 px-3.5 py-3 mb-3 -mx-1 w-[calc(100%+8px)] text-left ft-tap ft-tap-card "
             + (dim ? "opacity-55 pointer-events-none" : "") },
@@ -21016,7 +20973,15 @@ function ProgressBar({ ratio, color, deep, height }) {
 }
 function CheckRow({ item, onToggle, size = "m" }) {
     const big = size === "l";
-    return (react_1.default.createElement("button", { type: "button", onClick: onToggle, className: "w-full flex items-start gap-2.5 text-left rounded-xl ft-tap ft-tap-card " + (big ? "px-2 py-1.5 min-h-[40px]" : "px-1.5 py-2 min-h-[46px]") },
+    /* **この行は、カード全体（<article onClick={toggleFold}>）の中にある。**
+       ここで止めないと、印を付けるたびクリックが上まで伝わり、
+       メモを開く／たたむがいっしょに切り替わってしまう。
+       たたむ・開くでカードの高さが変わり、続けて押した指が
+       下のカードの、意図しない行に当たる。
+       ほかの行内ボタン（固定・編集・画像・移すなど）はすでに止めてあるのに、
+       ここだけ止め忘れていた */
+    const guarded = (e) => { e.stopPropagation(); onToggle(); };
+    return (react_1.default.createElement("button", { type: "button", onClick: guarded, className: "w-full flex items-start gap-2.5 text-left rounded-xl ft-tap ft-tap-card " + (big ? "px-2 py-1.5 min-h-[40px]" : "px-1.5 py-2 min-h-[46px]") },
         react_1.default.createElement("span", { className: "shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5 " + (big ? "w-6 h-6" : "w-5 h-5"), style: item.done ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4" } }, item.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
             react_1.default.createElement(lucide_react_1.Check, { size: big ? 14 : 12, strokeWidth: 3.5, className: "thick" }))),
         react_1.default.createElement("span", { className: (big ? "text-[15.5px]" : "text-[13.5px]") + " leading-snug flex-1 min-w-0 break-words "
