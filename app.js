@@ -17675,6 +17675,9 @@ function emptyRecord(type, date, scope) {
         repeat: { freq: "none", days: [], until: "", skip: [] },
         mark: null, comment: "", planId: null,
         createdAt: new Date().toISOString(), updatedAt: null,
+        /* checkedAt ＝ 印を付け外しした時刻。**updatedAt と分けて持つこと。**
+           並びには使わない（使うと、押すたびに札が動く） */
+        checkedAt: null,
     };
     /* メモは、字と絵をいっしょに持つ。絵は4枚まで。
        **繰り返しは持たせないこと**（くり返す意味がない） */
@@ -17718,6 +17721,7 @@ function migrateRecord(r) {
         scope: (r.scope === "week" || r.scope === "month") ? r.scope : "day",
         pinned: !!r.pinned,
         fromRepeat: String(r.fromRepeat || ""),
+        checkedAt: r.checkedAt || null,
         id: r.id || uid(),
     };
     if (type === "checklist") {
@@ -20594,7 +20598,10 @@ function ProgressLine({ done, total, items, time, color, strong, big }) {
     const full = n > 0 && d >= n;
     const hasTime = t.plan > 0;
     return (react_1.default.createElement("div", null,
-        react_1.default.createElement("div", { className: "flex items-end justify-between gap-2 mb-1.5" },
+        /* **やり終えた丸の分だけ、行が伸びないようにすること。**
+           100%になった瞬間に丸が現れて行が数px押し下がると、
+           そのすぐ下を狙っていた指が、ひとつ手前の行に当たる */
+        react_1.default.createElement("div", { className: "flex items-end justify-between gap-2 mb-1.5", style: { minHeight: big ? 24 : 20 } },
             react_1.default.createElement("span", { className: "flex items-end gap-2 min-w-0" },
                 react_1.default.createElement("span", { className: (big ? "text-[22px]" : "text-[16px]") + " tabular-nums leading-none whitespace-nowrap", style: { color: color.deep, fontWeight: 700 } },
                     d,
@@ -24784,7 +24791,11 @@ function AppMain() {
             return 0;
         if (!backupAt)
             return records.length;
-        return records.filter((r) => String(r.updatedAt || r.createdAt || "") > backupAt).length;
+        /* **updatedAt だけを見ないこと。** 印だけ付けた札が数から漏れる */
+        return records.filter((r) => {
+            const t = [r.updatedAt, r.checkedAt, r.createdAt].filter(Boolean).sort().pop() || "";
+            return String(t) > backupAt;
+        }).length;
     }, [needBackup, backupAt, records]);
     /* いまの一覧の覚え。**画面の描き直しを待たないこと。**
        続けて押されたとき、二度目が古い一覧から組み立て直してしまい、
@@ -24925,7 +24936,9 @@ function AppMain() {
             const already = recordsRef.current.find((r) => r.fromRepeat === rec.id && r.date === rec.date);
             if (already) {
                 setRecords((prev) => prev.map((r) => (r.id === already.id
-                    ? { ...r, items: (r.items || []).map((i, k) => (i.id === itemId || (rec.items || [])[k] && (rec.items || [])[k].id === itemId ? { ...i, done: !i.done } : i)), updatedAt: new Date().toISOString() }
+                    /* **updatedAt を書きかえないこと。** 並びの基準なので、
+                       押したそばから札が動き、次の指が別の行に当たる */
+                    ? { ...r, items: (r.items || []).map((i, k) => (i.id === itemId || (rec.items || [])[k] && (rec.items || [])[k].id === itemId ? { ...i, done: !i.done } : i)), checkedAt: new Date().toISOString() }
                     : r)));
                 return;
             }
@@ -24935,12 +24948,20 @@ function AppMain() {
                 planId: rec.planId, mark: rec.mark, fromRepeat: rec.id,
                 items: (rec.items || []).map((i) => ({ id: i.id, text: i.text, done: i.id === itemId })),
                 repeat: { freq: "none", days: [], until: "" },
+                /* **作った「いま」を並びの基準にしないこと。**
+                   もとの札と入れ替わるだけなので、同じ場所に居させる。
+                   でないと、初めのひと押しで札が飛ぶ */
+                createdAt: rec.createdAt || new Date().toISOString(),
+                updatedAt: rec.updatedAt || null,
+                checkedAt: new Date().toISOString(),
             };
             setRecords((prev) => [...prev, real]);
             return;
         }
         setRecords((prev) => prev.map((r) => r.id === rec.id
-            ? { ...r, items: (r.items || []).map((i) => (i.id === itemId ? { ...i, done: !i.done } : i)), updatedAt: new Date().toISOString() }
+            /* **updatedAt を書きかえないこと。** 並びの基準なので、
+               押したそばから札が動き、次の指が別の行に当たる */
+            ? { ...r, items: (r.items || []).map((i) => (i.id === itemId ? { ...i, done: !i.done } : i)), checkedAt: new Date().toISOString() }
             : r));
     };
     /* 項目を別のチェックリストへ移す（持ち越し） */
