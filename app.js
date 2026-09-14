@@ -19935,12 +19935,55 @@ const MenuContext = react_1.default.createContext(null);
    知らせるのは、メニューの三本線に付ける小さな丸ひとつでよい */
 /* { need, count, backupAt } を配る。**真偽だけにしないこと**（件数も見せたい） */
 const NeedBackupContext = react_1.default.createContext({ need: false, count: 0, backupAt: "" });
+/* 画面に指が触れた、いちばん最後の時刻。
+   知らせの札を、押している最中に割り込ませないために見る */
+let lastTapAt = 0;
+if (typeof document !== "undefined") {
+    try {
+        document.addEventListener("pointerdown", () => { lastTapAt = Date.now(); }, true);
+    }
+    catch (e) { /* 使えなくても構わない */ }
+}
 /* 書き出していない書きかえがあるときだけ、Today のいちばん上に出す。
    **えらぶ最中や、日をさかのぼっているときは出さないこと。**
    いま見ているものの邪魔になる */
 function NeedBackupBanner({ onOpen, dim }) {
     const { need, count, backupAt } = react_1.default.useContext(NeedBackupContext) || {};
-    if (!need)
+    /* **押している最中に、割り込んで出てこないこと。**
+       この知らせは、はじめて書きかえたその瞬間に現れる。
+       すると下の記録がまるごと 74px ほど押し下げられ、
+       たったいま押した札の位置に、別の札がすべり込む。
+       リストの印を続けて付けていくと、二度目の指が
+       ひとつ前に押した項目に当たり、付けたばかりの印が外れる。
+       ――そこで、書きかえが止んで少し経ってから出す。
+       画面に来た時点ですでに要るぶんは、待たずにそのまま出す
+       （そちらは、まだ誰も指を置いていない） */
+    const [shown, setShown] = (0, react_1.useState)(false);
+    (0, react_1.useEffect)(() => {
+        if (!need) {
+            setShown(false);
+            return undefined;
+        }
+        if (shown)
+            return undefined;
+        /* **ただ待たせるだけにしないこと。** 開いた直後はまだ誰も指を置いていない。
+           そこで待つと、何もないところへ札が遅れて割り込むだけになる。
+           見るのは「最後に触れてから、どれだけ経ったか」 */
+        const QUIET = 1200;
+        let timer = null;
+        const check = () => {
+            const since = Date.now() - lastTapAt;
+            if (since >= QUIET) {
+                setShown(true);
+                return;
+            }
+            timer = setTimeout(check, QUIET - since + 20);
+        };
+        check();
+        return () => { if (timer)
+            clearTimeout(timer); };
+    }, [need, count, shown]);
+    if (!need || !shown)
         return null;
     return (react_1.default.createElement("button", { type: "button", onClick: onOpen, disabled: dim, className: "flex items-center gap-2.5 rounded-2xl bg-amber-50 border border-amber-200 px-3.5 py-3 mb-3 -mx-1 w-[calc(100%+8px)] text-left ft-tap ft-tap-card "
             + (dim ? "opacity-55 pointer-events-none" : "") },
@@ -23006,7 +23049,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                    白い下じきに、計画いろの太いふちと影を付けて浮かせる */
                 react_1.default.createElement("div", { className: "-mx-5 px-4 mb-4" }, steps.length === 0 ? (react_1.default.createElement("div", { className: "rounded-2xl px-4 py-5 text-center", style: { background: color.soft, border: `1px solid ${color.line}` } },
                     react_1.default.createElement("p", { className: "text-[13px] text-neutral-400" }, "\u30A4\u30D9\u30F3\u30C8\u304C\u767B\u9332\u3055\u308C\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "rounded-2xl overflow-hidden", style: { background: "#FFFFFF", border: `1.5px solid ${color.mid}` } },
-                    react_1.default.createElement("div", { className: "px-4 py-4", style: { background: `linear-gradient(135deg, ${color.soft} 0%, #FFFFFF 72%)` } },
+                    react_1.default.createElement("div", { className: "px-4 py-4" },
                         react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2.5" },
                             /* **計画いろの丸アイコンを置かないこと。**
                                計画そのものの絵はカードの外（題のところ）にすでにある。
@@ -24680,15 +24723,24 @@ function AppMain() {
             ]);
             if (!alive)
                 return;
-            setRecordsState(rs.map(migrateRecord).filter(Boolean));
-            setPlansState(ps.map(migratePlan).filter(Boolean));
-            setKindsState(ks.filter((k) => k && k.id));
+            /* **覚えの取り違えに注意。** 読み込みで直に入れたぶんも、
+               ここでそろえておかないと、最初のひと押しで一覧が空に戻る */
+            const loadedRecords = rs.map(migrateRecord).filter(Boolean);
+            const loadedPlans = ps.map(migratePlan).filter(Boolean);
+            const loadedKinds = ks.filter((k) => k && k.id);
+            recordsRef.current = loadedRecords;
+            plansRef.current = loadedPlans;
+            kindsRef.current = loadedKinds;
+            setRecordsState(loadedRecords);
+            setPlansState(loadedPlans);
+            setKindsState(loadedKinds);
             /* 前に入れておいた「印つき」は、ここで取りのぞく。
                **もう一度足し直さないこと。** 消しても消しても出てくる、と見える。
                **画面から消すだけで終わらせないこと。** 端末にも残らないよう、
                取りのぞいたときは、その場で書き戻しておく */
             const allFolders = fs.map(migrateFolder).filter(Boolean);
             const keptFolders = allFolders.filter((f) => !isRetiredStarFolder(f));
+            foldersRef.current = keptFolders;
             setFoldersState(keptFolders);
             if (keptFolders.length !== allFolders.length)
                 saveList(FOLDER_KEY, keptFolders);
@@ -24734,18 +24786,36 @@ function AppMain() {
             return records.length;
         return records.filter((r) => String(r.updatedAt || r.createdAt || "") > backupAt).length;
     }, [needBackup, backupAt, records]);
+    /* いまの一覧の覚え。**画面の描き直しを待たないこと。**
+       続けて押されたとき、二度目が古い一覧から組み立て直してしまい、
+       一度目の印が消える。押したその場でここを更新して、次の呼び出しに渡す */
+    const recordsRef = (0, react_1.useRef)(records);
+    const plansRef = (0, react_1.useRef)(plans);
+    const kindsRef = (0, react_1.useRef)(kinds);
+    const foldersRef = (0, react_1.useRef)(folders);
+    /* **描き直しのたびに、覚えを書き戻さないこと。**
+       覚えのほうが先に進んでいるのに、いま描いている古い値で上書きすると、
+       続けて押したぶんが取りこぼされる（直そうとした不具合そのものが戻る）。
+       覚えを書き替えるのは、読み込みのときと、下の入り口の2か所だけにする */
+    /* 「できあがった配列」でも「ひとつ前をもらって次を返す書き方」でも受ける */
+    const resolveNext = (next, ref) => {
+        const v = typeof next === "function" ? next(ref.current) : next;
+        ref.current = v;
+        return v;
+    };
     const setRecords = (0, react_1.useCallback)((next) => {
-        setRecordsState(next);
+        const v = resolveNext(next, recordsRef);
+        setRecordsState(v);
         bumpChanged();
-        saveList(REC_KEY, next).then((res) => {
+        saveList(REC_KEY, v).then((res) => {
             if (res && res.ok === false) {
                 tell("保存できませんでした。写真を減らすか、バックアップを取ってから古い記録を消してください");
             }
         });
     }, []);
-    const setPlans = (0, react_1.useCallback)((next) => { setPlansState(next); bumpChanged(); saveList(PLAN_KEY, next); }, []); // eslint-disable-line
-    const setKinds = (0, react_1.useCallback)((next) => { setKindsState(next); bumpChanged(); saveList(KIND_KEY, next); }, []); // eslint-disable-line
-    const setFolders = (0, react_1.useCallback)((next) => { setFoldersState(next); bumpChanged(); saveList(FOLDER_KEY, next); }, []); // eslint-disable-line
+    const setPlans = (0, react_1.useCallback)((next) => { const v = resolveNext(next, plansRef); setPlansState(v); bumpChanged(); saveList(PLAN_KEY, v); }, []); // eslint-disable-line
+    const setKinds = (0, react_1.useCallback)((next) => { const v = resolveNext(next, kindsRef); setKindsState(v); bumpChanged(); saveList(KIND_KEY, v); }, []); // eslint-disable-line
+    const setFolders = (0, react_1.useCallback)((next) => { const v = resolveNext(next, foldersRef); setFoldersState(v); bumpChanged(); saveList(FOLDER_KEY, v); }, []); // eslint-disable-line
     const setTagMaster = (0, react_1.useCallback)((next) => {
         const v = normalizeTags(next);
         setTagMasterState(v);
@@ -24852,9 +24922,9 @@ function AppMain() {
         if (rec.__repeat) {
             /* その日ぶんの実体が**すでにあるなら、それを使うこと。**
                毎回あたらしく作ると、同じ札がどんどん増えていく */
-            const already = records.find((r) => r.fromRepeat === rec.id && r.date === rec.date);
+            const already = recordsRef.current.find((r) => r.fromRepeat === rec.id && r.date === rec.date);
             if (already) {
-                setRecords(records.map((r) => (r.id === already.id
+                setRecords((prev) => prev.map((r) => (r.id === already.id
                     ? { ...r, items: (r.items || []).map((i, k) => (i.id === itemId || (rec.items || [])[k] && (rec.items || [])[k].id === itemId ? { ...i, done: !i.done } : i)), updatedAt: new Date().toISOString() }
                     : r)));
                 return;
@@ -24866,16 +24936,16 @@ function AppMain() {
                 items: (rec.items || []).map((i) => ({ id: i.id, text: i.text, done: i.id === itemId })),
                 repeat: { freq: "none", days: [], until: "" },
             };
-            setRecords([...records, real]);
+            setRecords((prev) => [...prev, real]);
             return;
         }
-        setRecords(records.map((r) => r.id === rec.id
+        setRecords((prev) => prev.map((r) => r.id === rec.id
             ? { ...r, items: (r.items || []).map((i) => (i.id === itemId ? { ...i, done: !i.done } : i)), updatedAt: new Date().toISOString() }
             : r));
     };
     /* 項目を別のチェックリストへ移す（持ち越し） */
     const moveItem = (from, item, toId) => {
-        setRecords(records.map((r) => {
+        setRecords((prev) => prev.map((r) => {
             if (r.id === from.id)
                 return { ...r, items: r.items.filter((i) => i.id !== item.id), updatedAt: new Date().toISOString() };
             if (r.id === toId)
@@ -24898,21 +24968,21 @@ function AppMain() {
     };
     /* --- 計画 --- */
     /* **色を持たせないこと。** 計画も種類も、色は表示設定でひとつだけ決める */
-    const togglePinFolder = (f) => setFolders(folders.map((x) => (x.id === f.id ? { ...x, pinned: !x.pinned } : x)));
+    const togglePinFolder = (f) => setFolders((prev) => prev.map((x) => (x.id === f.id ? { ...x, pinned: !x.pinned } : x)));
     const addPlan = (_unused, name, icon) => {
         const p = { ...emptyPlan(), name: name || "新しい計画", icon: icon || "" };
-        setPlans([...plans, p]);
+        setPlans((prev) => [...prev, p]);
         setPlanOpen(p.id);
     };
     /* 上への固定の入り切り */
     const togglePin = (rec) => {
-        setRecords(records.map((r) => (r.id === rec.id ? { ...r, pinned: !r.pinned } : r)));
+        setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, pinned: !r.pinned } : r)));
     };
-    const changePlan = (p) => setPlans(plans.map((x) => (x.id === p.id ? p : x)));
+    const changePlan = (p) => setPlans((prev) => prev.map((x) => (x.id === p.id ? p : x)));
     /* イベントを、別の計画へ移す。
        **元から外してから入れること。** 両方に残ると2か所に出る */
     const moveStep = (step, fromId, toId, isNew) => {
-        setPlans(plans.map((p) => {
+        setPlans((prev) => prev.map((p) => {
             if (p.id === fromId) {
                 return { ...p, steps: (p.steps || []).filter((x) => x.id !== step.id) };
             }
@@ -24925,28 +24995,28 @@ function AppMain() {
         const to = plans.find((p) => p.id === toId);
         tell(`「${(to && to.name) || "計画"}」に移しました`);
     };
-    const deletePlan = (id) => { setPlans(plans.filter((x) => x.id !== id)); setPlanOpen(null); tell("計画を削除しました"); };
+    const deletePlan = (id) => { setPlans((prev) => prev.filter((x) => x.id !== id)); setPlanOpen(null); tell("計画を削除しました"); };
     /* 複数の日付に、同じチェックリストをまとめて作る */
     /* --- フォルダ --- */
-    const addFolder = (name, icon) => { const f = { ...emptyFolder(name), icon: icon || "" }; setFolders([...folders, f]); setFolderOpen(f.id); };
-    const changeFolder = (f) => setFolders(folders.map((x) => (x.id === f.id ? f : x)));
-    const deleteFolder = (id) => { setFolders(folders.filter((x) => x.id !== id)); setFolderOpen(null); tell("フォルダを削除しました"); };
+    const addFolder = (name, icon) => { const f = { ...emptyFolder(name), icon: icon || "" }; setFolders((prev) => [...prev, f]); setFolderOpen(f.id); };
+    const changeFolder = (f) => setFolders((prev) => prev.map((x) => (x.id === f.id ? f : x)));
+    const deleteFolder = (id) => { setFolders((prev) => prev.filter((x) => x.id !== id)); setFolderOpen(null); tell("フォルダを削除しました"); };
     /* --- タグの整理。一覧と記録の両方に同じことをすること --- */
     const renameTag = (from, to) => {
         const v = normalizeTags([to])[0];
         if (!v)
             return;
         setTagMaster(tagMaster.map((t) => (t === from ? v : t)));
-        setRecords(records.map((r) => {
+        setRecords((prev) => prev.map((r) => {
             const has = normalizeTags(r.tags).some((t) => t.toLowerCase() === from.toLowerCase());
             return has ? { ...r, tags: normalizeTags(r.tags.map((t) => (t.toLowerCase() === from.toLowerCase() ? v : t))) } : r;
         }));
-        setFolders(folders.map((f) => ({ ...f, tags: normalizeTags(f.tags.map((t) => (t.toLowerCase() === from.toLowerCase() ? v : t))) })));
+        setFolders((prev) => prev.map((f) => ({ ...f, tags: normalizeTags(f.tags.map((t) => (t.toLowerCase() === from.toLowerCase() ? v : t))) })));
     };
     const deleteTag = (t) => {
         setTagMaster(tagMaster.filter((x) => x !== t));
-        setRecords(records.map((r) => ({ ...r, tags: normalizeTags(r.tags).filter((x) => x.toLowerCase() !== t.toLowerCase()) })));
-        setFolders(folders.map((f) => ({ ...f, tags: normalizeTags(f.tags).filter((x) => x.toLowerCase() !== t.toLowerCase()) })));
+        setRecords((prev) => prev.map((r) => ({ ...r, tags: normalizeTags(r.tags).filter((x) => x.toLowerCase() !== t.toLowerCase()) })));
+        setFolders((prev) => prev.map((f) => ({ ...f, tags: normalizeTags(f.tags).filter((x) => x.toLowerCase() !== t.toLowerCase()) })));
     };
     /* --- バックアップ --- */
     const restore = async (obj) => {
@@ -25076,7 +25146,7 @@ function AppMain() {
                                 swapAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u7A2E\u985E\u3092\u5909\u3048\u307E\u3059\u304B", body: "\u3044\u307E\u5165\u3063\u3066\u3044\u308B\u4E2D\u8EAB\u306F\u6D88\u3048\u307E\u3059\u3002", danger: true, confirmLabel: "\u5909\u3048\u308B", onCancel: () => setSwapAsk(null), onConfirm: () => {
                                         const a = swapAsk;
                                         setSwapAsk(null);
-                                        setRecords(records.filter((r) => r.id !== a.rec.id));
+                                        setRecords((prev) => prev.filter((r) => r.id !== a.rec.id));
                                         addScoped(a.scope, a.dateKey);
                                     } })),
                                 typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: scoped ? SCOPED_TYPES : TYPES })),
