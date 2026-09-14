@@ -20982,7 +20982,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             ratio && (react_1.default.createElement("div", { className: "mb-1" },
                 ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1" },
                     react_1.default.createElement(ProgressLine, { done: ratio.done, total: ratio.total, items: r.items, color: color, strong: allDone }))),
-                react_1.default.createElement("div", { className: "-ml-1.5" }, (r.items || []).map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-center gap-1" },
+                react_1.default.createElement("div", { className: "-ml-1.5 space-y-[2px]" }, (r.items || []).map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-center gap-1" },
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                         react_1.default.createElement(CheckRow, { item: it, size: "l", onToggle: () => { if (!selectMode)
                                 onToggleItem(r, it.id); } })),
@@ -22659,7 +22659,7 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
                             react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: step.pinned ? "currentColor" : "none" })))),
                     react_1.default.createElement("button", { type: "button", onClick: onEdit, "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
                         react_1.default.createElement(lucide_react_1.Pencil, { size: 16 })))),
-            items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5" }, items.map((it) => (react_1.default.createElement("button", { key: it.id, type: "button", onClick: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
+            items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5 space-y-[2px]" }, items.map((it) => (react_1.default.createElement("button", { key: it.id, type: "button", onClick: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
                 react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
                 react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text),
