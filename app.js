@@ -17421,6 +17421,15 @@ function allTagsOf(...groups) {
 /* **「画像」を別の種類にしないこと。** メモの中に絵を入れられるので、
    分けると同じことを2か所で書くことになる（古い記録は読み込むときにメモへ移す） */
 const MAX_IMAGES = 4; // メモに入れられる絵の数。**増やさないこと**（並べると1枚が小さくなりすぎる）
+/* 計画のタイトルの上限。**この数字を大きくする前に、下の計算をやり直すこと。**
+   計画をひらいた画面の見出しは、戻る（左56px）と設定（右56px）を避けて
+   まん中に「省略なし」で全部見せたい。表示設定「文字の大きさ：大」だと、
+   見出しの字は 17.5px→21.5px まで大きくなる（.ft-font-l）。
+   いちばん狭いはんよう的な画面はば（iPhone SE など）375px として、
+   375 − 56×2 = 263px が見出しの箱の中身。
+   全角の字はだいたい1文字＝21.5px角（半角が混ざればもっと入る）ので、
+   263 ÷ 22px ≒ 11.9 → 安全側に丸めて 12 文字まで */
+const PLAN_TITLE_MAX = 12;
 /* **リンクを種類として持たないこと。** メモの本文に住所を書けば、
    そのまま押して開ける（LinkedText が拾う）ので、分ける意味がない。
    古いリンクの記録は、読み込むときにメモへ移す */
@@ -19555,8 +19564,11 @@ function PlanPickList({ plans, value, onPick }) {
            **maxHeight ではなく height で固定すること。** maxHeight だけだと、
            さがし込んで件数が減るたびに箱そのものが縮み、紙の高さも連動して縮んで、
            下から迫るキーボードに一覧が隠れてしまう。件数に関わらず箱の高さは変えず、
-           中の一覧だけを巻き取る（スクロールする） */
-        react_1.default.createElement("div", { className: "mt-3 overflow-y-auto", style: { height: "42vh" } }, shown.length === 0 ? (react_1.default.createElement("div", { className: "py-10 text-center" },
+           中の一覧だけを巻き取る（スクロールする）。
+           **右に pr-2 -mr-2 を必ず付けること。** 付けないと、
+           巻き取り棒（スクロールバー）がカードの右ふちにぴったり重なって出てしまう。
+           右に少しだけ逃げ場を作り、外側の見た目の幅は -mr-2 で元にもどす */
+        react_1.default.createElement("div", { className: "mt-3 overflow-y-auto pr-2 -mr-2", style: { height: "42vh" } }, shown.length === 0 ? (react_1.default.createElement("div", { className: "py-10 text-center" },
             react_1.default.createElement("p", { className: "text-[14px] text-neutral-400" }, (plans || []).length === 0 ? "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093" : "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "space-y-1.5 pb-1" }, shown.map((p) => {
             const on = value === p.id;
             const c = planColorOf(p, planC);
@@ -20780,6 +20792,42 @@ function WhenRow({ rec, onChange, withTime, withRepeat, repeat }) {
         withRepeat && repeat));
 }
 /* ============================================================
+   「終日・開始・終了・繰り返し」（メモは「終日・日付」）を、
+   ふだんは1行の要約だけにして折りたたんでおく。
+   **タイトルと本文（やることを追加／メモ本文）の間が、
+   この欄のせいで離れすぎないようにする**のがねらい。
+   要約行をタップすると、いつもの詳しい欄が開く。
+   ============================================================ */
+/* リスト・スケジュール用の要約：日付・時刻（終日ならその旨）・繰り返し */
+function checklistWhenSummary(rec) {
+    const allDay = isAllDay(rec);
+    const sameDay = !rec.endDate || rec.endDate === rec.date;
+    const datePart = sameDay ? fmtDate(rec.date) : `${fmtDate(rec.date)}\u301C${fmtDate(rec.endDate)}`;
+    const timePart = allDay ? "\u7D42\u65E5" : (rec.endTime ? `${rec.time}\u301C${rec.endTime}` : (rec.time || "\u7D42\u65E5"));
+    const rl = repeatLabel(rec.repeat);
+    return `${datePart}\u30FB${timePart}\u30FB\u7E70\u308A\u8FD4\u3057${rl === "\u306A\u3057" ? "\u306A\u3057" : rl}`;
+}
+/* メモ用の要約：繰り返しは持たないので、日付・時刻（または週／月）だけ */
+function memoWhenSummary(rec) {
+    if (rec.scope === "week")
+        return `${fmtDate(rec.date)} \u306E\u9031`;
+    if (rec.scope === "month")
+        return `${rec.date.slice(0, 4)}\u5E74${Number(rec.date.slice(5, 7))}\u6708`;
+    const allDay = isAllDay(rec);
+    return allDay ? `${fmtDate(rec.date)}\u30FB\u7D42\u65E5` : `${fmtDate(rec.date)}\u30FB${rec.time}`;
+}
+/* 折りたたみの箱そのもの。**中身（children）は開いたときにしか描かないこと。**
+   閉じているあいだも描いてしまうと、日付や時刻えらびの小窓の重なり順（z-index）が
+   予期せず前面に出てくることがある */
+function WhenCollapse({ summary, open, onToggle, children }) {
+    return (react_1.default.createElement("div", { className: "mb-3" },
+        react_1.default.createElement("button", { type: "button", onClick: onToggle, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-4 min-h-[52px] text-left ft-tap ft-tap-card" },
+            react_1.default.createElement(lucide_react_1.CalendarClock, { size: 16, className: "text-neutral-400 shrink-0" }),
+            react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[14.5px] text-neutral-700 truncate" }, summary),
+            react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-400 shrink-0 transition-all " + (open ? "rotate-180" : "") })),
+        open && (react_1.default.createElement("div", { className: "mt-2" }, children))));
+}
+/* ============================================================
    RecordForm ＝ 記録を書く画面
    **項目名も使い方の説明も置かないこと。**
    何を書く欄かは、欄の中の薄い字だけで分かるようにしてある。
@@ -20790,6 +20838,10 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
     const [confirmDel, setConfirmDel] = (0, react_1.useState)(false);
     const [dirty, setDirty] = (0, react_1.useState)(false);
     const [err, setErr] = (0, react_1.useState)(null);
+    /* 「終日・開始・終了・繰り返し」（メモは「終日・日付」）の折りたたみ。
+       **既定は閉（false）。** 開いたときに書きかけていた内容がある可能性は低く、
+       むしろタイトル・本文までの距離をいつも短くしておきたい */
+    const [whenOpen, setWhenOpen] = (0, react_1.useState)(false);
     const N = useTypeNames();
     const color = useTypeColor(rec.type);
     const set = (patch) => { setRec((r) => ({ ...r, ...patch })); setDirty(true); };
@@ -20867,24 +20919,24 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
                 err && react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-rose-700 mb-3" }, err),
                 (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: rec.type === "schedule" ? "予定の名前" : "リストの題", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-[17px] font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
-                /* ②終日・開始・終了 */
-                rec.type === "checklist" && (react_1.default.createElement(RowCard, { className: "mb-3" },
-                    react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
-                        react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
-                    react_1.default.createElement(SheetRow, { label: "\u958B\u59CB" },
-                        react_1.default.createElement("span", { className: "flex items-center gap-2" },
-                            react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => set({ date: e.target.value }) }),
-                            react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
-                                react_1.default.createElement(TimeInput, { pill: true, value: rec.time, placeholder: "\u6642\u523B", onChange: (v) => setStart(v) })))),
-                    react_1.default.createElement(SheetRow, { label: "\u7D42\u4E86", last: true },
-                        react_1.default.createElement("span", { className: "flex items-center gap-2" },
-                            react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, onChange: (e) => set({ endDate: e.target.value }) }),
-                            react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
-                                react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) })))))),
-                /* ③繰り返し（RepeatRow 自身のかたちのまま） */
-                rec.type === "checklist" && (react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope })),
-                /* ---- ④やることを追加 ⑤メモ。
-                   ④→⑤の間だけ、ふだんの余白（mb-3）に加えて、めやす2行ぶんを足す（ft-gap-tasknote） ---- */
+                /* ②終日・開始・終了・繰り返し。既定は折りたたみ、要約タップで展開 */
+                rec.type === "checklist" && (react_1.default.createElement(WhenCollapse, { summary: checklistWhenSummary(rec), open: whenOpen, onToggle: () => setWhenOpen((v) => !v) },
+                    react_1.default.createElement(RowCard, { className: "mb-3" },
+                        react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
+                            react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
+                        react_1.default.createElement(SheetRow, { label: "\u958B\u59CB" },
+                            react_1.default.createElement("span", { className: "flex items-center gap-2" },
+                                react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => set({ date: e.target.value }) }),
+                                react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
+                                    react_1.default.createElement(TimeInput, { pill: true, value: rec.time, placeholder: "\u6642\u523B", onChange: (v) => setStart(v) })))),
+                        react_1.default.createElement(SheetRow, { label: "\u7D42\u4E86", last: true },
+                            react_1.default.createElement("span", { className: "flex items-center gap-2" },
+                                react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, onChange: (e) => set({ endDate: e.target.value }) }),
+                                react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
+                                    react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) }))))),
+                    react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }))),
+                /* ---- ③やることを追加 ④メモ。
+                   ③→④の間だけ、ふだんの余白（mb-3）に加えて、めやす2行ぶんを足す（ft-gap-tasknote） ---- */
                 rec.type === "checklist" && (react_1.default.createElement("div", { className: "mb-3" },
                     react_1.default.createElement(ChecklistEditor, { items: rec.items || [], onChange: (v) => set({ items: v }) }))),
                 rec.type === "checklist" && (react_1.default.createElement(TextArea, { value: rec.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2", className: "mb-3 ft-gap-tasknote" })),
@@ -20920,8 +20972,9 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                     react_1.default.createElement(TextArea, { bare: true, value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" }))),
                 /* ---- メモ（①終日・日付 ②メモ ③写真を選ぶ）。
                    ②→③の間は、ほかと同じふだんの余白（mb-3）にそろえる ---- */
-                /* ①終日・日付（WhenRow 自身のかたちのまま） */
-                rec.type === "memo" && (react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: false })),
+                /* ①終日・日付。既定は折りたたみ、要約タップで展開 */
+                rec.type === "memo" && (react_1.default.createElement(WhenCollapse, { summary: memoWhenSummary(rec), open: whenOpen, onToggle: () => setWhenOpen((v) => !v) },
+                    react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: false }))),
                 rec.type === "memo" && (react_1.default.createElement(TextArea, { bare: true, value: rec.text, onChange: (e) => set({ text: e.target.value }), minRows: 6, placeholder: "\u30E1\u30E2", className: "mb-3" })),
                 rec.type === "memo" && (react_1.default.createElement("div", { className: "mb-3" },
                     react_1.default.createElement(ImagesField, { images: rec.images, onChange: (v) => set({ images: v }), onError: setErr }))),
@@ -22466,13 +22519,18 @@ function NameIconSheet({ title, initialName, initialIcon, placeholder, fallback,
     const [icon, setIcon] = (0, react_1.useState)(initialIcon || "");
     const base = useTypeColor(presets ? PLAN_TYPE : FOLDER_TYPE);
     const c = color || (presets ? planColorOf({ icon }, base) : base);
+    /* presets ＝ 計画のとき。**見出しの左右のボタンに食い込ませないこと。**
+       省略（…）で隠すのではなく、そもそも長く打てないようにする */
+    const nameMax = presets ? PLAN_TITLE_MAX : null;
+    const setNameSafe = (v) => setName(nameMax ? v.slice(0, nameMax) : v);
     return (react_1.default.createElement(SheetDialog, { title: title, onCancel: onCancel, onConfirm: () => onSave(name.trim(), icon), confirmLabel: confirmLabel, disabled: !name.trim() },
-        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-3" },
+        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-1" },
             react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (icon && ICON_ART[icon]) ? ICON_ART[icon].bg : c.soft, color: c.deep } },
                 react_1.default.createElement(ItemIcon, { icon: icon, fallback: fallback, color: c })),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                react_1.default.createElement(TextInput, { value: name, onChange: (e) => setName(e.target.value), placeholder: placeholder }))),
-        react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-2" }, "\u30A2\u30A4\u30B3\u30F3"),
+                react_1.default.createElement(TextInput, { value: name, onChange: (e) => setNameSafe(e.target.value), placeholder: placeholder, maxLength: nameMax || undefined }))),
+        nameMax && (react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 text-right mb-2" }, `${name.length}/${nameMax}`)),
+        react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-2 " + (nameMax ? "" : "mt-2") }, "\u30A2\u30A4\u30B3\u30F3"),
         react_1.default.createElement(IconPicker, { value: icon, onChange: setIcon, fallback: fallback, color: c, baseColor: base, presets: presets, photo: photo })));
 }
 /* 切り抜きの窓。えらんだ絵を、指で動かして・つまんで大きさを変えて、決まった形に収める。
@@ -22696,12 +22754,14 @@ function PlanSettingsSheet({ plan, onCancel, onSave }) {
     const planC = useTypeColor(PLAN_TYPE);
     const [d, setD] = (0, react_1.useState)(plan);
     const c = planColorOf(d, planC);
+    const setNameSafe = (v) => setD({ ...d, name: v.slice(0, PLAN_TITLE_MAX) });
     return (react_1.default.createElement(SheetDialog, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
-        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-3" },
+        react_1.default.createElement("div", { className: "flex items-center gap-3 mb-1" },
             react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (d.icon && ICON_ART[d.icon]) ? ICON_ART[d.icon].bg : c.soft, color: c.deep } },
                 react_1.default.createElement(ItemIcon, { icon: d.icon, fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), color: c })),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setD({ ...d, name: e.target.value }), placeholder: "\u8A08\u753B\u306E\u540D\u524D" }))),
+                react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setNameSafe(e.target.value), placeholder: "\u8A08\u753B\u306E\u540D\u524D", maxLength: PLAN_TITLE_MAX }))),
+        react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 text-right mb-2" }, `${(d.name || "").length}/${PLAN_TITLE_MAX}`),
         react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-400 mb-2" }, "\u30A2\u30A4\u30B3\u30F3"),
         react_1.default.createElement("div", { className: "mb-5" },
             react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(lucide_react_1.Target, { size: 24 }), color: c, baseColor: planC, photo: false }))));
@@ -22988,10 +23048,9 @@ function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
                 react_1.default.createElement("div", { className: "mb-3" },
                     react_1.default.createElement(ChecklistEditor, { items: items, onChange: (v) => set({ items: v }) })),
                 react_1.default.createElement(TextArea, { value: step.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2", className: "mb-3 ft-gap-tasknote" }),
-                /* ⑤計画を選択（別の計画へ移すときの欄。もとの部品の形のまま、ひとつだけの箱に） */
-                plans && plans.length > 1 && (react_1.default.createElement(RowCard, { className: "mb-3" },
-                    react_1.default.createElement(SheetRow, { label: "\u8A08\u753B\u3092\u9078\u629E", last: true },
-                        react_1.default.createElement(PlanSelect, { value: toPlan, onChange: (v) => { setToPlan(v || planId || ""); setDirty(true); }, plans: plans, placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E", noEmpty: true, className: "w-[170px] shrink-0" }))))),
+                /* ⑤計画を選択（別の計画へ移すときの欄。ほかの画面の「計画を選択」と同じ部品にそろえる） */
+                plans && plans.length > 1 && (react_1.default.createElement("div", { className: "mb-3" },
+                    react_1.default.createElement(PlanSelect, { value: toPlan, onChange: (v) => { setToPlan(v || planId || ""); setDirty(true); }, plans: plans, placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E", noEmpty: true })))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: cancel, className: BTN_SECONDARY + " flex-1 btn-h-lg text-[14.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 onDelete && (react_1.default.createElement("button", { type: "button", onClick: () => setConfirmDel(true), className: BTN_DANGER_SOFT + " flex-1 btn-h-lg text-[14.5px]" }, "\u524A\u9664")),
@@ -23082,7 +23141,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
+            react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, hideMenu: true, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
                 /* 「実績」は、この画面でいちばん見たいもの。
@@ -23438,7 +23497,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            react_1.default.createElement(OverlayHeader, { title: folder.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
+            react_1.default.createElement(OverlayHeader, { title: folder.name || "（名前なし）", onBack: close, hideMenu: true, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
                 react_1.default.createElement("div", { className: "-mx-5 px-4 flex gap-2 mb-3" },
