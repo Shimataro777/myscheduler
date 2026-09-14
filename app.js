@@ -22835,13 +22835,23 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
    直すときは鉛筆から開く（消すのも、そのなかの「削除」＋確かめの窓を通す） */
 /* **計画の色を持ち込まないこと。** 同じ「イベント」なのに、計画ごとに色が変わって見える。
    色は表示設定でひとつだけ決める（`useTypeColor(STEP_TYPE)`） */
-function StepCard({ step, onChange, onEdit, onPin, inset }) {
+function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
+    /* **props の step から丸ごと組み立て直さないこと。**
+       描き直しを待たずに続けて押されると、二度目が
+       「一度目の印が付いていない古い step」から作り直してしまう。
+       onUpdate は、そのときの最新の step をもらって直しかただけを返す */
+    const patch = (fn) => {
+        if (onUpdate)
+            onUpdate(step.id, fn);
+        else
+            onChange(fn(step));
+    };
     const color = useTypeColor(STEP_TYPE);
     const items = step.items || [];
     const doneCount = items.filter((i) => i.done).length;
     const left = stepLeft(step);
     const allDone = stepDone(step);
-    const toggleItem = (id) => onChange({ ...step, items: items.map((i) => (i.id === id ? { ...i, done: !i.done } : i)) });
+    const toggleItem = (id) => patch((st) => ({ ...st, items: (st.items || []).map((i) => (i.id === id ? { ...i, done: !i.done } : i)) }));
     /* 「あと◯日」は、この画面でいちばん知りたいこと。**日付と同じ扱いにしないこと。**
        日付は小さな灰、残りの日数は色付きの札にして、ぱっと目に入るようにする。
        過ぎていたら知らせの色、3日以内はイベントの色、それより先は落ち着いた灰 */
@@ -22852,7 +22862,7 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
     return (react_1.default.createElement("div", { className: inset ? "relative flex gap-2 pb-1.5 px-2" : CARD_SLOT },
         react_1.default.createElement("div", { className: "flex-1 min-w-0 rounded-2xl bg-white border overflow-hidden", style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5" } },
             react_1.default.createElement("div", { className: "flex items-start gap-1 px-2.5 py-2", style: step.pinned && !allDone ? { boxShadow: `inset 3px 0 0 ${color.mid}` } : undefined },
-                react_1.default.createElement("button", { type: "button", onClick: () => onChange({ ...step, done: !step.done }), "aria-label": allDone ? "やっていないに戻す" : "やり終えた", "aria-pressed": allDone, className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-xl ft-tap ft-tap-icon" },
+                react_1.default.createElement("button", { type: "button", onClick: () => patch((st) => ({ ...st, done: !st.done })), "aria-label": allDone ? "やっていないに戻す" : "やり終えた", "aria-pressed": allDone, className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-xl ft-tap ft-tap-icon" },
                     react_1.default.createElement("span", { className: "w-6 h-6 rounded-full border-2 flex items-center justify-center", style: allDone ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4" } }, allDone && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                         react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })))),
                 react_1.default.createElement("button", { type: "button", onClick: onEdit, className: "flex-1 min-w-0 py-1.5 text-left ft-tap rounded-lg" },
@@ -22977,6 +22987,14 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     /* 2段のチェックリスト */
     const steps = plan.steps || [];
     const setStep = (s) => onChange({ ...plan, steps: steps.map((x) => (x.id === s.id ? s : x)) });
+    /* イベント1件だけを、その場の最新の姿から直す。
+       **印の入り切りで setStep を使わないこと。**
+       setStep は、いま描かれている plan を丸ごと写して渡すので、
+       描き直しより早く二度押されると、一度目の印が消える */
+    const updateStep = (stepId, fn) => onChange(plan.id, (p) => ({
+        ...p,
+        steps: (p.steps || []).map((x) => (x.id === stepId ? fn(x) : x)),
+    }));
     /* **作った時点で計画に入れないこと。** 記録と同じで、
        「保存」を押すまでは、まだどこにも無い。やめれば何も残らない */
     const addStep = () => setStepEdit({
@@ -23041,7 +23059,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                             react_1.default.createElement("span", { className: "block text-[15px] font-bold", style: { color: color.deep } }, "\u3084\u308A\u9042\u3052\u307E\u3057\u305F"),
                             react_1.default.createElement("span", { className: "block text-[13px] text-neutral-500" }, fmtDate(plan.doneAt)))))),
                 react_1.default.createElement("div", { className: "mb-5" },
-                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, openSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, onChange: setStep, onEdit: () => editStep(s), onPin: (x) => setStep({ ...x, pinned: !x.pinned }) })))),
+                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, openSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, onChange: setStep, onUpdate: updateStep, onEdit: () => editStep(s), onPin: (x) => updateStep(x.id, (st) => ({ ...st, pinned: !st.pinned })) })))),
                     closedSteps.length > 0 && (react_1.default.createElement("div", { className: "-mx-5 px-4" },
                         react_1.default.createElement("div", { "data-done-box": "1", className: "rounded-2xl overflow-hidden", style: doneOpen
                                 ? { background: stepColor.soft, border: `1px solid ${stepColor.line}` }
@@ -23054,7 +23072,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                                 react_1.default.createElement("span", { className: "flex shrink-0", style: { color: doneOpen ? stepColor.mid : "#A3A3A3" } },
                                     react_1.default.createElement("span", { className: doneOpen ? "flex rotate-180" : "flex" },
                                         react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
-                            doneOpen && (react_1.default.createElement("div", { className: "ft-seq pt-1 pb-2" }, closedSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, inset: true, onChange: setStep, onEdit: () => editStep(s) }))))))))),
+                            doneOpen && (react_1.default.createElement("div", { className: "ft-seq pt-1 pb-2" }, closedSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, inset: true, onChange: setStep, onUpdate: updateStep, onEdit: () => editStep(s) }))))))))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u8A18\u9332"),
                     react_1.default.createElement("span", { className: "flex-1" }),
@@ -24964,7 +24982,21 @@ function AppMain() {
     const togglePin = (rec) => {
         setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, pinned: !r.pinned } : r)));
     };
-    const changePlan = (p) => setPlans((prev) => prev.map((x) => (x.id === p.id ? p : x)));
+    /* 計画を書きかえる。ふた通りの呼び方を受ける。
+       ・changePlan(plan)              … できあがった計画をそのまま差し替える
+       ・changePlan(planId, (p) => p2) … **ひとつ前の計画をもらって、直しかたを返す**
+       印の入り切りは、かならず後者で呼ぶこと。
+       前者だと、呼ぶ側が「そのとき描かれていた古い計画」から
+       丸ごと組み立て直すため、続けて押した二度目が
+       一度目の印を消したまま上書きしてしまう */
+    const changePlan = (p, fn) => {
+        if (typeof fn === "function") {
+            const planId = typeof p === "string" ? p : (p && p.id);
+            setPlans((prev) => prev.map((x) => (x.id === planId ? fn(x) : x)));
+            return;
+        }
+        setPlans((prev) => prev.map((x) => (x.id === p.id ? p : x)));
+    };
     /* イベントを、別の計画へ移す。
        **元から外してから入れること。** 両方に残ると2か所に出る */
     const moveStep = (step, fromId, toId, isNew) => {
