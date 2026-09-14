@@ -17533,11 +17533,8 @@ function sortRecords(list, order) {
             return ub.localeCompare(ua);
         });
     }
-    /* **日のあいだだけを入れ替えて終わらせないこと。**
-       同じ日の中も向きをそろえないと、押しても何も変わらないように見える。
-       「古い順」＝ いつもの並び。「新しい順」＝ 日も、その中もひっくり返す。
-       固定した記録は、どちらでも日のはじめに置く */
-    const rev = order === "new";
+    /* 時間順：日付ごとにまとめて、古い日から並べる。
+       固定した記録は、その日のはじめに置く（compareTimelineが見る） */
     const byDate = new Map();
     list.forEach((r) => {
         const k = r.date || "";
@@ -17545,23 +17542,14 @@ function sortRecords(list, order) {
             byDate.set(k, []);
         byDate.get(k).push(r);
     });
-    const keys = [...byDate.keys()].sort((a, b) => (rev ? b.localeCompare(a) : a.localeCompare(b)));
+    const keys = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
     const out = [];
-    keys.forEach((k) => {
-        const day = byDate.get(k).sort(compareTimeline);
-        if (!rev) {
-            out.push(...day);
-            return;
-        }
-        const pin = day.filter((r) => r.pinned);
-        const rest = day.filter((r) => !r.pinned).reverse();
-        out.push(...pin, ...rest);
-    });
+    keys.forEach((k) => out.push(...byDate.get(k).sort(compareTimeline)));
     return out;
 }
-/* 新しい順・古い順・最新順の切り替え。**並べかえの部品は、いつも右はしに置くこと** */
-const ORDER_CYCLE = { old: "new", new: "recent", recent: "old" };
-const ORDER_LABEL = { old: "\u53E4\u3044\u9806", new: "\u65B0\u3057\u3044\u9806", recent: "\u66F4\u65B0\u9806" };
+/* 時間順・更新順の切り替え。**並べかえの部品は、いつも右はしに置くこと** */
+const ORDER_CYCLE = { old: "recent", recent: "old" };
+const ORDER_LABEL = { old: "\u6642\u9593\u9806", recent: "\u66F4\u65B0\u9806" };
 function OrderToggle({ value, onChange }) {
     const cur = ORDER_LABEL[value] ? value : "old";
     return (react_1.default.createElement("button", { type: "button", onClick: () => onChange(ORDER_CYCLE[cur]), "aria-label": `\u4E26\u3079\u304B\u3048\uFF1A\u3044\u307E${ORDER_LABEL[cur]}`, className: "h-9 pl-2 pr-2.5 flex items-center gap-1 rounded-full text-[12.5px] font-bold text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon shrink-0" },
@@ -17597,7 +17585,7 @@ const DEFAULT_PREFS = {
     /* 並び順。**画面ごとに別々に覚えないこと。** 表示設定でひとつだけ決める
        （"name" ＝ 名前順／"created" ＝ 作成順） */
     sortOrder: "name",
-    /* 記録の並び（"new" ＝ 新しい順／"old" ＝ 古い順）。
+    /* 記録の並び（"old" ＝ 時間順／"recent" ＝ 更新順）。
        Today・探す・フォルダの中で共通 */
     recordOrder: "old",
     showWeekNumbers: false,
@@ -17615,6 +17603,8 @@ async function loadPrefs() {
             typeColor: { ...DEFAULT_TYPE_COLOR, ...((p && p.typeColor) || {}) },
             schedColor: { ...DEFAULT_SCHEDULE_COLORS, ...((p && p.schedColor) || {}) },
             typeName: { ...((p && p.typeName) || {}) },
+            /* 「新しい順」は廃止した。**むかしの値が残っていたら、時間順に読み替える。** */
+            recordOrder: (p && p.recordOrder === "recent") ? "recent" : "old",
         };
     }
     catch (e) {
@@ -17693,7 +17683,7 @@ function emptyRecord(type, date, scope) {
     /* body ＝ リストの下に添える覚え書き。**予定の body と同じ名前にすること。**
        名前を分けると、読むところ・書くところの両方で場合分けが増える */
     if (type === "checklist")
-        return { ...base, title: "", items: [], body: "", endDate: "", repeat: { freq: "none", days: [], until: "", skip: [] } };
+        return { ...base, title: "", items: [], body: "", endDate: "", endTime: "", repeat: { freq: "none", days: [], until: "", skip: [] } };
     /* **終日を別の項目として持たないこと。** time が空なら、それが終日。
        二か所で覚えると必ず食い違う（isAllDay ひとつで見る） */
     if (type === "schedule")
@@ -17759,7 +17749,7 @@ function migrateRecord(r) {
        "" や "9:0" のような中途はんぱな値が残ると、終日かどうかの判定がぶれる。
        時刻がなければ、それが終日 */
     out.time = /^\d{2}:\d{2}$/.test(String(out.time || "")) ? out.time : null;
-    if (out.type === "schedule") {
+    if (out.type === "schedule" || out.type === "checklist") {
         out.endTime = /^\d{2}:\d{2}$/.test(String(out.endTime || "")) ? out.endTime : "";
         /* 終日なのに終了時刻だけ残っている、という食い違いをここで直す */
         if (!out.time)
@@ -20537,7 +20527,7 @@ function AllDayToggle({ on, onToggle }) {
    日付と時刻の行（メモ・チェックリスト用）
    画像の手帳のように、いちばん上に日付と時刻だけを置く
    ============================================================ */
-function WhenRow({ rec, onChange, withTime, withRepeat, repeat, withEndDate }) {
+function WhenRow({ rec, onChange, withTime, withRepeat, repeat }) {
     if (rec.scope === "week" || rec.scope === "month") {
         return (react_1.default.createElement(RowCard, { className: "mb-3" },
             react_1.default.createElement(SheetRow, { label: rec.scope === "week" ? "この週" : "この月", last: true },
@@ -20549,14 +20539,11 @@ function WhenRow({ rec, onChange, withTime, withRepeat, repeat, withEndDate }) {
     return (react_1.default.createElement(RowCard, { className: "mb-3" },
         withTime && (react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
             react_1.default.createElement(Switch, { on: allDay, label: "\u7D42\u65E5", onChange: (v) => onChange({ time: v ? null : "09:00" }) }))),
-        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8", last: !withEndDate && !withRepeat },
+        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8", last: !withRepeat },
             react_1.default.createElement("span", { className: "flex items-center gap-2" },
                 react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => onChange({ date: e.target.value }) }),
                 withTime && (react_1.default.createElement("span", { className: allDay ? "opacity-40 pointer-events-none" : "" },
                     react_1.default.createElement(TimeInput, { pill: true, value: rec.time || "", placeholder: "\u6642\u523B", onChange: (v) => onChange({ time: v }) }))))),
-        /* 期間のあるリスト（旅行の持ち物など）向け。**空なら単日のまま**（開始日と同じあつかい） */
-        withEndDate && (react_1.default.createElement(SheetRow, { label: "\u7D42\u4E86\u65E5", last: !withRepeat },
-            react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, allowEmpty: true, placeholder: "\u540C\u3058\u65E5", onChange: (e) => onChange({ endDate: e.target.value }) }))),
         withRepeat && repeat));
 }
 /* ============================================================
@@ -20647,7 +20634,21 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
                 err && react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-rose-700 mb-3" }, err),
                 (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: rec.type === "schedule" ? "予定の名前" : "リストの題", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-[17px] font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
-                rec.type !== "schedule" && (react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: rec.type !== "memo", withEndDate: rec.type === "checklist", repeat: react_1.default.createElement(RepeatRow, { bare: true, value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }) })),
+                rec.type === "memo" && (react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: false })),
+                rec.type === "checklist" && (react_1.default.createElement(RowCard, { className: "mb-3" },
+                    react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
+                        react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
+                    react_1.default.createElement(SheetRow, { label: "\u958B\u59CB" },
+                        react_1.default.createElement("span", { className: "flex items-center gap-2" },
+                            react_1.default.createElement(DateInput, { pill: true, value: rec.date, onChange: (e) => set({ date: e.target.value }) }),
+                            react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
+                                react_1.default.createElement(TimeInput, { pill: true, value: rec.time, placeholder: "\u6642\u523B", onChange: (v) => setStart(v) })))),
+                    react_1.default.createElement(SheetRow, { label: "\u7D42\u4E86", last: true },
+                        react_1.default.createElement("span", { className: "flex items-center gap-2" },
+                            react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, onChange: (e) => set({ endDate: e.target.value }) }),
+                            react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
+                                react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) })))))),
+                rec.type === "checklist" && (react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope })),
                 rec.type === "schedule" && (react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
                         react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
@@ -20769,7 +20770,7 @@ function ProgressBar({ ratio, color }) {
 }
 function CheckRow({ item, onToggle, size = "m" }) {
     const big = size === "l";
-    return (react_1.default.createElement("button", { type: "button", onClick: onToggle, className: "w-full flex items-start gap-2.5 text-left rounded-xl ft-tap ft-tap-card " + (big ? "px-2 py-2.5 min-h-[46px]" : "px-1.5 py-2 min-h-[46px]") },
+    return (react_1.default.createElement("button", { type: "button", onClick: onToggle, className: "w-full flex items-start gap-2.5 text-left rounded-xl ft-tap ft-tap-card " + (big ? "px-2 py-1.5 min-h-[40px]" : "px-1.5 py-2 min-h-[46px]") },
         react_1.default.createElement("span", { className: "shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5 " + (big ? "w-6 h-6" : "w-5 h-5"), style: item.done ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4" } }, item.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
             react_1.default.createElement(lucide_react_1.Check, { size: big ? 14 : 12, strokeWidth: 3.5, className: "thick" }))),
         react_1.default.createElement("span", { className: (big ? "text-[15.5px]" : "text-[13.5px]") + " leading-snug flex-1 min-w-0 break-words "
@@ -20802,7 +20803,7 @@ function CommentBubble({ text, small }) {
 function timeLabel(r) {
     if (!r.time)
         return r.type === "memo" ? "" : "終日";
-    if (r.type === "schedule" && r.endTime)
+    if ((r.type === "schedule" || r.type === "checklist") && r.endTime)
         return `${r.time}–${r.endTime}`;
     return r.time;
 }
@@ -21414,9 +21415,8 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
         let all = [...own, ...rep];
         if (hidden && hidden.length)
             all = all.filter((r) => !hidden.includes(r.type));
-        /* いつもの並び（終日 → 時刻 → リスト → メモ）が「古い順」。
-           「新しい順」は、それをそのままひっくり返す。
-           「最新順」は、日付・時刻を見ずに更新日時だけで並べる。
+        /* いつもの並び（終日 → 時刻 → リスト → メモ）が「時間順」。
+           「更新順」は、日付・時刻を見ずに更新日時だけで並べる。
            **固定した記録は、どちらでも先に出すこと** */
         if (order === "recent") {
             return all.slice().sort((a, b) => {
@@ -21427,12 +21427,7 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
                 return ub.localeCompare(ua);
             });
         }
-        const sorted = all.sort(compareTimeline);
-        if (order !== "new")
-            return sorted;
-        const pin = sorted.filter((r) => r.pinned);
-        const rest = sorted.filter((r) => !r.pinned).reverse();
-        return [...pin, ...rest];
+        return all.sort(compareTimeline);
     }, [records, date, hidden, order]);
     /* **絵文字を置かないこと。** 画面の調子がそこだけ変わって見える。
        「まだ〜ありません」の見せ方は、どの画面でも同じにすること
@@ -21775,7 +21770,7 @@ function SelectBar({ sel, list, extraLabel, onExtra }) {
    ============================================================ */
 /* 並び順のえらびもの。**画面ごとに字を変えないこと** */
 const SORT_NAME_OPTIONS = [{ value: "name", label: "名前順" }, { value: "created", label: "作成順" }];
-const SORT_RECORD_OPTIONS = [{ value: "new", label: "新しい順" }, { value: "old", label: "古い順" }, { value: "recent", label: "更新順" }];
+const SORT_RECORD_OPTIONS = [{ value: "old", label: "時間順" }, { value: "recent", label: "更新順" }];
 const SPANS = [{ key: "day", label: "日" }, { key: "week", label: "週" }, { key: "month", label: "月" }];
 /* Today の上に出す、期日が近いイベントの札。
    ひとつの計画ぶんを1枚にまとめる。**同じ計画名を何度も出さないこと。**
@@ -22664,7 +22659,7 @@ function StepCard({ step, onChange, onEdit, onPin, inset }) {
                             react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: step.pinned ? "currentColor" : "none" })))),
                     react_1.default.createElement("button", { type: "button", onClick: onEdit, "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
                         react_1.default.createElement(lucide_react_1.Pencil, { size: 16 })))),
-            items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5" }, items.map((it) => (react_1.default.createElement("button", { key: it.id, type: "button", onClick: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-2 min-h-[44px] rounded-xl ft-tap" },
+            items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5" }, items.map((it) => (react_1.default.createElement("button", { key: it.id, type: "button", onClick: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
                 react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
                 react_1.default.createElement("span", { className: "text-[14.5px] leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text),
@@ -23410,7 +23405,7 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                         react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA", noEmpty: true })),
                     react_1.default.createElement("div", { className: "px-4 py-3" },
                         react_1.default.createElement("p", { className: "text-[13.5px] text-neutral-500 mb-2" }, "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB"),
-                        react_1.default.createElement(DrumSelect, { value: draft.recordOrder || "new", onChange: (v) => set({ recordOrder: v || "new" }), options: SORT_RECORD_OPTIONS, title: "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB", noEmpty: true })))),
+                        react_1.default.createElement(DrumSelect, { value: draft.recordOrder || "old", onChange: (v) => set({ recordOrder: v || "old" }), options: SORT_RECORD_OPTIONS, title: "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB", noEmpty: true })))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: leave, className: BTN_SECONDARY + " btn-h-lg px-5 text-[15.5px]" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: () => { onSave(draft); close(); }, disabled: !dirty, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[16px]" },
@@ -24766,7 +24761,9 @@ function AppMain() {
         setTagMaster(Array.isArray(obj.tags) ? obj.tags : []);
         /* 読み込んだものは、もう書き出し済み。促さないよう「最後に書き出した日」を今にする */
         const nextPrefs = obj.prefs && typeof obj.prefs === "object"
-            ? { ...DEFAULT_PREFS, ...obj.prefs, typeColor: { ...DEFAULT_TYPE_COLOR, ...(obj.prefs.typeColor || {}) }, typeName: obj.prefs.typeName || {}, lastBackup: new Date().toISOString() }
+            ? { ...DEFAULT_PREFS, ...obj.prefs, typeColor: { ...DEFAULT_TYPE_COLOR, ...(obj.prefs.typeColor || {}) }, typeName: obj.prefs.typeName || {}, lastBackup: new Date().toISOString(),
+                /* 「新しい順」は廃止した。**むかしの値が残っていたら、時間順に読み替える。** */
+                recordOrder: obj.prefs.recordOrder === "recent" ? "recent" : "old" }
             : { ...prefs, lastBackup: new Date().toISOString() };
         savePrefs(nextPrefs);
         setBackupOpen(false);
