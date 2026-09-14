@@ -20801,33 +20801,29 @@ function WhenRow({ rec, onChange, withTime, withRepeat, repeat }) {
 /* 「9月15日(火)」ではなく「9/15」の、いちばん短い日付表記。
    **要約専用。** ほかの場所（見出しなど）の fmtDate はそのまま */
 const fmtDateShort = (s) => { const d = parseYmd(s); return d ? `${d.getMonth() + 1}/${d.getDate()}` : ""; };
-/* リスト・スケジュール用の要約：日付［・時刻］［・繰り返し］。
-   **既定（終日／繰り返しなし）は文字を出さないこと。**
-   多くの記録がここに当てはまるので、出しっぱなしだと逆に読みにくい。
-   時刻や繰り返しを「決めた」ときだけ、そのぶんを足していく */
+/* リスト・スケジュール用の要約：日付・終日／時刻［・繰り返し］。
+   **終日／時刻は既定でも出す。** 「いつのことか」は要約でいちばん大事な情報なので、
+   ここだけは省かない。繰り返しは「なし」（既定）のときだけ文字を出さない */
 function checklistWhenSummary(rec) {
     const allDay = isAllDay(rec);
     const sameDay = !rec.endDate || rec.endDate === rec.date;
     let s = sameDay ? fmtDateShort(rec.date) : `${fmtDateShort(rec.date)}\u301C${fmtDateShort(rec.endDate)}`;
-    if (!allDay) {
-        const t = rec.endTime ? `${rec.time}\u301C${rec.endTime}` : (rec.time || "");
-        if (t)
-            s += ` ${t}`;
-    }
+    const t = allDay ? "\u7D42\u65E5" : (rec.endTime ? `${rec.time}\u301C${rec.endTime}` : (rec.time || "\u7D42\u65E5"));
+    s += ` ${t}`;
     const rl = repeatLabel(rec.repeat);
     if (rl !== "\u306A\u3057")
         s += `\u30FB${rl}`;
     return s;
 }
-/* メモ用の要約：繰り返しは持たないので、日付［・時刻］（または週／月）だけ。
-   こちらも終日（既定）のときは時刻を足さない */
+/* メモ用の要約：繰り返しは持たないので、日付・終日／時刻（または週／月）だけ。
+   こちらも終日は既定でも出す */
 function memoWhenSummary(rec) {
     if (rec.scope === "week")
         return `${fmtDateShort(rec.date)}\u306E\u9031`;
     if (rec.scope === "month")
         return `${rec.date.slice(0, 4)}/${Number(rec.date.slice(5, 7))}`;
     const allDay = isAllDay(rec);
-    return allDay ? fmtDateShort(rec.date) : `${fmtDateShort(rec.date)} ${rec.time}`;
+    return allDay ? `${fmtDateShort(rec.date)} \u7D42\u65E5` : `${fmtDateShort(rec.date)} ${rec.time}`;
 }
 /* 折りたたみの箱そのもの。**中身（children）は開いたときにしか描かないこと。**
    閉じているあいだも描いてしまうと、日付や時刻えらびの小窓の重なり順（z-index）が
@@ -20971,7 +20967,9 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                                 react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
                                     react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) }))))),
                     react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }))),
-                /* ④色・場所・メモ を、ひとつの白いカードにまとめる */
+                /* ④場所（単独。ほかの単独項目と同じ、枠つきの1行の欄） */
+                rec.type === "schedule" && (react_1.default.createElement("input", { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u3001\u30D3\u30C7\u30AA\u901A\u8A71\u306A\u3069", inputMode: "url", className: inputCls + " mb-3" })),
+                /* ⑤色・メモ を、ひとつの白いカードにまとめる */
                 rec.type === "schedule" && (react_1.default.createElement(GroupCard, { className: "mb-3" },
                     react_1.default.createElement("div", { className: "flex items-center gap-2" },
                         react_1.default.createElement("span", { className: "text-[16px] text-neutral-900 shrink-0" }, "\u8272"),
@@ -20983,7 +20981,6 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                                     + (on ? "border-th-800" : "border-transparent") },
                                 react_1.default.createElement("span", { className: "w-6 h-6 rounded-full", style: { background: c.mid } })));
                         }))),
-                    react_1.default.createElement("input", { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u3001\u30D3\u30C7\u30AA\u901A\u8A71\u306A\u3069", inputMode: "url", className: "ft-group-input" }),
                     react_1.default.createElement(TextArea, { bare: true, value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" }))),
                 /* ---- メモ（①終日・日付 ②メモ ③写真を選ぶ）。
                    ②→③の間は、ほかと同じふだんの余白（mb-3）にそろえる ---- */
