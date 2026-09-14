@@ -18147,7 +18147,19 @@ let photoDbPromise = null;
 function photoDB() {
     if (photoDbPromise)
         return photoDbPromise;
-    photoDbPromise = new Promise((resolve) => {
+    /* **「開けなかった」を覚えこまないこと。**
+       起ち上がりの一瞬など、たまたま一度開けなかっただけで覚えてしまうと、
+       そのあいだずっと「置き場が無い」ことになり、
+       ヘッダーやアイコンが白いまま戻らなくなる。
+       失敗したら覚えを捨てて、次にまた開き直せるようにする */
+    let failed = false;
+    const p = new Promise((resolve) => {
+        const fail = () => {
+            failed = true;
+            if (photoDbPromise === p)
+                photoDbPromise = null;
+            resolve(null);
+        };
         try {
             if (typeof indexedDB === "undefined") {
                 resolve(null);
@@ -18159,14 +18171,33 @@ function photoDB() {
                 if (!db.objectStoreNames.contains(PHOTO_STORE))
                     db.createObjectStore(PHOTO_STORE);
             };
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => resolve(null);
+            req.onsuccess = () => {
+                const db = req.result;
+                /* ほかのタブで作り直された・閉じられたときも、覚えを捨てる */
+                try {
+                    db.onversionchange = () => {
+                        try {
+                            db.close();
+                        }
+                        catch (e2) { /* 閉じられなくても構わない */ }
+                        if (photoDbPromise === p)
+                            photoDbPromise = null;
+                    };
+                    db.onclose = () => { if (photoDbPromise === p)
+                        photoDbPromise = null; };
+                }
+                catch (e2) { /* 使えなくても構わない */ }
+                resolve(db);
+            };
+            req.onerror = fail;
+            req.onblocked = fail;
         }
         catch (e) {
-            resolve(null);
+            fail();
         }
     });
-    return photoDbPromise;
+    photoDbPromise = failed ? null : p;
+    return p;
 }
 function photoTx(mode, fn) {
     return photoDB().then((db) => {
@@ -18224,15 +18255,48 @@ async function stashPhotos(rec) {
     }
     return { ...rec, images: out };
 }
-/* 使われなくなった写真を片づける */
-async function sweepPhotos(records) {
-    const used = new Set();
-    (records || []).forEach((r) => (r.images || []).forEach((s) => { if (isPhotoRef(s))
-        used.add(s.slice(6)); }));
-    const all = await photoTx("readonly", (st) => st.getAllKeys());
-    if (!Array.isArray(all))
+/* 中身をすみずみまで見て、「photo:番号」を拾い集める。
+   **記録の images だけを見にいかないこと。**
+   見出しの帯に敷いた写真も、計画・フォルダのアイコンも、同じ置き場にある。
+   数えそこねると「もう使われていない絵」と見なされ、片づけで消される
+   （＝設定したはずのヘッダーやアイコンだけが、何も出なくなる） */
+function collectPhotoRefs(value, out, depth) {
+    const set = out || new Set();
+    const d = depth || 0;
+    if (d > 8 || value === null || value === undefined)
+        return set;
+    if (typeof value === "string") {
+        if (isPhotoRef(value))
+            set.add(value.slice(6));
+        return set;
+    }
+    if (Array.isArray(value)) {
+        for (const v of value)
+            collectPhotoRefs(v, set, d + 1);
+        return set;
+    }
+    if (typeof value === "object") {
+        for (const k in value) {
+            if (Object.prototype.hasOwnProperty.call(value, k))
+                collectPhotoRefs(value[k], set, d + 1);
+        }
+    }
+    return set;
+}
+/* 使われなくなった写真を片づける。
+   **記録の配列だけを渡さないこと。** 渡されなかったぶんは、まるごと消える。
+   まとめ（{ records, plans, kinds, folders, prefs, ... }）を必ず渡すこと。
+   まとめの形になっていないときは、安全側に倒して何もしない */
+async function sweepPhotos(all) {
+    if (!all || typeof all !== "object" || Array.isArray(all) || !("records" in all)) {
+        console.warn("sweepPhotos: まとめが渡されていないので、片づけを見送りました");
         return;
-    for (const k of all)
+    }
+    const used = collectPhotoRefs(all);
+    const keys = await photoTx("readonly", (st) => st.getAllKeys());
+    if (!Array.isArray(keys))
+        return;
+    for (const k of keys)
         if (!used.has(k))
             await photoDel(k);
 }
@@ -18597,9 +18661,29 @@ function usePhotoSrc(src) {
             setUrl(cached);
             return undefined;
         }
-        photoGet(src.slice(6)).then((v) => { if (alive)
-            setUrl(v || ""); });
-        return () => { alive = false; };
+        /* **一度読めなかっただけで、あきらめないこと。**
+           開いた直後は置き場（IndexedDB）がまだ開き終わっておらず、
+           ここで空にしてしまうと、ヘッダーやアイコンだけが白いまま残る。
+           少し待って、二度まで読み直す */
+        let timer = null;
+        const tryGet = (rest) => {
+            photoGet(src.slice(6)).then((v) => {
+                if (!alive)
+                    return;
+                if (v) {
+                    setUrl(v);
+                    return;
+                }
+                if (rest > 0) {
+                    timer = setTimeout(() => tryGet(rest - 1), 400);
+                    return;
+                }
+                setUrl("");
+            });
+        };
+        tryGet(2);
+        return () => { alive = false; if (timer)
+            clearTimeout(timer); };
     }, [src]);
     return url;
 }
@@ -19403,6 +19487,79 @@ function DrumSelect({ value, onChange, options, placeholder = "選択", title, c
             react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-500 shrink-0 ml-2" })),
         open && (react_1.default.createElement(WheelSheet, { title: title || placeholder, onClose: () => setOpen(false), onConfirm: confirm, onClear: clearable ? () => { onChange(""); setOpen(false); } : null },
             react_1.default.createElement(WheelColumn, { items: items, value: temp, onChange: setTemp, minWidth: 180 })))));
+}
+/* ============================================================
+   計画をえらぶ（記録をつけるとき）
+   **ドラム（ホイール）にしないこと。** 計画が増えるほど、
+   回して探すのに骨が折れ、いま何番目を見ているのかも分からなくなる。
+   「計画」タブといちばん上のさがす欄をそろえ、その下に縦の一覧を置く。
+   ・打つたびに、下の一覧がその場で絞り込まれる
+   ・押して選び、足もとの「決定」で確かめる
+   ・「選択解除」「キャンセル」は、これまでどおり
+   ============================================================ */
+/* 紙の中身（さがす欄＋縦の一覧）。
+   **余白を詰めないこと。** 窮屈だと、押しまちがえる */
+function PlanPickList({ plans, value, onPick }) {
+    const planC = useTypeColor(PLAN_TYPE);
+    const [q, setQ] = (0, react_1.useState)("");
+    /* 「計画」タブと同じさがし方（計画の名前だけでなく、中のイベントの名前も拾う） */
+    const shown = (0, react_1.useMemo)(() => matchPlan(plans || [], q), [plans, q]);
+    return (react_1.default.createElement(react_1.default.Fragment, null,
+        /* さがす欄。**計画タブのものと同じ部品にそろえること。**
+           （ただし「進行中／完了済／すべて」のタブは置かない） */
+        react_1.default.createElement("div", { className: "flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
+            react_1.default.createElement(lucide_react_1.Search, { size: 17, className: q ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
+            react_1.default.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "\u8A08\u753B\u3092\u3055\u304C\u3059", className: "flex-1 min-w-0 bg-transparent outline-none text-[14.5px] text-neutral-900 placeholder-neutral-400" }),
+            q && (react_1.default.createElement("button", { type: "button", onClick: () => setQ(""), "aria-label": "\u6D88\u3059", className: "w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-neutral-400 ft-tap ft-tap-icon" },
+                react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
+        /* 縦に流れる一覧。**高さを中身まかせにしないこと。**
+           計画が増えたときに、足もとの「決定」が画面の外へ押し出される */
+        react_1.default.createElement("div", { className: "mt-3 overflow-y-auto", style: { maxHeight: "42vh" } }, shown.length === 0 ? (react_1.default.createElement("div", { className: "py-10 text-center" },
+            react_1.default.createElement("p", { className: "text-[14px] text-neutral-400" }, (plans || []).length === 0 ? "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093" : "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "space-y-1.5 pb-1" }, shown.map((p) => {
+            const on = value === p.id;
+            const c = planColorOf(p, planC);
+            return (react_1.default.createElement("button", { key: p.id, type: "button", onClick: () => onPick(p.id), "aria-pressed": on, className: "w-full flex items-center gap-2.5 rounded-xl border px-3 min-h-[56px] text-left ft-tap ft-tap-card", style: on
+                    ? { borderColor: c.mid, background: c.soft }
+                    : { borderColor: "#E5E5E5", background: "#FFFFFF" } },
+                react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (p.icon && ICON_ART[p.icon]) ? ICON_ART[p.icon].bg : c.soft, color: c.deep } },
+                    react_1.default.createElement(ItemIcon, { icon: p.icon, size: 17, fallback: react_1.default.createElement(lucide_react_1.Target, { size: 17 }), color: c })),
+                react_1.default.createElement("span", { className: "flex-1 min-w-0 text-[15px] font-bold break-words", style: { color: on ? c.deep : "#171717" } }, p.name || "\uFF08\u540D\u524D\u306A\u3057\uFF09"),
+                on && (react_1.default.createElement("span", { className: "w-6 h-6 shrink-0 rounded-full flex items-center justify-center ft-mark", style: { background: c.deep, color: "#FFFFFF" } },
+                    react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })))));
+        }))))));
+}
+/* 押すと紙が出る欄。見た目は、ほかの選ぶ欄（DrumSelect）とそろえてある。
+   noEmpty ＝ 「えらばない」が無い欄（イベントの移し先など、
+   かならずどれかに決まるもの）。**「選択解除」を出さないこと。**
+   外せない欄に外す釦があると、押しても何も起きない釦になる */
+function PlanSelect({ value, onChange, plans, placeholder = "計画を選択", title, className, noEmpty }) {
+    const [open, setOpen] = (0, react_1.useState)(false);
+    const [temp, setTemp] = (0, react_1.useState)(value || "");
+    const list = plans || [];
+    const disabled = list.length === 0;
+    const current = list.find((p) => p.id === value);
+    const openSheet = () => { if (disabled)
+        return; setTemp(value || ""); setOpen(true); };
+    const confirm = () => {
+        /* かならず決まる欄では、何も選ばずに「決定」されても、いまのままにする */
+        if (noEmpty && !temp) {
+            setOpen(false);
+            return;
+        }
+        onChange(temp || "");
+        setOpen(false);
+    };
+    return (react_1.default.createElement(react_1.default.Fragment, null,
+        react_1.default.createElement("button", { type: "button", onClick: openSheet, disabled: disabled, 
+            /* **w-full を残さないこと。** あとから幅を渡しても、
+               app.css の並び順によっては w-full が勝ってしまい、行ごとに幅が変わる */
+            className: (className ? inputCls.replace("w-full ", "") : inputCls)
+                + " flex items-center justify-between text-left disabled:opacity-50 " + (className || "") },
+            react_1.default.createElement("span", { className: current ? "text-neutral-900 truncate" : "text-neutral-400 truncate" }, current ? (current.name || "\uFF08\u540D\u524D\u306A\u3057\uFF09") : placeholder),
+            react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-500 shrink-0 ml-2" })),
+        open && (react_1.default.createElement(WheelSheet, { plain: true, title: title || placeholder, onClose: () => setOpen(false), onConfirm: confirm, onClear: noEmpty ? null : () => { onChange(""); setOpen(false); } },
+            react_1.default.createElement("div", { className: "w-full" },
+                react_1.default.createElement(PlanPickList, { plans: list, value: temp, onPick: (id) => setTemp((v) => (!noEmpty && v === id) ? "" : id) }))))));
 }
 /* ============================================================
    時刻はドラムで選ぶ（依頼どおり）
@@ -20370,13 +20527,37 @@ function itemsTime(items) {
    同じ行にかっこ書きで添える（時間だけの棒は持たない。数字がふたつあっても、
    進み具合はいつも「件数」で読む）。
    桁が増えても位置がずれないよう、数字は等幅（tabular-nums）でそろえる */
-function ProgressLine({ done, total, items, time, color, strong }) {
+/* 進み具合の見せ方は、**リストの記録・イベント・計画の実績で同じにすること。**
+   場所ごとに読み方が変わると、そのつど目が迷う。
+   ・件数は大きく、太く、色付きで（いちばん知りたいのはここ）
+   ・右はしに割合（％）。**棒だけにしないこと。**
+     棒は目安にしかならず、「あと少し」がつかめない
+   ・時間は、登録があるときだけ添える（小さく、灰で）
+   ・やり終えたら丸にチェックを出して、終わったことをはっきりさせる
+   big ＝ 計画の「実績」で使う大きいほう */
+function ProgressLine({ done, total, items, time, color, strong, big }) {
     const t = time || itemsTime(items || []);
-    const label = `${done}/${total}` + (t.plan > 0 ? `\uFF08${minLabel(t.done) || "0.0h"}/${minLabel(t.plan)}\uFF09` : "");
-    const ratio = total ? done / total : 0;
-    return (react_1.default.createElement("div", { className: "space-y-1" },
-        react_1.default.createElement("p", { className: "text-[12px] font-bold tabular-nums leading-tight whitespace-nowrap", style: { color: strong ? color.deep : "#737373" } }, label),
-        react_1.default.createElement(ProgressBar, { ratio: ratio, color: color.mid })));
+    const n = Math.max(0, Number(total) || 0);
+    const d = Math.max(0, Math.min(n, Number(done) || 0));
+    const ratio = n ? d / n : 0;
+    const pct = Math.round(ratio * 100);
+    const full = n > 0 && d >= n;
+    const hasTime = t.plan > 0;
+    return (react_1.default.createElement("div", null,
+        react_1.default.createElement("div", { className: "flex items-end justify-between gap-2 mb-1.5" },
+            react_1.default.createElement("span", { className: "flex items-end gap-2 min-w-0" },
+                react_1.default.createElement("span", { className: (big ? "text-[22px]" : "text-[16px]") + " tabular-nums leading-none whitespace-nowrap", style: { color: color.deep, fontWeight: 700 } },
+                    d,
+                    react_1.default.createElement("span", { className: "text-neutral-400", style: { fontWeight: 600 } }, "/"),
+                    n),
+                hasTime && (react_1.default.createElement("span", { className: (big ? "text-[13px]" : "text-[12px]") + " tabular-nums leading-none text-neutral-500 truncate", style: { fontWeight: 600 } }, (minLabel(t.done) || "0.0h") + " / " + minLabel(t.plan)))),
+            react_1.default.createElement("span", { className: "flex items-center gap-1 shrink-0" },
+                full && (react_1.default.createElement("span", { className: (big ? "w-6 h-6" : "w-5 h-5") + " rounded-full flex items-center justify-center ft-mark", style: { background: color.deep, color: "#FFFFFF" } },
+                    react_1.default.createElement(lucide_react_1.Check, { size: big ? 14 : 12, strokeWidth: 3.5, className: "thick" }))),
+                react_1.default.createElement("span", { className: (big ? "text-[20px]" : "text-[15px]") + " tabular-nums leading-none", style: { color: color.deep, fontWeight: 700 } },
+                    pct,
+                    react_1.default.createElement("span", { className: big ? "text-[13px]" : "text-[11.5px]", style: { fontWeight: 600 } }, "%")))),
+        react_1.default.createElement(ProgressBar, { ratio: ratio, color: color.mid, deep: color.deep, height: big ? 10 : 6 })));
 }
 function ChecklistEditor({ items, onChange }) {
     const [draft, setDraft] = (0, react_1.useState)("");
@@ -20685,7 +20866,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                     react_1.default.createElement("div", { className: "mt-3 space-y-3" },
                         react_1.default.createElement(TextInput, { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u3001\u30D3\u30C7\u30AA\u901A\u8A71\u306A\u3069", inputMode: "url" })))),
                 rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
-                    react_1.default.createElement(DrumSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), options: (plans || []).map((p) => ({ value: p.id, label: p.name || "（名前なし）" })), placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E", clearable: true, disabled: !plans || plans.length === 0 }))),
+                    react_1.default.createElement(PlanSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), plans: plans || [], placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" }))),
                 react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(TagField, { value: rec.tags, onChange: (v) => set({ tags: v }), knownTags: knownTags, onCreateTag: onCreateTag }))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2.5", style: SAFE_BOTTOM(12) },
@@ -20764,9 +20945,17 @@ function DraftCard({ draft, onResume, onDiscard }) {
    タイムラインの札（記録概要）
    タップすると閲覧、鉛筆で編集
    ============================================================ */
-function ProgressBar({ ratio, color }) {
-    return (react_1.default.createElement("span", { className: "block h-1 rounded-full bg-neutral-100 overflow-hidden" },
-        react_1.default.createElement("span", { className: "block h-full rounded-full transition-all duration-300", style: { width: `${Math.round(ratio * 100)}%`, background: color } })));
+/* 進み具合の棒。**細い灰色の線にしないこと。**
+   下じきと同化して、どこまで進んだのかが読めない。
+   太さを持たせ、中は淡い色から濃い色へのぼかしにして、伸びたことが分かるようにする */
+function ProgressBar({ ratio, color, deep, height }) {
+    const pct = Math.round(Math.max(0, Math.min(1, Number(ratio) || 0)) * 100);
+    const h = height || 6;
+    return (react_1.default.createElement("span", { className: "block rounded-full overflow-hidden", style: { height: h, background: "#EAEAEE" } },
+        react_1.default.createElement("span", { className: "block h-full rounded-full transition-all duration-300", style: {
+                width: `${pct}%`,
+                background: deep ? `linear-gradient(90deg, ${color}, ${deep})` : color,
+            } })));
 }
 function CheckRow({ item, onToggle, size = "m" }) {
     const big = size === "l";
@@ -22715,7 +22904,7 @@ function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
                     react_1.default.createElement(SheetRow, { label: "Today\u306B\u8868\u793A", last: !(plans && plans.length > 1) },
                         react_1.default.createElement(Switch, { on: stepOnCal(step), label: "Today\u306B\u8868\u793A", onChange: (v) => set({ onCal: v }) })),
                     plans && plans.length > 1 && (react_1.default.createElement(SheetRow, { label: "\u8A08\u753B\u3092\u9078\u629E", last: true },
-                        react_1.default.createElement(DrumSelect, { value: toPlan, onChange: (v) => { setToPlan(v || planId || ""); setDirty(true); }, options: plans.map((p) => ({ value: p.id, label: p.name || "（名前なし）" })), placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E", noEmpty: true, className: "w-[150px] shrink-0" })))),
+                        react_1.default.createElement(PlanSelect, { value: toPlan, onChange: (v) => { setToPlan(v || planId || ""); setDirty(true); }, plans: plans, placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E", noEmpty: true, className: "w-[170px] shrink-0" })))),
                 react_1.default.createElement(ChecklistEditor, { items: items, onChange: (v) => set({ items: v }) }),
                 react_1.default.createElement("div", { className: "mt-14" },
                     react_1.default.createElement(TextArea, { value: step.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" }))),
@@ -22804,12 +22993,22 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
             react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
-                react_1.default.createElement("div", { className: "-mx-5 px-4 mb-3" }, steps.length === 0 ? (react_1.default.createElement("div", { className: "rounded-2xl px-4 py-5 text-center", style: { background: color.soft, border: `1px solid ${color.line}` } },
-                    react_1.default.createElement("p", { className: "text-[13px] text-neutral-400" }, "\u30A4\u30D9\u30F3\u30C8\u304C\u767B\u9332\u3055\u308C\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "rounded-2xl p-4 flex items-stretch gap-3", style: { background: color.soft, border: `1px solid ${color.line}` } },
-                    react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                        react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 mb-1.5" }, "\u5B9F\u7E3E"),
-                        react_1.default.createElement("span", { className: "block" },
-                            react_1.default.createElement(ProgressLine, { done: doneSteps, total: steps.length, time: allTime, color: color, strong: doneSteps === steps.length })))))),
+                /* 「実績」は、この画面でいちばん見たいもの。
+                   **ほかの札と同じ顔にしないこと。** 淡い下じきに淡い字だと、
+                   まわりに溶けて、どこまで進んだのかが目に入らない。
+                   白い下じきに、計画いろの太いふちと影を付けて浮かせる */
+                react_1.default.createElement("div", { className: "-mx-5 px-4 mb-4" }, steps.length === 0 ? (react_1.default.createElement("div", { className: "rounded-2xl px-4 py-5 text-center", style: { background: color.soft, border: `1px solid ${color.line}` } },
+                    react_1.default.createElement("p", { className: "text-[13px] text-neutral-400" }, "\u30A4\u30D9\u30F3\u30C8\u304C\u767B\u9332\u3055\u308C\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "rounded-2xl overflow-hidden", style: { background: "#FFFFFF", border: `1.5px solid ${color.mid}`,
+                        /* **まわりの札と同じ影にしないこと。** 一段だけ浮かせて、まず目に入るようにする */
+                        boxShadow: "0 2px 6px rgba(17,24,39,.06), 0 10px 24px rgba(17,24,39,.08)" } },
+                    react_1.default.createElement("div", { className: "px-4 py-4", style: { background: `linear-gradient(135deg, ${color.soft} 0%, #FFFFFF 72%)` } },
+                        react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2.5" },
+                            react_1.default.createElement("span", { className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0", style: { background: color.deep, color: "#FFFFFF" } },
+                                react_1.default.createElement(lucide_react_1.Target, { size: 15 })),
+                            react_1.default.createElement("span", { className: "text-[16px] tracking-wide", style: { color: color.deep, fontWeight: 700 } }, "\u5B9F\u7E3E"),
+                            react_1.default.createElement("span", { className: "flex-1" }),
+                            doneSteps >= steps.length && (react_1.default.createElement("span", { className: "text-[12px] rounded-full px-2.5 py-1 ft-mark", style: { background: color.deep, color: "#FFFFFF", fontWeight: 600 } }, "\u30B3\u30F3\u30D7\u30EA\u30FC\u30C8"))),
+                        react_1.default.createElement(ProgressLine, { done: doneSteps, total: steps.length, time: allTime, color: color, strong: doneSteps === steps.length, big: true }))))),
                 /* **ここも、済んだものを灰にしないこと。** おめでたいことなので、
                    計画いろの明るい面を使う（灰にすると祝いに見えなくなる） */
                 plan.doneAt && (react_1.default.createElement("div", { className: "-mx-5 px-4 mb-5" },
@@ -23482,18 +23681,14 @@ async function buildBackup(data, withPhotos) {
     const photos = {};
     if (withPhotos) {
         /* **記録の中の絵だけを集めないこと。**
-           見出しの帯に敷いた写真も同じ置き場にあり、入れ忘れると戻せない */
-        const refs = [];
-        for (const r of (data.records || []))
-            for (const s of (r.images || []))
-                refs.push(s);
-        if (data.prefs && data.prefs.headerPhoto)
-            refs.push(data.prefs.headerPhoto);
-        for (const s of refs) {
-            if (isPhotoRef(s) && !photos[s.slice(6)]) {
-                const v = await photoGet(s.slice(6));
+           見出しの帯に敷いた写真も、計画やフォルダのアイコンも同じ置き場にある。
+           入れ忘れると、戻したときにそこだけ絵が出ない。
+           数え落としが出ないよう、まとめをすみずみまで見て拾う */
+        for (const id of collectPhotoRefs(data)) {
+            if (!photos[id]) {
+                const v = await photoGet(id);
                 if (v)
-                    photos[s.slice(6)] = v;
+                    photos[id] = v;
             }
         }
     }
@@ -24623,7 +24818,11 @@ function AppMain() {
     const deleteRecord = (id) => {
         const next = records.filter((r) => r.id !== id);
         setRecords(next);
-        sweepPhotos(next);
+        /* **記録だけを渡さないこと。** 計画やフォルダのアイコン、
+           見出しの帯の写真まで「使われていない」と見なされて消えてしまう */
+        /* **いま開いている記録を、そのまま数に入れないこと。**
+           消した当の記録が「まだ使っている」ことになり、絵が置き場に残り続ける */
+        sweepPhotos({ records: next, plans, kinds, folders, prefs, draft, editing: (editing && editing.id === id) ? null : editing });
         setEditing(null);
         tell("削除しました");
     };
@@ -24634,7 +24833,7 @@ function AppMain() {
         const set = new Set(ids);
         const left = records.filter((r) => !set.has(r.id));
         setRecords(left);
-        sweepPhotos(left);
+        sweepPhotos({ records: left, plans, kinds, folders, prefs, draft, editing: (editing && set.has(editing.id)) ? null : editing });
         const nf = folders.map((f) => ({ ...f, picked: (f.picked || []).filter((x) => !set.has(x)) }));
         if (JSON.stringify(nf) !== JSON.stringify(folders))
             setFolders(nf);
