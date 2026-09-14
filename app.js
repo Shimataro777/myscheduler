@@ -19551,8 +19551,12 @@ function PlanPickList({ plans, value, onPick }) {
             q && (react_1.default.createElement("button", { type: "button", onClick: () => setQ(""), "aria-label": "\u6D88\u3059", className: "w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-neutral-400 ft-tap ft-tap-icon" },
                 react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
         /* 縦に流れる一覧。**高さを中身まかせにしないこと。**
-           計画が増えたときに、足もとの「決定」が画面の外へ押し出される */
-        react_1.default.createElement("div", { className: "mt-3 overflow-y-auto", style: { maxHeight: "42vh" } }, shown.length === 0 ? (react_1.default.createElement("div", { className: "py-10 text-center" },
+           計画が増えたときに、足もとの「決定」が画面の外へ押し出される。
+           **maxHeight ではなく height で固定すること。** maxHeight だけだと、
+           さがし込んで件数が減るたびに箱そのものが縮み、紙の高さも連動して縮んで、
+           下から迫るキーボードに一覧が隠れてしまう。件数に関わらず箱の高さは変えず、
+           中の一覧だけを巻き取る（スクロールする） */
+        react_1.default.createElement("div", { className: "mt-3 overflow-y-auto", style: { height: "42vh" } }, shown.length === 0 ? (react_1.default.createElement("div", { className: "py-10 text-center" },
             react_1.default.createElement("p", { className: "text-[14px] text-neutral-400" }, (plans || []).length === 0 ? "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093" : "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "space-y-1.5 pb-1" }, shown.map((p) => {
             const on = value === p.id;
             const c = planColorOf(p, planC);
@@ -20863,12 +20867,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
                 err && react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-rose-700 mb-3" }, err),
                 (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: rec.type === "schedule" ? "予定の名前" : "リストの題", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-[17px] font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
-                /* ---- リスト（②やることを追加 ③メモ）。
-                   ②→③の間だけ、ふだんの余白（mb-3）に加えて、めやす2行ぶんを足す（ft-gap-tasknote） ---- */
-                rec.type === "checklist" && (react_1.default.createElement("div", { className: "mb-3" },
-                    react_1.default.createElement(ChecklistEditor, { items: rec.items || [], onChange: (v) => set({ items: v }) }))),
-                rec.type === "checklist" && (react_1.default.createElement(TextArea, { value: rec.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2", className: "mb-3 ft-gap-tasknote" })),
-                /* ④終日・開始・終了 */
+                /* ②終日・開始・終了 */
                 rec.type === "checklist" && (react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
                         react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
@@ -20882,8 +20881,13 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                             react_1.default.createElement(DateInput, { pill: true, value: rec.endDate || rec.date, onChange: (e) => set({ endDate: e.target.value }) }),
                             react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
                                 react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) })))))),
-                /* ⑤繰り返し（RepeatRow 自身のかたちのまま） */
+                /* ③繰り返し（RepeatRow 自身のかたちのまま） */
                 rec.type === "checklist" && (react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope })),
+                /* ---- ④やることを追加 ⑤メモ。
+                   ④→⑤の間だけ、ふだんの余白（mb-3）に加えて、めやす2行ぶんを足す（ft-gap-tasknote） ---- */
+                rec.type === "checklist" && (react_1.default.createElement("div", { className: "mb-3" },
+                    react_1.default.createElement(ChecklistEditor, { items: rec.items || [], onChange: (v) => set({ items: v }) }))),
+                rec.type === "checklist" && (react_1.default.createElement(TextArea, { value: rec.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2", className: "mb-3 ft-gap-tasknote" })),
                 /* ---- スケジュール（②終日・開始・終了） ---- */
                 rec.type === "schedule" && (react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
@@ -20914,13 +20918,13 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                         }))),
                     react_1.default.createElement("input", { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u3001\u30D3\u30C7\u30AA\u901A\u8A71\u306A\u3069", inputMode: "url", className: "ft-group-input" }),
                     react_1.default.createElement(TextArea, { bare: true, value: rec.body, onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2" }))),
-                /* ---- メモ（①メモ ②写真を選ぶ）。
-                   ①→②の間は、ふだんの余白より少し広めに（ft-gap-notephoto） ---- */
-                rec.type === "memo" && (react_1.default.createElement(TextArea, { bare: true, value: rec.text, onChange: (e) => set({ text: e.target.value }), minRows: 6, placeholder: "\u30E1\u30E2", className: "mb-3" })),
-                rec.type === "memo" && (react_1.default.createElement("div", { className: "mb-3 ft-gap-notephoto" },
-                    react_1.default.createElement(ImagesField, { images: rec.images, onChange: (v) => set({ images: v }), onError: setErr }))),
-                /* ③終日・日付（WhenRow 自身のかたちのまま） */
+                /* ---- メモ（①終日・日付 ②メモ ③写真を選ぶ）。
+                   ②→③の間は、ほかと同じふだんの余白（mb-3）にそろえる ---- */
+                /* ①終日・日付（WhenRow 自身のかたちのまま） */
                 rec.type === "memo" && (react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: false })),
+                rec.type === "memo" && (react_1.default.createElement(TextArea, { bare: true, value: rec.text, onChange: (e) => set({ text: e.target.value }), minRows: 6, placeholder: "\u30E1\u30E2", className: "mb-3" })),
+                rec.type === "memo" && (react_1.default.createElement("div", { className: "mb-3" },
+                    react_1.default.createElement(ImagesField, { images: rec.images, onChange: (v) => set({ images: v }), onError: setErr }))),
                 /* ---- 計画を選択／タグを追加（どの画面でも、いちばん下に共通） ---- */
                 rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(PlanSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), plans: plans || [], placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" }))),
@@ -22973,17 +22977,17 @@ function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
                 react_1.default.createElement("span", { className: "min-w-[52px] shrink-0", "aria-hidden": "true" })),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
                 react_1.default.createElement(TextInput, { value: step.title, onChange: (e) => set({ title: e.target.value }), placeholder: "\u30A4\u30D9\u30F3\u30C8\u306E\u540D\u524D", className: "font-bold mb-3" }),
-                /* ②やることを追加 ③メモ。
-                   ②→③の間だけ、ふだんの余白（mb-3）に加えて、めやす2行ぶんを足す（ft-gap-tasknote） */
-                react_1.default.createElement("div", { className: "mb-3" },
-                    react_1.default.createElement(ChecklistEditor, { items: items, onChange: (v) => set({ items: v }) })),
-                react_1.default.createElement(TextArea, { value: step.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2", className: "mb-3 ft-gap-tasknote" }),
-                /* ④期限・Todayに表示 */
+                /* ②期限・Todayに表示 */
                 react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u671F\u9650" },
                         react_1.default.createElement(DateInput, { pill: true, value: step.dueDate, allowEmpty: true, placeholder: "\u306A\u3057", onChange: (e) => set({ dueDate: e.target.value }) })),
                     react_1.default.createElement(SheetRow, { label: "Today\u306B\u8868\u793A", last: true },
                         react_1.default.createElement(Switch, { on: stepOnCal(step), label: "Today\u306B\u8868\u793A", onChange: (v) => set({ onCal: v }) }))),
+                /* ---- ③やることを追加 ④メモ。
+                   ③→④の間だけ、ふだんの余白（mb-3）に加えて、めやす2行ぶんを足す（ft-gap-tasknote） */
+                react_1.default.createElement("div", { className: "mb-3" },
+                    react_1.default.createElement(ChecklistEditor, { items: items, onChange: (v) => set({ items: v }) })),
+                react_1.default.createElement(TextArea, { value: step.body || "", onChange: (e) => set({ body: e.target.value }), minRows: 2, placeholder: "\u30E1\u30E2", className: "mb-3 ft-gap-tasknote" }),
                 /* ⑤計画を選択（別の計画へ移すときの欄。もとの部品の形のまま、ひとつだけの箱に） */
                 plans && plans.length > 1 && (react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u8A08\u753B\u3092\u9078\u629E", last: true },
@@ -24644,15 +24648,12 @@ button:active { transition-duration: 60ms; }
    ・ft-group-input … カードの中に置く、枠なしの入力欄（場所など）。
      カードの外で使う欄（TextInput）と違い、箱の中では二重の枠にしないため枠を消す
    ・ft-gap-tasknote … リスト・イベント画面で「やることを追加」の次に「メモ」を置くとき、
-     区切りがはっきり分かるよう、ふだんの余白（12px）にこの分だけ足す（目安2行ぶん）
-   ・ft-gap-notephoto … メモ画面で「メモ」の次に「写真を選ぶ」を置くとき、
-     同じ理由で、ふだんの余白に少しだけ足す */
+     区切りがはっきり分かるよう、ふだんの余白（12px）にこの分だけ足す（目安2行ぶん） */
 .ft-group-row { padding: 12px 16px; }
 .ft-group-row + .ft-group-row { border-top: 1px solid #E5E5E5; }
 .ft-group-input { width: 100%; background: transparent; border: 0; outline: none; font-size: 15.5px; color: #171717; }
 .ft-group-input::placeholder { color: #A3A3A3; }
 .ft-gap-tasknote { margin-top: 52px; }
-.ft-gap-notephoto { margin-top: 28px; }
 `;
 /* ============================================================
    下のタブ
