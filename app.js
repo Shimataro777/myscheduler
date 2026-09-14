@@ -20040,7 +20040,11 @@ function ScreenHeader({ title, right, sub }) {
 }
 /* 重なって出る画面の見出し（戻る＋題＋三本線） */
 function OverlayHeader({ title, onBack, right, hideMenu }) {
-    return (react_1.default.createElement("div", { className: "bg-white border-b border-neutral-100 px-2 flex items-center gap-1 shrink-0 relative", style: { ...SAFE_TOP(18), paddingBottom: 9 } },
+    return (react_1.default.createElement("div", { className: "bg-white border-b border-neutral-100 px-2 flex items-center gap-1 shrink-0 relative", 
+        /* **帯（左端を払うと戻る判定）より、かならず上の階層に置くこと。**
+           万一すこしでも重なっても、見出しのほうが手前にあるので、
+           「戻る」の当たりが奪われない */
+        style: { ...SAFE_TOP(18), paddingBottom: 9, zIndex: 20 } },
         react_1.default.createElement(TapButton, { onClick: onBack, "aria-label": "\u623B\u308B", className: "w-12 h-11 flex items-center justify-center rounded-xl text-neutral-700 hover:bg-neutral-100 shrink-0" },
             react_1.default.createElement(lucide_react_1.ChevronLeft, { size: 24 })),
         react_1.default.createElement("h2", { className: "font-display text-[17.5px] text-neutral-900 truncate absolute inset-x-14 text-center pointer-events-none" }, title),
@@ -20504,7 +20508,10 @@ function MinSelect({ value, onChange, className }) {
     return (react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("button", { type: "button", onClick: openSheet, className: "rounded-xl border border-neutral-200 bg-white flex items-center justify-center gap-1 ft-min text-[12.5px] tabular-nums shrink-0 ft-tap ft-tap-card "
                 + (n ? "text-neutral-900 " : "text-neutral-300 ") + (className || "") }, n ? minLabel(n) : "0.0h"),
-        open && (react_1.default.createElement(WheelSheet, { title: "\u304B\u304B\u308B\u6642\u9593", onClose: () => setOpen(false), onClear: () => { onChange(0); setOpen(false); }, onConfirm: () => { onChange(Number(h) * 60 + Number(mm)); setOpen(false); } },
+        open && (react_1.default.createElement(WheelSheet, { title: "\u304B\u304B\u308B\u6642\u9593", onClose: () => setOpen(false), 
+            /* **消して閉じないこと。** 「選択解除」は紙を出したまま、
+               ドラムを0時間0分に戻すだけ。確かめるのは、あくまで「決定」 */
+            onClear: () => { setH("0"); setMm("0"); }, onConfirm: () => { onChange(Number(h) * 60 + Number(mm)); setOpen(false); } },
             react_1.default.createElement("div", { className: "flex justify-center gap-2" },
                 react_1.default.createElement(WheelColumn, { items: MIN_HOURS, value: h, onChange: setH, minWidth: 110 }),
                 react_1.default.createElement(WheelColumn, { items: MIN_MINUTES, value: mm, onChange: setMm, minWidth: 110 }))))));
@@ -20548,7 +20555,7 @@ function ProgressLine({ done, total, items, time, color, strong, big }) {
             react_1.default.createElement("span", { className: "flex items-end gap-2 min-w-0" },
                 react_1.default.createElement("span", { className: (big ? "text-[22px]" : "text-[16px]") + " tabular-nums leading-none whitespace-nowrap", style: { color: color.deep, fontWeight: 700 } },
                     d,
-                    react_1.default.createElement("span", { className: "text-neutral-400", style: { fontWeight: 600 } }, "/"),
+                    react_1.default.createElement("span", { style: { fontWeight: 600, opacity: 0.55 } }, "/"),
                     n),
                 hasTime && (react_1.default.createElement("span", { className: (big ? "text-[13px]" : "text-[12px]") + " tabular-nums leading-none text-neutral-500 truncate", style: { fontWeight: 600 } }, (minLabel(t.done) || "0.0h") + " / " + minLabel(t.plan)))),
             react_1.default.createElement("span", { className: "flex items-center gap-1 shrink-0" },
@@ -22235,7 +22242,7 @@ function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDele
     const dayList = (0, react_1.useMemo)(() => records.filter((r) => isDayRec(r) && coversDay(r, date)), [records, date]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
+            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: fmtDateFull(date), onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col ft-pb-safe" },
                 dayList.length > 0 && (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-1" },
@@ -22989,7 +22996,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     const closedSteps = (0, react_1.useMemo)(() => steps.filter(stepDone).sort(compareSteps), [steps]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
+            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
@@ -22998,13 +23005,13 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                    まわりに溶けて、どこまで進んだのかが目に入らない。
                    白い下じきに、計画いろの太いふちと影を付けて浮かせる */
                 react_1.default.createElement("div", { className: "-mx-5 px-4 mb-4" }, steps.length === 0 ? (react_1.default.createElement("div", { className: "rounded-2xl px-4 py-5 text-center", style: { background: color.soft, border: `1px solid ${color.line}` } },
-                    react_1.default.createElement("p", { className: "text-[13px] text-neutral-400" }, "\u30A4\u30D9\u30F3\u30C8\u304C\u767B\u9332\u3055\u308C\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "rounded-2xl overflow-hidden", style: { background: "#FFFFFF", border: `1.5px solid ${color.mid}`,
-                        /* **まわりの札と同じ影にしないこと。** 一段だけ浮かせて、まず目に入るようにする */
-                        boxShadow: "0 2px 6px rgba(17,24,39,.06), 0 10px 24px rgba(17,24,39,.08)" } },
+                    react_1.default.createElement("p", { className: "text-[13px] text-neutral-400" }, "\u30A4\u30D9\u30F3\u30C8\u304C\u767B\u9332\u3055\u308C\u3066\u3044\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "rounded-2xl overflow-hidden", style: { background: "#FFFFFF", border: `1.5px solid ${color.mid}` } },
                     react_1.default.createElement("div", { className: "px-4 py-4", style: { background: `linear-gradient(135deg, ${color.soft} 0%, #FFFFFF 72%)` } },
                         react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2.5" },
-                            react_1.default.createElement("span", { className: "w-7 h-7 rounded-full flex items-center justify-center shrink-0", style: { background: color.deep, color: "#FFFFFF" } },
-                                react_1.default.createElement(lucide_react_1.Target, { size: 15 })),
+                            /* **計画いろの丸アイコンを置かないこと。**
+                               計画そのものの絵はカードの外（題のところ）にすでにある。
+                               ここでもう一度出すと、同じことを二度言っているだけになる。
+                               あいたぶんだけ「実績」を左へ詰める */
                             react_1.default.createElement("span", { className: "text-[16px] tracking-wide", style: { color: color.deep, fontWeight: 700 } }, "\u5B9F\u7E3E"),
                             react_1.default.createElement("span", { className: "flex-1" }),
                             doneSteps >= steps.length && (react_1.default.createElement("span", { className: "text-[12px] rounded-full px-2.5 py-1 ft-mark", style: { background: color.deep, color: "#FFFFFF", fontWeight: 600 } }, "\u30B3\u30F3\u30D7\u30EA\u30FC\u30C8"))),
@@ -23345,7 +23352,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
     }, [list]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
+            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: folder.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
@@ -23529,7 +23536,7 @@ function SettingsScreen({ prefs, onSave, onClose }) {
         close(); };
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
+            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u8868\u793A\u8A2D\u5B9A", onBack: leave, hideMenu: true }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("p", { className: "head-bar text-[12.5px] font-bold text-neutral-500 mb-2" }, "\u753B\u9762\u306E\u8272"),
@@ -23630,7 +23637,7 @@ function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onR
     const count = (t) => records.filter((r) => normalizeTags(r.tags).some((x) => x.toLowerCase() === t.toLowerCase())).length;
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
+            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30BF\u30B0\u306E\u7DE8\u96C6", onBack: close, hideMenu: true }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("div", { className: "flex gap-2 mb-4" },
@@ -23851,7 +23858,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
     const n = (x) => (Array.isArray(x) ? x.length : 0);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
+            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", onBack: close, hideMenu: true }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft p-4 mb-7" },
@@ -23965,7 +23972,7 @@ function HelpScreen({ onClose }) {
     const [open, setOpen] = (0, react_1.useState)(null);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 top-16 bottom-0 w-9 z-10", style: { touchAction: "none" } }),
+            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30D8\u30EB\u30D7", onBack: close, hideMenu: true }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe space-y-2 ft-seq" }, HELP_SECTIONS.map((s, i) => (react_1.default.createElement("div", { key: s.title, className: "rounded-2xl bg-white border border-neutral-200 overflow-hidden" },
                 react_1.default.createElement("button", { type: "button", onClick: () => setOpen(open === i ? null : i), className: "w-full flex items-center gap-2 px-3.5 py-3 text-left min-h-[56px] ft-tap ft-tap-card hover:bg-neutral-50" },
