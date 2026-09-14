@@ -20801,29 +20801,32 @@ function WhenRow({ rec, onChange, withTime, withRepeat, repeat }) {
 /* 「9月15日(火)」ではなく「9/15」の、いちばん短い日付表記。
    **要約専用。** ほかの場所（見出しなど）の fmtDate はそのまま */
 const fmtDateShort = (s) => { const d = parseYmd(s); return d ? `${d.getMonth() + 1}/${d.getDate()}` : ""; };
-/* リスト・スケジュール用の要約：日付・終日／時刻［・繰り返し］。
-   **終日／時刻は既定でも出す。** 「いつのことか」は要約でいちばん大事な情報なので、
-   ここだけは省かない。繰り返しは「なし」（既定）のときだけ文字を出さない */
+/* リスト・スケジュール用の要約：日付［・時刻］［・繰り返し］。
+   **終日（既定）は文字を出さない。** 日付だけで足りる。
+   繰り返しも「なし」（既定）のときは文字を出さない */
 function checklistWhenSummary(rec) {
     const allDay = isAllDay(rec);
     const sameDay = !rec.endDate || rec.endDate === rec.date;
     let s = sameDay ? fmtDateShort(rec.date) : `${fmtDateShort(rec.date)}\u301C${fmtDateShort(rec.endDate)}`;
-    const t = allDay ? "\u7D42\u65E5" : (rec.endTime ? `${rec.time}\u301C${rec.endTime}` : (rec.time || "\u7D42\u65E5"));
-    s += ` ${t}`;
+    if (!allDay) {
+        const t = rec.endTime ? `${rec.time}\u301C${rec.endTime}` : (rec.time || "");
+        if (t)
+            s += ` ${t}`;
+    }
     const rl = repeatLabel(rec.repeat);
     if (rl !== "\u306A\u3057")
         s += `\u30FB${rl}`;
     return s;
 }
-/* メモ用の要約：繰り返しは持たないので、日付・終日／時刻（または週／月）だけ。
-   こちらも終日は既定でも出す */
+/* メモ用の要約：繰り返しは持たないので、日付［・時刻］（または週／月）だけ。
+   こちらも終日（既定）のときは文字を出さない */
 function memoWhenSummary(rec) {
     if (rec.scope === "week")
         return `${fmtDateShort(rec.date)}\u306E\u9031`;
     if (rec.scope === "month")
         return `${rec.date.slice(0, 4)}/${Number(rec.date.slice(5, 7))}`;
     const allDay = isAllDay(rec);
-    return allDay ? `${fmtDateShort(rec.date)} \u7D42\u65E5` : `${fmtDateShort(rec.date)} ${rec.time}`;
+    return allDay ? fmtDateShort(rec.date) : `${fmtDateShort(rec.date)} ${rec.time}`;
 }
 /* 折りたたみの箱そのもの。**中身（children）は開いたときにしか描かないこと。**
    閉じているあいだも描いてしまうと、日付や時刻えらびの小窓の重なり順（z-index）が
@@ -23863,7 +23866,7 @@ async function buildBackup(data, withPhotos) {
         prefs: (() => { const p = { ...data.prefs }; delete p.lastBackup; return p; })(),
     }, null, 2);
 }
-function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backupAt }) {
+function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backupAt, unsavedCount }) {
     const used = (0, react_1.useMemo)(() => usedBytes(data.records), [data.records]);
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
@@ -24035,8 +24038,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         "\u524D\u56DE\u306E\u4FDD\u5B58\uFF1A",
                         fmtDate(backupAt.slice(0, 10))))),
                 needBackup && (react_1.default.createElement("div", { className: "rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 mb-5 ft-noresult" },
-                    react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-amber-800" }, backupAt ? "前回の書き出しのあとに、書きかえがあります" : "まだ一度も書き出していません"),
-                    react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-600 mt-0.5" }, "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u3042\u308A\u307E\u3059\u3002\u4E0B\u304B\u3089\u66F8\u304D\u51FA\u3057\u3066\u304A\u3051\u307E\u3059\u3002"))),
+                    react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-amber-800" }, backupAt ? `前回の書き出しのあとに、${unsavedCount || 0}件書きかえがあります` : "まだ一度も書き出していません"))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u66F8\u304D\u51FA\u3059"),
                     react_1.default.createElement(HelpTip, { label: "\u66F8\u304D\u51FA\u3059", text: "\u300C\u5199\u771F\u3082\u3075\u304F\u3081\u308B\u300D\u3092\u5207\u308B\u3068\u8EFD\u304F\u306A\u308A\u307E\u3059\u304C\u3001\u623B\u3057\u3066\u3082\u5199\u771F\u306F\u51FA\u307E\u305B\u3093\u3002" })),
@@ -25319,7 +25321,7 @@ function AppMain() {
                                 folderObj && (react_1.default.createElement(FolderDetail, { folder: folderObj, records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onCreateTag: addTagToMaster, onClose: () => setFolderOpen(null), onChange: changeFolder, onDelete: deleteFolder, onAddRecord: (f) => { setInFolder(f.id); setTypePick(true); }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
                                 settingsOpen && react_1.default.createElement(SettingsScreen, { prefs: prefs, onSave: savePrefs, onClose: () => setSettingsOpen(false) }),
                                 tagScreenOpen && (react_1.default.createElement(TagManageScreen, { tags: knownTags, records: records, onMove: moveTag, onReorder: setTagMaster, onAdd: addTagToMaster, onRename: renameTag, onDelete: deleteTag, onClose: () => setTagScreenOpen(false) })),
-                                backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, onClose: () => setBackupOpen(false), onRestore: restore, needBackup: needBackup, backupAt: backupAt, onBackedUp: () => {
+                                backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, onClose: () => setBackupOpen(false), onRestore: restore, needBackup: needBackup, backupAt: backupAt, unsavedCount: unsavedCount, onBackedUp: () => {
                                         const now = new Date().toISOString();
                                         setBackupAt(now);
                                         storageSet(BACKUP_AT_KEY, now);
