@@ -474,6 +474,16 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
   opacity: .12;
   transition-duration: 40ms;
 }
+/* **中の押せるもの（チェック・固定・編集など）を押しているときは、
+   外側の札まで沈ませないこと。** :active は先祖にも伝わるので、
+   チェックを入れるたびに札ぜんたいが暗くなり、チカチカ点滅して見える。
+   沈むのは、いま指が乗っているものだけでよい */
+@supports selector(:has(*)) {
+  .ft-tap-card:active:has(.ft-tap:active)::after,
+  .ft-tap-card:active:has(.ft-tap-icon:active)::after{
+    opacity: 0;
+  }
+}
 @media (hover:hover) and (pointer:fine){
   /* マウス操作の環境だけ、乗せる前の軽いホバーも付ける */
   .ft-tap-card:hover::after{ opacity: .035; }

@@ -17341,11 +17341,51 @@ function storageSet(key, value) {
             return { ok: true };
         const v = writeLatest.get(key);
         writeLatest.delete(key);
-        return await storageSetRaw(key, v);
+        const res = await storageSetRaw(key, v);
+        /* **書いたら、いちど読み返すこと。** どこかの層で取りこぼしても
+           ここで気づいて自分で直せる（先祖返りの最後の歯止め） */
+        if (res && res.ok !== false)
+            scheduleVerify(key, v);
+        return res;
     });
     /* 失敗しても列そのものは止めないこと（以後いっさい保存されなくなる） */
     writeChain.set(key, next.then(() => undefined, () => undefined));
     return next;
+}
+/* 書いたはずの中身を、少し置いてから読み返す。
+   置き場の都合で書き込みが落ちても、画面の中身と食い違ったままにはしない。
+   ・あとから新しい書き込みが控えているときは、何もしない（それが正になる）
+   ・直しても直らないときは、2回でやめる（永久に書き続けないこと） */
+const verifyTimer = new Map();
+const verifyTries = new Map();
+function scheduleVerify(key, expect) {
+    const prev = verifyTimer.get(key);
+    if (prev)
+        clearTimeout(prev);
+    verifyTimer.set(key, setTimeout(async () => {
+        verifyTimer.delete(key);
+        if (writeLatest.has(key))
+            return; /* もっと新しいものが待っている */
+        let got = null;
+        try {
+            got = await storageGet(key);
+        }
+        catch (e) {
+            return;
+        }
+        if (got === expect || writeLatest.has(key)) {
+            verifyTries.delete(key);
+            return;
+        }
+        const n = (verifyTries.get(key) || 0) + 1;
+        if (n > 2) {
+            console.error("保存が何度も食い違います", key);
+            return;
+        }
+        verifyTries.set(key, n);
+        console.warn("保存を読み返したら食い違っていたので、書き直します", key);
+        storageSet(key, expect);
+    }, 600));
 }
 /* 壊れた中身でも必ず配列を返す。
    **この防御を外さないこと。** 保存された中身が配列でなかったり null が混ざったりすると
@@ -21204,6 +21244,54 @@ function ProgressBar({ ratio, color, deep, height }) {
                 background: deep ? `linear-gradient(90deg, ${color}, ${deep})` : color,
             } })));
 }
+/* ============================================================
+   押したことを取りこぼさないための受け口
+   **click だけに頼らないこと。**
+   素早く続けて押すと、端末が2回目を「ダブルタップ」の一部とみなし、
+   click を配らないことがある。ゆっくり押したときだけ正しく入り、
+   速く押したときにだけ抜ける、という形の不具合になる。
+   指を離した時点（pointerup）で受け止め、あとから来る click は捨てる。
+   ・押さえたまま滑らせて逃げたぶんは、受けない（12px を越えたら取り消し）
+   ・キーボードの Enter / Space から来る click は、そのまま通す
+     （指では pointerup の直後に click が来るので、時間で見分ける）
+   ・**上（札）へ伝えないこと。** 伝わると、たたむ／開くがいっしょに動いて
+     札の高さが変わり、続けて押した指が別の行に当たる
+   ============================================================ */
+function useTapOnce(onTap) {
+    const st = (0, react_1.useRef)({ id: null, x: 0, y: 0, at: 0 });
+    return {
+        onPointerDown: (e) => {
+            e.stopPropagation();
+            if (e.pointerType === "mouse" && e.button !== 0)
+                return;
+            st.current = { id: e.pointerId, x: e.clientX, y: e.clientY, at: Date.now() };
+        },
+        onPointerUp: (e) => {
+            e.stopPropagation();
+            const s = st.current;
+            st.current = { ...s, id: null, at: Date.now() };
+            if (s.id !== e.pointerId)
+                return;
+            if (Math.abs(e.clientX - s.x) > 12 || Math.abs(e.clientY - s.y) > 12)
+                return;
+            onTap();
+        },
+        onPointerCancel: (e) => { e.stopPropagation(); st.current = { id: null, x: 0, y: 0, at: Date.now() }; },
+        onClick: (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            /* 指やマウスのぶんは、もう pointerup で受けてある（幽霊クリック） */
+            if (Date.now() - st.current.at < 700)
+                return;
+            onTap();
+        },
+    };
+}
+/* 上の受け口を使うボタン。**印の入り切りは、これを通すこと** */
+function TapButton({ onTap, children, ...rest }) {
+    const tap = useTapOnce(onTap);
+    return react_1.default.createElement("button", { type: "button", ...rest, ...tap }, children);
+}
 function CheckRow({ item, onToggle, size = "m" }) {
     const big = size === "l";
     /* **この行は、カード全体（<article onClick={toggleFold}>）の中にある。**
@@ -21213,8 +21301,8 @@ function CheckRow({ item, onToggle, size = "m" }) {
        下のカードの、意図しない行に当たる。
        ほかの行内ボタン（固定・編集・画像・移すなど）はすでに止めてあるのに、
        ここだけ止め忘れていた */
-    const guarded = (e) => { e.stopPropagation(); onToggle(); };
-    return (react_1.default.createElement("button", { type: "button", onClick: guarded, onPointerDown: (e) => e.stopPropagation(), className: "w-full flex items-start gap-2.5 text-left rounded-xl ft-tap ft-tap-card " + (big ? "px-2 py-1.5 min-h-[40px]" : "px-1.5 py-2 min-h-[46px]") },
+    const tap = useTapOnce(onToggle);
+    return (react_1.default.createElement("button", { type: "button", ...tap, className: "w-full flex items-start gap-2.5 text-left rounded-xl ft-tap ft-tap-card " + (big ? "px-2 py-1.5 min-h-[40px]" : "px-1.5 py-2 min-h-[46px]") },
         react_1.default.createElement("span", { className: "shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5 " + (big ? "w-6 h-6" : "w-5 h-5"), style: item.done ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4" } }, item.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
             react_1.default.createElement(lucide_react_1.Check, { size: big ? 14 : 12, strokeWidth: 3.5, className: "thick" }))),
         react_1.default.createElement("span", { className: (big ? "fs-subhead" : "fs-body-sm") + " leading-snug flex-1 min-w-0 break-words "
@@ -21318,6 +21406,10 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
         setPressing(false);
     };
     (0, react_1.useEffect)(() => stopPress, []);
+    /* **長押しの「発火済み」印を残したままにしないこと。**
+       選ぶ形に入ると onClickCapture ごと外れるので印が戻らず、
+       抜けたあとの1回目のタップが黙って捨てられる */
+    (0, react_1.useEffect)(() => { press.current.fired = false; }, [selectMode]);
     const pressProps = (!onLongSelect || selectMode) ? {} : {
         onPointerDown: (e) => {
             if (e.pointerType === "mouse" && e.button !== 0)
@@ -21390,7 +21482,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 r.mark && react_1.default.createElement(MarkDot, { mark: r.mark }),
                 react_1.default.createElement("span", { className: "flex-1" }),
                 !selectMode && (react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-1.5 -mt-1.5 shrink-0" },
-                    onPin && !r.__repeat && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onPin(r); }, onPointerDown: (e) => e.stopPropagation(), "aria-label": r.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!r.pinned, 
+                    onPin && !r.__repeat && (react_1.default.createElement(TapButton, { onTap: () => onPin(r), "aria-label": r.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!r.pinned, 
                         /* まるい皿にのせて、押せるものだと分かるようにする */
                         className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: r.pinned
                             ? { background: color.soft, color: color.deep }
@@ -23118,7 +23210,7 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
     return (react_1.default.createElement("div", { className: inset ? "relative flex gap-2 pb-1.5 px-2" : CARD_SLOT },
         react_1.default.createElement("div", { className: "flex-1 min-w-0 rounded-2xl bg-white border overflow-hidden", style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5" } },
             react_1.default.createElement("div", { className: "flex items-start gap-1 px-2.5 py-2", style: step.pinned && !allDone ? { boxShadow: `inset 3px 0 0 ${color.mid}` } : undefined },
-                react_1.default.createElement("button", { type: "button", onClick: () => patch((st) => ({ ...st, done: !st.done })), "aria-label": allDone ? "やっていないに戻す" : "やり終えた", "aria-pressed": allDone, className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-xl ft-tap ft-tap-icon" },
+                react_1.default.createElement(TapButton, { onTap: () => patch((st) => ({ ...st, done: !st.done })), "aria-label": allDone ? "やっていないに戻す" : "やり終えた", "aria-pressed": allDone, className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-xl ft-tap ft-tap-icon" },
                     react_1.default.createElement("span", { className: "w-6 h-6 rounded-full border-2 flex items-center justify-center", style: allDone ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4" } }, allDone && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                         react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })))),
                 react_1.default.createElement("button", { type: "button", onClick: onEdit, className: "flex-1 min-w-0 py-1.5 text-left ft-tap rounded-lg" },
@@ -23136,7 +23228,7 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
                             react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: step.pinned ? "currentColor" : "none" })))),
                     react_1.default.createElement("button", { type: "button", onClick: onEdit, "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
                         react_1.default.createElement(lucide_react_1.Pencil, { size: 16 })))),
-            items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5 space-y-[2px]" }, items.map((it) => (react_1.default.createElement("button", { key: it.id, type: "button", onClick: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
+            items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5 space-y-[2px]" }, items.map((it) => (react_1.default.createElement(TapButton, { key: it.id, onTap: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
                 react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
                 react_1.default.createElement("span", { className: "fs-body leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text),
