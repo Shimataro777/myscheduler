@@ -19582,6 +19582,22 @@ function PlanPickList({ plans, value, onPick }) {
                     react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })))));
         }))))));
 }
+/* 「計画を選択」の紙のいちばん上に固定で出す「いま選んでいるのはどれか」の帯。
+   **一覧の外（巻き取らない場所）に置くこと。** 一覧の中に置くと、
+   計画が増えてスクロールしたときに見えなくなり、意味がなくなる。
+   value にはその場の一時選択（temp）を渡す。「選択解除」を押した直後も
+   ここが即座に「選択中：なし」へ切りかわるようにするため */
+function PlanCurrentBadge({ plans, value }) {
+    const planC = useTypeColor(PLAN_TYPE);
+    const current = (plans || []).find((p) => p.id === value);
+    const c = current ? planColorOf(current, planC) : null;
+    return (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-3 min-h-[34px]" },
+        react_1.default.createElement("span", { className: "fs-body-sm font-bold text-neutral-500 shrink-0" }, "\u9078\u629E\u4E2D"),
+        current ? (react_1.default.createElement("span", { className: "inline-flex items-center gap-1.5 min-w-0 max-w-full px-2.5 py-1 rounded-full fs-body font-bold truncate", style: { background: c.soft, color: c.deep } },
+            react_1.default.createElement("span", { className: "w-5 h-5 rounded-full flex items-center justify-center shrink-0 overflow-hidden", style: { background: (current.icon && ICON_ART[current.icon]) ? ICON_ART[current.icon].bg : "transparent", color: c.deep } },
+                react_1.default.createElement(ItemIcon, { icon: current.icon, size: 12, fallback: react_1.default.createElement(lucide_react_1.Target, { size: 12 }), color: c })),
+            react_1.default.createElement("span", { className: "truncate" }, current.name || "\uFF08\u540D\u524D\u306A\u3057\uFF09"))) : (react_1.default.createElement("span", { className: "fs-body text-neutral-400" }, "\u306A\u3057"))));
+}
 /* 押すと紙が出る欄。見た目は、ほかの選ぶ欄（DrumSelect）とそろえてある。
    noEmpty ＝ 「えらばない」が無い欄（イベントの移し先など、
    かならずどれかに決まるもの）。**「選択解除」を出さないこと。**
@@ -19603,6 +19619,10 @@ function PlanSelect({ value, onChange, plans, placeholder = "計画を選択", t
         onChange(temp || "");
         setOpen(false);
     };
+    /* 「キャンセル」「✕」。**ここでの変更は捨てて、もとの値にもどす。**
+       次に開いたときも openSheet が value から temp を作り直すので実害はないが、
+       閉じる瞬間にも上の帯が古い選択を出したままにならないよう、ここで戻しておく */
+    const cancel = () => { setTemp(value || ""); setOpen(false); };
     return (react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("button", { type: "button", onClick: openSheet, disabled: disabled, 
             /* **w-full を残さないこと。** あとから幅を渡しても、
@@ -19611,8 +19631,13 @@ function PlanSelect({ value, onChange, plans, placeholder = "計画を選択", t
                 + " flex items-center justify-between text-left disabled:opacity-50 " + (className || "") },
             react_1.default.createElement("span", { className: current ? "fs-subhead text-neutral-900 truncate" : "fs-subhead text-neutral-400 truncate" }, current ? (current.name || "\uFF08\u540D\u524D\u306A\u3057\uFF09") : placeholder),
             react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-500 shrink-0 ml-2" })),
-        open && (react_1.default.createElement(WheelSheet, { plain: true, title: title || placeholder, onClose: () => setOpen(false), onConfirm: confirm, onClear: noEmpty ? null : () => { onChange(""); setOpen(false); } },
+        open && (react_1.default.createElement(WheelSheet, { plain: true, title: title || placeholder, onClose: cancel, onConfirm: confirm, 
+            /* **ここでモーダルを閉じないこと。** temp を空にするだけにして、
+               紙は出したまま、上の帯だけが「選択中：なし」に切りかわるようにする。
+               確定させるにはあらためて「決定」を押してもらう */
+            onClear: noEmpty ? null : () => setTemp("") },
             react_1.default.createElement("div", { className: "w-full" },
+                react_1.default.createElement(PlanCurrentBadge, { plans: list, value: temp }),
                 react_1.default.createElement(PlanPickList, { plans: list, value: temp, onPick: (id) => setTemp((v) => (!noEmpty && v === id) ? "" : id) }))))));
 }
 /* ============================================================
@@ -24320,7 +24345,7 @@ html { scrollbar-gutter: stable; }
    片方だけ動かすと重なる。＋は right:20 で幅56、あいだを12あけて 20+56+12＝88。
    **この行を media の下に書かないこと。** あとに書くと、横長のときの寄せ方を打ち消す。
    **ft-fab を付け回さないこと。** あれは「＋」を指す名前として、あちこちで当てにされている */
-.ft-fab-side { right: 88px; animation: ft-fab-in 0.44s cubic-bezier(0.3,1.2,0.4,1) 0.06s backwards; }
+.ft-fab-side { right: 88px; }
 
 @media (min-width: 820px) {
   /* 右下の＋は、中身の右はしに合わせる（画面のすみだと遠い） */
@@ -24514,35 +24539,19 @@ input, textarea, [contenteditable="true"], .ft-text {
 .ft-press { -webkit-touch-callout: none; }
 button:active { transition-duration: 60ms; }
 
-@keyframes ft-fade-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes ft-fade-out { from { opacity: 1; } to { opacity: 0; } }
-@keyframes ft-right-in  { from { transform: translateX(100%); } to { transform: translateX(0); } }
-@keyframes ft-right-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
-@keyframes ft-up-in    { from { transform: translateY(100%); } to { transform: translateY(0); } }
-@keyframes ft-down-out { from { transform: translateY(0); } to { transform: translateY(100%); } }
-@keyframes ft-sheet-down { from { transform: translateY(0); } to { transform: translateY(100%); } }
+/* **登場・退場の演出は置かないこと。** 画面やシートが出入りするときは、
+   最初から定位置・不透明で即座に現れる／消える。
+   読み込み中のくるくる（.spin）だけは動きを止める対象から外している */
 @keyframes ft-spin { to { transform: rotate(360deg); } }
-@keyframes ft-pop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
-/* 下から出るシート：いったん少し行き過ぎて、定位置に戻る */
-@keyframes ft-sheet-up {
-  0%   { transform: translateY(100%); }
-  72%  { transform: translateY(-8px); }
-  88%  { transform: translateY(2px); }
-  100% { transform: translateY(0); }
-}
-
-/* fill-mode は必ず backwards にすること。
-   both だと終わったあとも transform が残り、
-   中にある position:fixed の要素（ダイアログ）の位置の基準がずれる */
-.anim-right     { animation: ft-right-in 0.26s cubic-bezier(0.22,1,0.36,1) backwards; }
-.anim-right-out { animation: ft-right-out 0.22s cubic-bezier(0.55,0,0.68,0.53) forwards; }
-.anim-up        { animation: ft-up-in 0.28s cubic-bezier(0.22,1,0.36,1) backwards; }
-.anim-down-out  { animation: ft-down-out 0.24s cubic-bezier(0.55,0,0.68,0.53) forwards; }
-.anim-sheet     { animation: ft-sheet-up 0.36s cubic-bezier(0.33,1,0.5,1) backwards; }
-.anim-sheet-out { animation: ft-sheet-down 0.24s cubic-bezier(0.55,0,0.68,0.53) forwards; }
-.anim-fade      { animation: ft-fade-in 0.2s ease-out backwards; }
-.anim-fade-out  { animation: ft-fade-out 0.2s ease-out forwards; }
-.anim-pop       { animation: ft-pop 0.26s cubic-bezier(0.34,1.3,0.5,1) backwards; }
+.anim-right     { }
+.anim-right-out { }
+.anim-up        { }
+.anim-down-out  { }
+.anim-sheet     { }
+.anim-sheet-out { }
+.anim-fade      { }
+.anim-fade-out  { }
+.anim-pop       { }
 .spin           { animation: ft-spin 0.75s linear infinite; }
 
 /* --- 押した手ごたえ（全ボタン共通の土台）---
@@ -24565,11 +24574,8 @@ button:active { transition-duration: 60ms; }
 .ft-tap-pressed { transform: scale(0.96); filter: brightness(0.9); transition-duration: 45ms; }
 .ft-tap-card.ft-tap-pressed { transform: scale(0.997); }
 
-@keyframes ft-bloom { 0% { opacity: 0; transform: scale(0.7); } 100% { opacity: 1; transform: scale(1); } }
-.ft-chip { animation: ft-bloom 0.26s cubic-bezier(0.34,1.3,0.5,1) backwards; }
-
-@keyframes ft-rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
-.ft-rise { animation: ft-rise 0.28s cubic-bezier(0.22,1,0.36,1) backwards; }
+.ft-chip { }
+.ft-rise { }
 /* タブの入れ物そのものは、透明度だけで切り替える。
    ここで位置を動かすと、中の sticky なヘッダがぶれてしまう */
 /* **画面を切り替えるときに、まるごと透かさないこと。**
@@ -24577,79 +24583,33 @@ button:active { transition-duration: 60ms; }
    ここでは何もしない */
 .ft-tabswap { }
 
-@keyframes ft-tabpop { 0% { transform: scale(1); } 34% { transform: scale(1.24); } 100% { transform: scale(1); } }
-.ft-tabpop { animation: ft-tabpop 0.38s cubic-bezier(0.34,1.3,0.5,1) backwards; }
-/* 下線は左右中央に寄せる指定（translateX(-50%)）が既に入っている。
-   書き足しておかないと、伸びている間だけ左へずれる */
-@keyframes ft-tabbar {
-  from { transform: translateX(-50%) scaleX(0.1); opacity: 0.3; }
-  to   { transform: translateX(-50%) scaleX(1);   opacity: 1; }
-}
-.ft-tabbar { animation: ft-tabbar 0.32s cubic-bezier(0.22,1,0.36,1) backwards; }
-
-@keyframes ft-fab-in {
-  0%   { opacity: 0; transform: scale(0.5) rotate(-90deg); }
-  62%  { opacity: 1; transform: scale(1.09) rotate(8deg); }
-  100% { opacity: 1; transform: scale(1) rotate(0deg); }
-}
-.ft-fab { animation: ft-fab-in 0.44s cubic-bezier(0.3,1.2,0.4,1) backwards; }
-
-@keyframes ft-ring { 0% { opacity: 0.5; transform: scale(0.72); } 100% { opacity: 0; transform: scale(1.6); } }
-.ft-ring { animation: ft-ring 0.62s cubic-bezier(0.22,1,0.36,1) forwards; }
-
-@keyframes ft-mark {
-  0% { transform: scale(1); } 28% { transform: scale(0.82); }
-  64% { transform: scale(1.18); } 100% { transform: scale(1); }
-}
-.ft-mark { animation: ft-mark 0.44s cubic-bezier(0.34,1.3,0.5,1) backwards; }
+.ft-tabpop { }
+.ft-tabbar { }
+.ft-fab { }
+.ft-ring { }
+.ft-mark { }
 
 /* 折りたたみを開いたとき。
    ft-open は透明度だけ。**中にドラム（position:fixed のシート）がある場所は必ず ft-open**。
    ft-open-y はわずかに上から降りてくる。中に fixed が無い場所だけで使うこと */
-.ft-open   { animation: ft-fade-in 0.22s ease-out backwards; }
-@keyframes ft-open-y { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
-.ft-open-y { animation: ft-open-y 0.24s cubic-bezier(0.22,1,0.36,1) backwards; }
+.ft-open   { }
+.ft-open-y { }
 
-.ft-chev { transition: transform 0.34s cubic-bezier(0.34,1.3,0.5,1); }
+.ft-chev { }
 .ft-chev-on { transform: rotate(180deg); }
 
-@keyframes ft-stagger { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
-.ft-seq > * { animation: ft-stagger 0.32s cubic-bezier(0.22,1,0.36,1) backwards; }
-.ft-seq > *:nth-child(1) { animation-delay: 0.02s; }
-.ft-seq > *:nth-child(2) { animation-delay: 0.05s; }
-.ft-seq > *:nth-child(3) { animation-delay: 0.08s; }
-.ft-seq > *:nth-child(4) { animation-delay: 0.11s; }
-.ft-seq > *:nth-child(5) { animation-delay: 0.14s; }
-.ft-seq > *:nth-child(6) { animation-delay: 0.17s; }
-.ft-seq > *:nth-child(7) { animation-delay: 0.20s; }
-.ft-seq > *:nth-child(n+8) { animation-delay: 0.22s; }
+.ft-seq > * { }
 
-/* カレンダー・日週月の紙送り。押した向きへ送られるように */
-@keyframes ft-page-l { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
-@keyframes ft-page-r { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
-.ft-page-l { animation: ft-page-l 0.26s cubic-bezier(0.22,1,0.36,1) backwards; }
-.ft-page-r { animation: ft-page-r 0.26s cubic-bezier(0.22,1,0.36,1) backwards; }
-@keyframes ft-daypop { 0% { transform: scale(0.72); } 58% { transform: scale(1.1); } 100% { transform: scale(1); } }
-.ft-daypop { animation: ft-daypop 0.34s cubic-bezier(0.34,1.3,0.5,1) backwards; }
+.ft-page-l { }
+.ft-page-r { }
+.ft-daypop { }
 
-@keyframes ft-check-in { 0% { opacity: 0; transform: scale(0) rotate(-45deg); } 100% { opacity: 1; transform: none; } }
-.ft-check-in { animation: ft-check-in 0.3s cubic-bezier(0.34,1.3,0.5,1) backwards; }
+.ft-check-in { }
 
-/* 見つからなかったときの現れ方。
-   ぱっと切り替わると「本当に探したのか」が分かりにくいので、
-   絵がふわりと出て、少し遅れて文が続くようにする */
-@keyframes ft-noresult {
-  from { opacity: 0; transform: translateY(10px) scale(0.96); }
-  to   { opacity: 1; transform: none; }
-}
-.ft-noresult > * { animation: ft-noresult 0.42s cubic-bezier(0.22,1,0.36,1) backwards; }
-.ft-noresult > *:nth-child(1) { animation-delay: 0.04s; }
-.ft-noresult > *:nth-child(2) { animation-delay: 0.18s; }
+.ft-noresult > * { }
 
-@keyframes ft-tip { from { opacity: 0; transform: translateY(-4px) scale(0.96); } to { opacity: 1; transform: none; } }
-.ft-tip { animation: ft-tip 0.16s cubic-bezier(0.22,1,0.36,1) backwards; }
-@keyframes ft-tip-out { from { opacity: 1; } to { opacity: 0; transform: translateY(-3px); } }
-.ft-tip-out { animation: ft-tip-out 0.2s ease-in forwards; }
+.ft-tip { }
+.ft-tip-out { }
 
 /* 本文の中のリンク。**下線は引かない**（色だけで押せることを示す）。
    <a> はブラウザが既定で下線を引くため、こちらで打ち消しておくこと */
@@ -24759,8 +24719,7 @@ button:active { transition-duration: 60ms; }
 .border-dashed-th{border-color:var(--th-200)}
 /* 札のうすい影。線をなくして、影で浮かせる */
 /* やり遂げたときの、ひと呼吸のお祝い */
-@keyframes ftCelebrate { 0%{transform:scale(.6);opacity:0} 55%{transform:scale(1.12);opacity:1} 100%{transform:scale(1);opacity:1} }
-.ft-celebrate{animation:ftCelebrate 620ms cubic-bezier(0.16,1,0.3,1) backwards}
+.ft-celebrate{}
 /* **札に影を落とさないこと。** 影が並ぶと、それだけで画面が重く見える。
    面ではなく、細い線と余白で組む */
 .card-soft{box-shadow:none;border:1px solid #E6E6E9}

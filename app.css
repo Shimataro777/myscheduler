@@ -154,7 +154,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .disabled\:opacity-25:disabled{opacity:0.25}
 .disabled\:opacity-40:disabled{opacity:0.4}
 .disabled\:opacity-50:disabled{opacity:0.5}
-.duration-300{transition-duration:300ms}
 .fixed{position:fixed}
 .flex{display:flex}
 .flex-1{flex:1 1 0%}
@@ -406,7 +405,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .top-3{top:12px}
 .tracking-tight{letter-spacing:-.01em}
 .tracking-wide{letter-spacing:.02em}
-.transition-all{transition:all .2s}
 .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .w-10{width:40px}
 .w-11{width:44px}
