@@ -10,17 +10,22 @@
      新しいサイズを追加しても、この仕組みなら自動で連動する（上書き表を手で足す必要がない） */
   --ft-scale: 1;
 
-  --fs-micro:    calc(9.5px  * var(--ft-scale));
-  --fs-caption:  calc(11.5px * var(--ft-scale));
-  --fs-label:    calc(12.5px * var(--ft-scale));
-  --fs-body-sm:  calc(13.5px * var(--ft-scale));
-  --fs-body:     calc(14.5px * var(--ft-scale));
-  --fs-subhead:  calc(15.5px * var(--ft-scale));
-  --fs-title:    calc(17.5px * var(--ft-scale));
-  --fs-display:  calc(21px   * var(--ft-scale));
-  --fs-display-lg: calc(22px * var(--ft-scale));
+  /* 【重要】ここは倍率を掛けない「素の基準値」にすること。
+     :root の中で calc(… * var(--ft-scale)) と書くと、その場で --ft-scale:1 が
+     代入されて値が固定されてしまい、あとから .ft-font-m が倍率を変えても効かない
+     （カスタムプロパティは「宣言した要素」で中身が確定する仕様のため）。
+     倍率は下の .fs-* クラスの font-size 側で掛けること。 */
+  --fs-micro:    9.5px;
+  --fs-caption:  11.5px;
+  --fs-label:    12.5px;
+  --fs-body-sm:  13.5px;
+  --fs-body:     14.5px;
+  --fs-subhead:  15.5px;
+  --fs-title:    17.5px;
+  --fs-display:  21px;
+  --fs-display-lg: 22px;
   /* 実績・達成率など、読む文字ではなく見て数えとる数字専用 */
-  --fs-stat:     calc(20px   * var(--ft-scale));
+  --fs-stat:     20px;
 
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 28px;
 
@@ -51,17 +56,20 @@
   --dur-slow: 360ms;
   --dur-celebrate: 620ms;
 }
-/* 役割ベースのフォントクラス。新規実装はこちらを使うこと（.text-[Npx] は非推奨） */
-.fs-micro   { font-size: var(--fs-micro); }
-.fs-caption { font-size: var(--fs-caption); }
-.fs-label   { font-size: var(--fs-label); }
-.fs-body-sm { font-size: var(--fs-body-sm); }
-.fs-body    { font-size: var(--fs-body); }
-.fs-subhead { font-size: var(--fs-subhead); }
-.fs-title   { font-size: var(--fs-title); }
-.fs-display { font-size: var(--fs-display); }
-.fs-display-lg { font-size: var(--fs-display-lg); }
-.fs-stat    { font-size: var(--fs-stat); }
+/* 役割ベースのフォントクラス。新規実装はこちらを使うこと（.text-[Npx] は非推奨）。
+   **倍率はここで掛けること。** font-size を当てる要素の上で calc() を評価させることで、
+   その要素が受け継いだ --ft-scale（.ft-font-m なら 1.09）が正しく効く。
+   **var(--fs-body) を font-size に直接書かないこと。** 倍率が掛からず小のままになる */
+.fs-micro   { font-size: calc(var(--fs-micro)   * var(--ft-scale)); }
+.fs-caption { font-size: calc(var(--fs-caption) * var(--ft-scale)); }
+.fs-label   { font-size: calc(var(--fs-label)   * var(--ft-scale)); }
+.fs-body-sm { font-size: calc(var(--fs-body-sm) * var(--ft-scale)); }
+.fs-body    { font-size: calc(var(--fs-body)    * var(--ft-scale)); }
+.fs-subhead { font-size: calc(var(--fs-subhead) * var(--ft-scale)); }
+.fs-title   { font-size: calc(var(--fs-title)   * var(--ft-scale)); }
+.fs-display { font-size: calc(var(--fs-display) * var(--ft-scale)); }
+.fs-display-lg { font-size: calc(var(--fs-display-lg) * var(--ft-scale)); }
+.fs-stat    { font-size: calc(var(--fs-stat)    * var(--ft-scale)); }
 /* 役割ベースの余白・アイコンクラス */
 .icon-sm { width: var(--icon-sm); height: var(--icon-sm); }
 .icon-md { width: var(--icon-md); height: var(--icon-md); }
