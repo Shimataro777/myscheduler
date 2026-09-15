@@ -19256,6 +19256,60 @@ function useEdgeSwipeBack(onBack, canClose) {
     return { stripRef, screenRef };
 }
 /* ============================================================
+   画面のいちばん上へ、なめらかに戻す
+   ・動きを止める設定（表示設定の「画面の動き」／端末の「視差効果を減らす」）の
+     ときは、すぐに戻す
+   ・途中で指が触れたら、そこで止める。**ユーザーの操作と取り合わないこと**
+   ・window.scrollTo の behavior:"smooth" に任せないのは、端末ごとに速さが
+     ばらばらで、遠くから戻るときに一瞬で飛ぶことがあるため。
+     アプリの --ease-out と同じ曲線で、距離に応じた時間で送る
+   ============================================================ */
+let smoothTopCancel = null;
+function smoothScrollToTop() {
+    if (smoothTopCancel)
+        smoothTopCancel();
+    const from = window.scrollY || document.documentElement.scrollTop || 0;
+    if (from <= 0)
+        return;
+    let still = false;
+    try {
+        still = !!document.querySelector(".ft-still")
+            || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    }
+    catch (e) { /* noop */ }
+    if (still) {
+        window.scrollTo(0, 0);
+        return;
+    }
+    /* 近いときは短く、遠くても長く待たせない（280〜560ms） */
+    const dur = Math.min(560, Math.max(280, from * 0.35));
+    /* --ease-out: cubic-bezier(0.22,1,0.36,1) に近い曲線 */
+    const ease = (t) => 1 - Math.pow(1 - t, 4);
+    const t0 = performance.now();
+    let raf = 0;
+    const stop = () => {
+        cancelAnimationFrame(raf);
+        window.removeEventListener("touchstart", stop, true);
+        window.removeEventListener("wheel", stop, true);
+        window.removeEventListener("keydown", stop, true);
+        if (smoothTopCancel === stop)
+            smoothTopCancel = null;
+    };
+    const frame = (now) => {
+        const t = Math.min(1, (now - t0) / dur);
+        window.scrollTo(0, Math.round(from * (1 - ease(t))));
+        if (t < 1)
+            raf = requestAnimationFrame(frame);
+        else
+            stop();
+    };
+    window.addEventListener("touchstart", stop, { capture: true, passive: true });
+    window.addEventListener("wheel", stop, { capture: true, passive: true });
+    window.addEventListener("keydown", stop, true);
+    smoothTopCancel = stop;
+    raf = requestAnimationFrame(frame);
+}
+/* ============================================================
    左右に払って、日・週・月を送る
    ・押しているものの上でも効くよう、面全体で受ける
    ・縦に動かしたときは巻き物（スクロール）に譲る
@@ -22396,7 +22450,7 @@ function SpanCycleIcon({ size = 21 }) {
         react_1.default.createElement("path", { d: "M4 12a8 8 0 0 0 13.3 6" }),
         react_1.default.createElement("path", { d: "M13.1 20.1l4.6-2.3-2.3-4.6" })));
 }
-function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPlan, onAddScoped, onDeleteMany, onPin, onSelecting, onViewDate, onSwapScoped, order, onOrder, onOpenBackup }) {
+function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPlan, onAddScoped, onDeleteMany, onPin, onSelecting, onViewDate, onSwapScoped, order, onOrder, onOpenBackup, resetSig = 0 }) {
     const [span, setSpan] = (0, react_1.useState)("day");
     const [date, setDate] = (0, react_1.useState)(todayStr());
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
@@ -22434,6 +22488,44 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
        どこで払っても効くようにしておく。
        日→週→月の切り替えは、上の帯か、右下の丸いボタンで行う */
     const { areaRef, pageCls, setDir } = useSwipePages(() => step(-1), () => step(1));
+    /* 下のタブの「Today」を押したときの戻り方。
+       ・ほかのタブから来たとき … 記録の面をふわっと出し、上までなめらかに戻す
+       ・別の日／週／月を見ているとき … 今日の「日」へ、向きのある動きで戻し、上まで戻す
+       ・もう今日の日を見ているとき … 上までなめらかに戻すだけ
+       **動きのクラスを貼りっぱなしにしないこと**（useSwipePages と同じ理由）。
+       **最初の描画から付けること。** あとから付けると、一瞬見えてから消えて、ちらつく */
+    const [returnCls, setReturnCls] = (0, react_1.useState)(() => (resetSig > 0 ? "ft-today-in" : ""));
+    const returnOffRef = (0, react_1.useRef)(null);
+    /* **「はじめて見る合図か」だけで、ほかのタブから来たと決めないこと。**
+       起動してすぐ Today にいるまま押した1回めも、はじめての合図になる。
+       描きはじめたときに持っていた合図と同じかどうかで見分ける */
+    const mountSigRef = (0, react_1.useRef)(resetSig);
+    const handledSigRef = (0, react_1.useRef)(null);
+    (0, react_1.useEffect)(() => {
+        if (!resetSig || handledSigRef.current === resetSig)
+            return;
+        const mounting = handledSigRef.current === null && resetSig === mountSigRef.current;
+        handledSigRef.current = resetSig;
+        const t = todayStr();
+        if (!mounting && (span !== "day" || date !== t)) {
+            if (sel.on)
+                sel.stop();
+            setDir(0);
+            /* 未来から戻るときは左から、過去から戻るときは右から入る（矢印で送ったときと同じ向き） */
+            setReturnCls(span !== "day" ? "ft-today-in" : date < t ? "ft-today-r" : "ft-today-l");
+            setSpan("day");
+            setDate(t);
+            setWeekSel(null);
+            setMonthFocusDate(null);
+        }
+        if (returnOffRef.current)
+            clearTimeout(returnOffRef.current);
+        returnOffRef.current = setTimeout(() => setReturnCls(""), 400);
+        /* 新しい中身の高さが決まってから送る */
+        requestAnimationFrame(() => smoothScrollToTop());
+    }, [resetSig]); // eslint-disable-line
+    (0, react_1.useEffect)(() => () => { if (returnOffRef.current)
+        clearTimeout(returnOffRef.current); }, []);
     /* 日→週→月→日 と、ひと押しで順に切り替える。
        **端で止めないこと。** 一巡して日へ戻るほうが、押す回数が読める */
     const cycleSpan = () => {
@@ -22499,7 +22591,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "mb-1" }, upcoming.map(({ plan, list }) => (react_1.default.createElement("div", { key: plan.id, className: CARD_SLOT },
             react_1.default.createElement(PlanDueCard, { plan: plan, list: list, onOpen: () => onOpenPlan(plan) })))))),
         react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
-            react_1.default.createElement("div", { key: span === "day" ? span + date : span, className: span === "day" ? pageCls : "" },
+            react_1.default.createElement("div", { key: span === "day" ? span + date : span, className: (span === "day" ? pageCls : "") + (returnCls ? " " + returnCls : "") },
                 span === "day" && react_1.default.createElement(NeedBackupBanner, { onOpen: onOpenBackup, dim: sel.on }),
                 span === "day" && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
                 span === "week" && (react_1.default.createElement(react_1.default.Fragment, null,
@@ -24777,6 +24869,16 @@ button:active { transition-duration: 60ms; }
 
 .ft-page-l { }
 .ft-page-r { }
+/* 下のタブの「Today」で今日へ戻るときだけの動き。
+   **ここだけは動かすこと。** 別の日から今日へ飛ぶと、何が起きたか目で追えないため。
+   横にずらす量は、記録の面の左右の余白（px-5＝20px）より小さくすること。
+   それを超えると、動いているあいだだけ画面が横に送れるようになる */
+@keyframes ft-today-r { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes ft-today-l { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+@keyframes ft-today-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ft-today-r  { animation: ft-today-r 320ms var(--ease-out) both; }
+.ft-today-l  { animation: ft-today-l 320ms var(--ease-out) both; }
+.ft-today-in { animation: ft-today-in 320ms var(--ease-out) both; }
 .ft-daypop { }
 
 .ft-check-in { }
@@ -25020,6 +25122,8 @@ function AppMain() {
     const [tagMaster, setTagMasterState] = (0, react_1.useState)([]);
     const [prefs, setPrefsState] = (0, react_1.useState)(DEFAULT_PREFS);
     const [tab, setTab] = (0, react_1.useState)("today");
+    /* 下のタブの「Today」を押した回数。TodayScreen はこれが変わったら今日の上へ戻る */
+    const [todayReset, setTodayReset] = (0, react_1.useState)(0);
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
     const [menuInstant, setMenuInstant] = (0, react_1.useState)(false);
     const [typePick, setTypePick] = (0, react_1.useState)(false);
@@ -25522,12 +25626,19 @@ function AppMain() {
                                 !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page" },
                                     react_1.default.createElement("div", { className: "ft-col" },
                                         tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
-                                            react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
+                                            react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped, resetSig: todayReset }))),
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
                                         tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })) })),
                                         tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder }))))),
                                 loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
-                                loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
+                                loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => {
+                                        if (k === "today")
+                                            setTodayReset((n) => n + 1);
+                                        /* ほかのタブへ移るときは、戻りかけの動きを止める */
+                                        else if (smoothTopCancel)
+                                            smoothTopCancel();
+                                        setTab(k);
+                                    } }),
                                 react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, onClose: () => setMenuOpen(false), items: menuItems, 
                                     /* **ことわりを並べないこと。** バックアップの行でもう伝えている */
                                     footer: react_1.default.createElement("p", { className: "fs-body-sm font-bold text-neutral-500 tabular-nums" },
