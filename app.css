@@ -429,3 +429,57 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .z-10{z-index:10}
 .z-30{z-index:30}
 .z-40{z-index:40}
+
+/* ============================================================
+   タップ・フィードバック（.ft-tap 系）
+   記録カード（スケジュール・リスト・メモ・イベントなど）をはじめ、
+   押せる要素すべてに共通で使う「いま押している／受け付けた」ハイライト。
+   ここ一箇所を直せば、個々の画面を書き換えずに全体へ反映される。
+
+   仕組み：疑似要素 ::after を要素いっぱいに重ね、押している間だけ
+   ごく薄い黒を mix-blend-mode:multiply で乗せる。乗算なので、
+   もとの背景色（白いカードでも、選択中の色付き背景でも、丸いボタンの
+   色つき背景でも）の上でそのまま少し沈んだ色になり、文字は
+   （もともと濃い色なので）乗算してもほぼ変わらず読みやすいまま保たれる。
+   単純な background-color の上書きにしないのは、カードごとに違う
+   下地の色を消してしまわないため。 */
+.ft-tap{
+  -webkit-tap-highlight-color: transparent; /* 既定の青いフラッシュを消し、下のハイライトに差し替える */
+  touch-action: manipulation; /* ダブルタップ拡大とタップ遅延を止める。縦スクロールはそのまま効く */
+}
+.ft-tap-card,
+.ft-tap-icon{
+  position: relative;
+}
+.ft-tap-card::after,
+.ft-tap-icon::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #18181B;
+  opacity: 0;
+  mix-blend-mode: multiply;
+  pointer-events: none; /* 重ねの下にある編集・ピン留めボタン等のタップを妨げない */
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+/* タップしている間（:active）と、長押しで選択モードへ入ろうとしている間
+   （JS側が付け外しする .ft-pressing）の、両方で同じ沈みにそろえる */
+.ft-tap-card:active::after,
+.ft-tap-card.ft-pressing::after{
+  opacity: .07;
+  transition-duration: 40ms; /* 押した瞬間はすぐ反応、離すときだけゆっくり戻す */
+}
+.ft-tap-icon:active::after{
+  opacity: .12;
+  transition-duration: 40ms;
+}
+@media (hover:hover) and (pointer:fine){
+  /* マウス操作の環境だけ、乗せる前の軽いホバーも付ける */
+  .ft-tap-card:hover::after{ opacity: .035; }
+}
+/* 一覧の行など、押している間の背景色をJS側の state で直接差し替えている箇所
+   （bg-neutral-200 + .ft-tap-pressed）は、色の切り替わりだけなめらかにする */
+.ft-tap-pressed{
+  transition: background-color var(--dur-fast) var(--ease-out);
+}

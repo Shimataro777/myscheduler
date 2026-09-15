@@ -20343,7 +20343,7 @@ function LinkCard({ link }) {
     const [thumbNg, setThumbNg] = (0, react_1.useState)(false);
     const [iconNg, setIconNg] = (0, react_1.useState)(false);
     const showThumb = !!link.thumb && !thumbNg;
-    return (react_1.default.createElement("a", { href: link.url, target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation(), className: "ft-link block rounded-xl border border-neutral-200 bg-white overflow-hidden ft-tap ft-tap-card" },
+    return (react_1.default.createElement("a", { href: link.url, target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation(), onPointerDown: (e) => e.stopPropagation(), className: "ft-link block rounded-xl border border-neutral-200 bg-white overflow-hidden ft-tap ft-tap-card" },
         showThumb && (react_1.default.createElement("span", { className: "block bg-neutral-100" },
             react_1.default.createElement("img", { src: link.thumb, alt: "", loading: "lazy", onError: () => setThumbNg(true), className: "block w-full", style: { aspectRatio: "16 / 9", objectFit: "cover" } }))),
         react_1.default.createElement("span", { className: "flex items-center gap-2 px-2.5 py-2" },
@@ -21181,7 +21181,7 @@ function CheckRow({ item, onToggle, size = "m" }) {
        ほかの行内ボタン（固定・編集・画像・移すなど）はすでに止めてあるのに、
        ここだけ止め忘れていた */
     const guarded = (e) => { e.stopPropagation(); onToggle(); };
-    return (react_1.default.createElement("button", { type: "button", onClick: guarded, className: "w-full flex items-start gap-2.5 text-left rounded-xl ft-tap ft-tap-card " + (big ? "px-2 py-1.5 min-h-[40px]" : "px-1.5 py-2 min-h-[46px]") },
+    return (react_1.default.createElement("button", { type: "button", onClick: guarded, onPointerDown: (e) => e.stopPropagation(), className: "w-full flex items-start gap-2.5 text-left rounded-xl ft-tap ft-tap-card " + (big ? "px-2 py-1.5 min-h-[40px]" : "px-1.5 py-2 min-h-[46px]") },
         react_1.default.createElement("span", { className: "shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5 " + (big ? "w-6 h-6" : "w-5 h-5"), style: item.done ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4" } }, item.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
             react_1.default.createElement(lucide_react_1.Check, { size: big ? 14 : 12, strokeWidth: 3.5, className: "thick" }))),
         react_1.default.createElement("span", { className: (big ? "fs-subhead" : "fs-body-sm") + " leading-snug flex-1 min-w-0 break-words "
@@ -21357,14 +21357,14 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 r.mark && react_1.default.createElement(MarkDot, { mark: r.mark }),
                 react_1.default.createElement("span", { className: "flex-1" }),
                 !selectMode && (react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-1.5 -mt-1.5 shrink-0" },
-                    onPin && !r.__repeat && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onPin(r); }, "aria-label": r.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!r.pinned, 
+                    onPin && !r.__repeat && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onPin(r); }, onPointerDown: (e) => e.stopPropagation(), "aria-label": r.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!r.pinned, 
                         /* まるい皿にのせて、押せるものだと分かるようにする */
                         className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: r.pinned
                             ? { background: color.soft, color: color.deep }
                             : { background: "#F3F3F5", color: "#9A9AA0" } },
                         react_1.default.createElement("span", { key: r.pinned ? "on" : "off", className: "flex " + (r.pinned ? "ft-mark" : "") },
                             react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: r.pinned ? "currentColor" : "none" })))),
-                    react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onEdit(r); }, "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
+                    react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onEdit(r); }, onPointerDown: (e) => e.stopPropagation(), "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
                         react_1.default.createElement(lucide_react_1.Pencil, { size: 16 }))))),
             r.type !== "memo" && recordTitle(r, N) && recordTitle(r, N) !== (N[r.type] || TYPE_LABELS[r.type]) && (react_1.default.createElement("p", { className: "fs-subhead font-bold leading-snug break-words mb-1 "
                     + (allDone ? "text-neutral-400" : "text-neutral-900") }, recordTitle(r, N))),
@@ -21387,7 +21387,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     gridTemplateRows: r.images.length > 2 ? "1fr 1fr" : "1fr",
                     aspectRatio: r.images.length === 1 ? "4 / 3" : "3 / 2",
                 } }, r.images.slice(0, 4).map((src, i) => (react_1.default.createElement("button", { key: i, type: "button", "aria-label": "\u62E1\u5927", onClick: (e) => { e.stopPropagation(); if (!selectMode)
-                    setPhoto(i); }, className: "block overflow-hidden ft-tap ft-tap-card", style: r.images.length === 3 && i === 0 ? { gridRow: "span 2" } : undefined },
+                    setPhoto(i); }, onPointerDown: (e) => e.stopPropagation(), className: "block overflow-hidden ft-tap ft-tap-card", style: r.images.length === 3 && i === 0 ? { gridRow: "span 2" } : undefined },
                 react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } })))))),
             ratio && (react_1.default.createElement("div", { className: "mb-1" },
                 ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1" },
@@ -21396,7 +21396,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                         react_1.default.createElement(CheckRow, { item: it, size: "l", onToggle: () => { if (!selectMode)
                                 onToggleItem(r, it.id); } })),
-                    canMove && !selectMode && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setMoving(it); }, "aria-label": "\u5225\u306E\u30EA\u30B9\u30C8\u3078\u79FB\u3059", className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-full text-neutral-300 hover:text-th-800 hover:bg-neutral-100 ft-tap ft-tap-icon" },
+                    canMove && !selectMode && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setMoving(it); }, onPointerDown: (e) => e.stopPropagation(), "aria-label": "\u5225\u306E\u30EA\u30B9\u30C8\u3078\u79FB\u3059", className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-full text-neutral-300 hover:text-th-800 hover:bg-neutral-100 ft-tap ft-tap-icon" },
                         react_1.default.createElement(lucide_react_1.ArrowRightLeft, { size: 15 }))))))),
                 listBody && expanded && (react_1.default.createElement("div", { className: "mt-2 pl-1.5 border-l-2 border-neutral-200" },
                     react_1.default.createElement(LinkedText, { text: r.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
@@ -21405,7 +21405,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     react_1.default.createElement(lucide_react_1.Repeat, { size: 12 }),
                     repeatLabel(r.repeat))))),
             /* カード下部の「すべて表示／折りたたむ」。**折りたためる中身があるときだけ出す** */
-            hasFold && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")),
+            hasFold && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")),
             normalizeTags(r.tags).length > 0 && react_1.default.createElement(TagChips, { tags: r.tags, className: "mt-2" })),
         photo !== null && (react_1.default.createElement(PhotoViewer, { images: r.images || [], index: photo, onClose: () => setPhoto(null) })),
         moving && acts && (react_1.default.createElement(MoveItemSheet, { item: moving, from: r, records: acts.records || [], onCancel: () => setMoving(null), onMove: (toId) => { acts.onMoveItem(r, moving, toId); setMoving(null); }, onCreate: (name, date) => { acts.onCreateAndMove(r, moving, name, date); setMoving(null); } }))));
@@ -22917,7 +22917,7 @@ function PlanCard({ plan, records, onOpen, onPin, pressProps }) {
    **札ごとに書き写さないこと。** 見た目と当たりの大きさがずれる */
 function PinButton({ on, onClick, color }) {
     const c = color || { soft: "var(--th-100)", deep: "var(--th-900)" };
-    return (react_1.default.createElement("button", { type: "button", onClick: onClick, "aria-label": on ? "固定を解除" : "上に固定", "aria-pressed": !!on, className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: on ? { background: c.soft, color: c.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
+    return (react_1.default.createElement("button", { type: "button", onClick: onClick, onPointerDown: (e) => e.stopPropagation(), "aria-label": on ? "固定を解除" : "上に固定", "aria-pressed": !!on, className: "w-9 h-9 shrink-0 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: on ? { background: c.soft, color: c.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
         react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") },
             react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: on ? "currentColor" : "none" }))));
 }
