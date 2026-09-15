@@ -24341,15 +24341,13 @@ html { scrollbar-gutter: stable; }
 .mt-5 { margin-top: 1.25rem; }
 .-mr-0\\.5 { margin-right: -.125rem; }
 /* 控えを取っていないことを知らせる色。**赤にしないこと**（こわれた合図に見える） */
-.bg-amber-100 { background-color: #FEF3C7; }
-.bg-amber-50 { background-color: #FFFBEB; }
-.border-amber-200 { border-color: #FDE68A; }
-.text-amber-900 { color: #78350F; }
-.text-amber-700 { color: #B45309; }
-.text-amber-400 { color: #FBBF24; }
-.text-amber-800 { color: #92400E; }
-.border-amber-200 { border-color: #FDE68A; }
-.bg-amber-50 { background-color: #FFFBEB; }
+.bg-amber-100 { background-color: var(--color-warning-surface-strong); }
+.bg-amber-50 { background-color: var(--color-warning-surface); }
+.border-amber-200 { border-color: var(--color-warning-border); }
+.text-amber-900 { color: var(--color-warning-text-strong); }
+.text-amber-700 { color: var(--color-warning-text); }
+.text-amber-400 { color: var(--color-warning-text-soft); }
+.text-amber-800 { color: var(--color-warning-text-strong); }
 .ring-2 { box-shadow: 0 0 0 2px var(--ft-ring, #fff); }
 .ring-white { --ft-ring: #fff; }
 .w-\\[34px\\] { width: 34px; }
@@ -24361,13 +24359,6 @@ html { scrollbar-gutter: stable; }
 .h-2\\.5 { height: .625rem; }
 .ring-2 { box-shadow: 0 0 0 2px currentColor; }
 .ring-white { color: #FFFFFF; }
-.bg-amber-100 { background-color: #FEF3C7; }
-.bg-amber-50 { background-color: #FFFBEB; }
-.border-amber-200 { border-color: #FDE68A; }
-.text-amber-900 { color: #78350F; }
-.text-amber-700 { color: #B45309; }
-.text-amber-400 { color: #FBBF24; }
-.text-amber-800 { color: #92400E; }
 .-ml-2 { margin-left: -.5rem; }
 .-mx-4 { margin-left: -1rem; margin-right: -1rem; }
 .outline-none { outline: 2px solid transparent; outline-offset: 2px; }
@@ -24401,7 +24392,7 @@ html { scrollbar-gutter: stable; }
 /* 見積もりの欄だけ、行に収まる高さにする。**中の余白も詰めること**（字が切れる） */
 .ft-min { height: 2.25rem; min-height: 2.25rem; padding: 0 .25rem; }
 .w-\\[calc\\(100\\%\\+8px\\)\\] { width: calc(100% + 8px); }
-.bg-amber-500 { background-color: #F59E0B; }
+.bg-amber-500 { background-color: var(--color-warning); }
 .pb-3 { padding-bottom: .75rem; }
 /* 中身の柱の幅。**画面ごとにばらばらの max-w-* を書かないこと。**
    見出し・中身・下タブがそれぞれ違う幅になって、目線が落ち着かない。
@@ -24742,14 +24733,14 @@ button:active { transition-duration: 60ms; }
 .bg-ink{background-color:#141416}
 .bg-ink:hover{background-color:#000000}
 .text-ink{color:#141416}
-.bg-rose-700{background-color:#BE123C}
-.bg-rose-800{background-color:#9F1239}
-.hover\\:bg-rose-800:hover{background-color:#9F1239}
-.bg-rose-50{background-color:#FFF1F2}
-.hover\\:bg-rose-50:hover{background-color:#FFF1F2}
-.text-rose-700{color:#BE123C}
-.hover\\:text-rose-700:hover{color:#BE123C}
-.border-rose-200{border-color:#FECDD3}
+.bg-rose-700{background-color:var(--color-danger)}
+.bg-rose-800{background-color:var(--color-danger-strong)}
+.hover\\:bg-rose-800:hover{background-color:var(--color-danger-strong)}
+.bg-rose-50{background-color:var(--color-danger-surface)}
+.hover\\:bg-rose-50:hover{background-color:var(--color-danger-surface)}
+.text-rose-700{color:var(--color-danger)}
+.hover\\:text-rose-700:hover{color:var(--color-danger)}
+.border-rose-200{border-color:var(--color-danger-border)}
 .text-white{color:#FFFFFF}
 .bg-white{background-color:#FFFFFF}
 
