@@ -17248,15 +17248,43 @@ const KEY = (name) => `hibi-${name}`;
    ・まず専用ストレージ、だめなら端末の localStorage へ、と二段構え
      （片方が使えない環境でも記録が消えないようにするため）
    ============================================================ */
-async function storageGet(key) {
+/* 置き場はふたつある。専用ストレージ（window.storage）と、端末の控え（localStorage）。
+   **どちらが新しいかを、読む側が必ず分かるようにしておくこと。**
+   専用ストレージへの書き込みだけが失敗したり、まだ生えていなかったりすると、
+   控えのほうが新しくなる。それを知らずに専用ストレージを先に読むと、
+   画面で付けたチェックが、開き直したときに消える（先祖返り）。
+   書けなかったキーには印を立て、印が立っているあいだは控えを正とする。
+   両方そろって書けたら、その場で印を外す */
+const LOCAL_NEWER = (key) => `${key}::localnewer`;
+function markLocalNewer(key, on) {
     try {
-        if (typeof window !== "undefined" && window.storage && window.storage.get) {
-            const res = await window.storage.get(key, false);
-            if (res && typeof res.value === "string")
-                return res.value;
-        }
+        if (on)
+            localStorage.setItem(LOCAL_NEWER(key), "1");
+        else
+            localStorage.removeItem(LOCAL_NEWER(key));
     }
-    catch (e) { /* 次の手段へ */ }
+    catch (e) { /* noop */ }
+}
+function isLocalNewer(key) {
+    try {
+        return localStorage.getItem(LOCAL_NEWER(key)) === "1";
+    }
+    catch (e) {
+        return false;
+    }
+}
+async function storageGet(key) {
+    /* **印が立っているときは、専用ストレージを見ないこと。** 古い中身が返る */
+    if (!isLocalNewer(key)) {
+        try {
+            if (typeof window !== "undefined" && window.storage && window.storage.get) {
+                const res = await window.storage.get(key, false);
+                if (res && typeof res.value === "string")
+                    return res.value;
+            }
+        }
+        catch (e) { /* 次の手段へ */ }
+    }
     try {
         return localStorage.getItem(key);
     }
@@ -17273,6 +17301,8 @@ async function storageSetRaw(key, value) {
                 localStorage.setItem(key, value);
             }
             catch (e) { /* 控えは失敗しても構わない */ }
+            /* 専用ストレージに入った＝こちらが正。印は外す */
+            markLocalNewer(key, false);
             return { ok: true };
         }
     }
@@ -17281,6 +17311,9 @@ async function storageSetRaw(key, value) {
     }
     try {
         localStorage.setItem(key, value);
+        /* 控えにしか入っていない。**印を立てておくこと。**
+           立て忘れると、次に開いたとき専用ストレージの古い中身が読まれる */
+        markLocalNewer(key, true);
         return { ok: true };
     }
     catch (e) {
@@ -22144,13 +22177,13 @@ function SelectButton({ sel, onDark }) {
    釦の左はしは、えらんだときに出るまると同じところに来るようにしてある */
 /* 一覧の頭の行。
    ふだん … 左＝件数、右＝並べかえ、そのとなりに「選択」
-   えらぶあいだ … 左＝「すべて選択／すべて選択解除」、右＝「完了」
+   えらぶあいだ … 左＝「すべて選択／選択解除」、右＝「完了」
    **アイコンだけにしないこと。** 字のほうが、何が起きるか分かる */
 function ListHeadRow({ sel, list, right, sort }) {
     const all = sel && sel.on ? sel.allOf(list || []) : false;
     if (sel && sel.on) {
         return (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
-            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(list || []), className: "h-9 px-0 rounded-lg fs-body font-bold text-th-900 ft-tap text-left" }, all ? "すべて選択解除" : "すべて選択"),
+            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(list || []), className: "h-9 px-0 rounded-lg fs-body font-bold text-th-900 ft-tap text-left" }, all ? "選択解除" : "すべて選択"),
             react_1.default.createElement("span", { className: "flex-1" }),
             sort,
             react_1.default.createElement("button", { type: "button", onMouseDown: (e) => e.preventDefault(), onClick: sel.stop, className: "h-9 px-2 -mr-2 ml-1 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86")));
@@ -22315,7 +22348,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         react_1.default.createElement("div", { className: "px-5" },
             react_1.default.createElement(MonthNavHeader, { className: "mb-1 mt-1", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
             span === "day" && (sel.on ? (react_1.default.createElement("div", { className: "flex items-center gap-2 mt-1 mb-3" },
-                react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(dayList.filter((r) => !hidden.includes(r.type))), className: "h-9 px-0 rounded-lg fs-body font-bold text-th-900 ft-tap text-left" }, sel.allOf(dayList.filter((r) => !hidden.includes(r.type))) ? "すべて選択解除" : "すべて選択"),
+                react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(dayList.filter((r) => !hidden.includes(r.type))), className: "h-9 px-0 rounded-lg fs-body font-bold text-th-900 ft-tap text-left" }, sel.allOf(dayList.filter((r) => !hidden.includes(r.type))) ? "選択解除" : "すべて選択"),
                 react_1.default.createElement("span", { className: "flex-1" }),
                 react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
                 react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: "h-9 px-2 -mr-2 ml-1 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86"))) : (react_1.default.createElement("div", { className: "flex items-center gap-1 mt-1 mb-3" },
@@ -23042,9 +23075,9 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
                 if (k === "__rename")
                     setEdit(m);
                 else if (k === "__done")
-                    onChangePlan({ ...m.plan, doneAt: todayStr() });
+                    onChangePlan(m.plan.id, (p) => ({ ...p, doneAt: todayStr() }));
                 else if (k === "__undone")
-                    onChangePlan({ ...m.plan, doneAt: "" });
+                    onChangePlan(m.plan.id, (p) => ({ ...p, doneAt: "" }));
                 else
                     setDel(m);
             } })),
@@ -23251,7 +23284,9 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     }, [planRecords]);
     /* 2段のチェックリスト */
     const steps = plan.steps || [];
-    const setStep = (s) => onChange({ ...plan, steps: steps.map((x) => (x.id === s.id ? s : x)) });
+    /* **plan を丸ごと写して渡さないこと。** 描き直しより早く次が来ると、
+       一度目の直しが消える（イベントの印が戻る） */
+    const setStep = (s) => onChange(plan.id, (p) => ({ ...p, steps: (p.steps || []).map((x) => (x.id === s.id ? s : x)) }));
     /* イベント1件だけを、その場の最新の姿から直す。
        **印の入り切りで setStep を使わないこと。**
        setStep は、いま描かれている plan を丸ごと写して渡すので、
@@ -23268,7 +23303,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
         isNew: true,
     });
     const editStep = (s) => setStepEdit({ step: s, isNew: false });
-    const delStep = (id) => onChange({ ...plan, steps: steps.filter((x) => x.id !== id) });
+    const delStep = (id) => onChange(plan.id, (p) => ({ ...p, steps: (p.steps || []).filter((x) => x.id !== id) }));
     const saveStep = (s, toPlanId) => {
         const isNew = stepEdit && stepEdit.isNew;
         /* **別の計画へ移すときは、元から外してから入れること。**
@@ -23278,7 +23313,10 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
             setStepEdit(null);
             return;
         }
-        onChange({ ...plan, steps: isNew ? [...steps, s] : steps.map((x) => (x.id === s.id ? s : x)) });
+        onChange(plan.id, (p) => ({
+            ...p,
+            steps: isNew ? [...(p.steps || []), s] : (p.steps || []).map((x) => (x.id === s.id ? s : x)),
+        }));
         setStepEdit(null);
     };
     const doneSteps = steps.filter((s) => stepDone(s)).length;
@@ -23344,7 +23382,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                     planRecords.length > 0 && !sel.on && react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
                     planRecords.length > 0 && (sel.on
                         ? react_1.default.createElement(react_1.default.Fragment, null,
-                            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(planRecords), className: "h-9 px-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, sel.allOf(planRecords) ? "すべて選択解除" : "すべて選択"),
+                            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(planRecords), className: "h-9 px-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, sel.allOf(planRecords) ? "選択解除" : "すべて選択"),
                             react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: "h-9 px-2 -mr-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86"))
                         : react_1.default.createElement("button", { type: "button", onClick: sel.start, className: "h-9 px-2 -mr-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "\u9078\u629E"))),
                 pinned.length > 0 && (react_1.default.createElement("div", { className: "mb-4" },
@@ -23585,7 +23623,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                                 " \u691C\u7D22\u3059\u308B"))),
                     !hasCriteria ? null : results.length === 0 ? (react_1.default.createElement("p", { className: "fs-body text-neutral-400 py-10 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093")) : (react_1.default.createElement(react_1.default.Fragment, null,
                         react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
-                            react_1.default.createElement("button", { type: "button", onClick: pickAll, className: "h-9 px-2 -ml-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, allShown ? "すべて選択解除" : "すべて選択"),
+                            react_1.default.createElement("button", { type: "button", onClick: pickAll, className: "h-9 px-2 -ml-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, allShown ? "選択解除" : "すべて選択"),
                             react_1.default.createElement("span", { className: "flex-1" }),
                             react_1.default.createElement("p", { className: "fs-label font-bold text-neutral-500 tabular-nums" },
                                 results.length,
@@ -24899,9 +24937,12 @@ function AppMain() {
             if (keptFolders.length !== allFolders.length)
                 saveList(FOLDER_KEY, keptFolders);
             try {
-                setTagMasterState(normalizeTags(JSON.parse(tg || "[]")));
+                const loadedTags = normalizeTags(JSON.parse(tg || "[]"));
+                tagMasterRef.current = loadedTags;
+                setTagMasterState(loadedTags);
             }
             catch (e) {
+                tagMasterRef.current = [];
                 setTagMasterState([]);
             }
             try {
@@ -24910,6 +24951,7 @@ function AppMain() {
                 setChangedAt(ca || "");
             }
             catch (e) { /* noop */ }
+            prefsRef.current = pf;
             setPrefsState(pf);
             try {
                 const d = dr ? migrateRecord(JSON.parse(dr)) : null;
@@ -24951,6 +24993,10 @@ function AppMain() {
     const plansRef = (0, react_1.useRef)(plans);
     const kindsRef = (0, react_1.useRef)(kinds);
     const foldersRef = (0, react_1.useRef)(folders);
+    /* **タグと表示設定にも覚えを持たせること。** 記録だけ直しても、
+       記録を保存したときに複数のタグをまとめて足す道で、最後のひとつしか残らない */
+    const tagMasterRef = (0, react_1.useRef)(tagMaster);
+    const prefsRef = (0, react_1.useRef)(prefs);
     /* **描き直しのたびに、覚えを書き戻さないこと。**
        覚えのほうが先に進んでいるのに、いま描いている古い値で上書きすると、
        続けて押したぶんが取りこぼされる（直そうとした不具合そのものが戻る）。
@@ -24970,16 +25016,26 @@ function AppMain() {
                 tell("保存できませんでした。写真を減らすか、バックアップを取ってから古い記録を消してください");
             }
         });
+        /* **入れた値をそのまま返すこと。** 呼ぶ側が「いまの一覧」を
+           render スコープから拾い直さずに済む（そこが先祖返りの入り口だった） */
+        return v;
     }, []);
-    const setPlans = (0, react_1.useCallback)((next) => { const v = resolveNext(next, plansRef); setPlansState(v); bumpChanged(); saveList(PLAN_KEY, v); }, []); // eslint-disable-line
-    const setKinds = (0, react_1.useCallback)((next) => { const v = resolveNext(next, kindsRef); setKindsState(v); bumpChanged(); saveList(KIND_KEY, v); }, []); // eslint-disable-line
-    const setFolders = (0, react_1.useCallback)((next) => { const v = resolveNext(next, foldersRef); setFoldersState(v); bumpChanged(); saveList(FOLDER_KEY, v); }, []); // eslint-disable-line
+    const setPlans = (0, react_1.useCallback)((next) => { const v = resolveNext(next, plansRef); setPlansState(v); bumpChanged(); saveList(PLAN_KEY, v); return v; }, []); // eslint-disable-line
+    const setKinds = (0, react_1.useCallback)((next) => { const v = resolveNext(next, kindsRef); setKindsState(v); bumpChanged(); saveList(KIND_KEY, v); return v; }, []); // eslint-disable-line
+    const setFolders = (0, react_1.useCallback)((next) => { const v = resolveNext(next, foldersRef); setFoldersState(v); bumpChanged(); saveList(FOLDER_KEY, v); return v; }, []); // eslint-disable-line
     const setTagMaster = (0, react_1.useCallback)((next) => {
-        const v = normalizeTags(next);
+        const v = normalizeTags(resolveNext(next, tagMasterRef));
+        tagMasterRef.current = v;
         setTagMasterState(v);
         storageSet(TAG_KEY, JSON.stringify(v));
+        return v;
     }, []);
-    const savePrefs = (0, react_1.useCallback)((next) => { setPrefsState(next); persistPrefs(next); }, []);
+    const savePrefs = (0, react_1.useCallback)((next) => {
+        const v = resolveNext(next, prefsRef);
+        setPrefsState(v);
+        persistPrefs(v);
+        return v;
+    }, []);
     /* 画面に出すタグの一覧。一覧と記録の両方から作る。
        **記録から集めるだけにしないこと。** それだけだと、記録を消したとたんタグも選べなくなる */
     /* **並びを勝手に五十音順にしないこと。** よく使うタグを上に置きたい人がいる。
@@ -24993,16 +25049,21 @@ function AppMain() {
             .sort((a, b) => a.localeCompare(b, "ja"));
         return [...master, ...rest];
     }, [tagMaster, records]);
+    /* **render スコープの tagMaster から作り直さないこと。**
+       記録を保存したときタグを何個かまとめて足すので、
+       そこで古い一覧を写すと、最後のひとつしか残らない */
     const addTagToMaster = (0, react_1.useCallback)((t) => {
         const v = normalizeTags([t])[0];
         if (!v)
             return;
-        setTagMaster([...tagMaster, v]);
-    }, [tagMaster, setTagMaster]);
+        setTagMaster((prev) => (prev.some((x) => x.toLowerCase() === v.toLowerCase()) ? prev : [...prev, v]));
+    }, [setTagMaster]);
     /* タグの並べかえ。**一覧に無いタグも、ここで一覧へ入れること。**
        入れないと、次に開いたときに元の場所へ戻ってしまう */
+    const knownTagsRef = (0, react_1.useRef)(knownTags);
+    knownTagsRef.current = knownTags;
     const moveTag = (0, react_1.useCallback)((tag, dir) => {
-        const list = knownTags.slice();
+        const list = knownTagsRef.current.slice();
         const i = list.indexOf(tag);
         if (i < 0)
             return;
@@ -25012,7 +25073,7 @@ function AppMain() {
         list.splice(i, 1);
         list.splice(j, 0, tag);
         setTagMaster(list);
-    }, [knownTags, setTagMaster]);
+    }, [setTagMaster]);
     const typeNames = (0, react_1.useMemo)(() => {
         const out = { ...TYPE_LABELS };
         TYPES.forEach((t) => { const v = (prefs.typeName || {})[t]; if (v && v.trim())
@@ -25038,9 +25099,13 @@ function AppMain() {
         /* 写真は記録の中に持たず、置き場へ移してから保存する。
            **この一手を飛ばさないこと。** すぐに保存できなくなる */
         const rec = await stashPhotos(clean);
-        const exists = records.some((r) => r.id === rec.id);
-        const next = exists ? records.map((r) => (r.id === rec.id ? rec : r)) : [...records, rec];
-        setRecords(next);
+        /* **ここで render スコープの records を写さないこと。**
+           写真の退避（await）を待っているあいだに、下の一覧で付けられた
+           チェックが、この一行で丸ごと古い姿に塗り替えられる（先祖返り）。
+           かならず「ひとつ前をもらって次を返す」書き方にする */
+        setRecords((prev) => (prev.some((r) => r.id === rec.id)
+            ? prev.map((r) => (r.id === rec.id ? rec : r))
+            : [...prev, rec]));
         normalizeTags(rec.tags).forEach((t) => { if (!knownTags.some((k) => k.toLowerCase() === t.toLowerCase()))
             addTagToMaster(t); });
         if (!opts.keepOpen) {
@@ -25051,13 +25116,12 @@ function AppMain() {
         }
     };
     const deleteRecord = (id) => {
-        const next = records.filter((r) => r.id !== id);
-        setRecords(next);
+        const next = setRecords((prev) => prev.filter((r) => r.id !== id));
         /* **記録だけを渡さないこと。** 計画やフォルダのアイコン、
            見出しの帯の写真まで「使われていない」と見なされて消えてしまう */
         /* **いま開いている記録を、そのまま数に入れないこと。**
            消した当の記録が「まだ使っている」ことになり、絵が置き場に残り続ける */
-        sweepPhotos({ records: next, plans, kinds, folders, prefs, draft, editing: (editing && editing.id === id) ? null : editing });
+        sweepPhotos({ records: next, plans: plansRef.current, kinds: kindsRef.current, folders: foldersRef.current, prefs: prefsRef.current, draft, editing: (editing && editing.id === id) ? null : editing });
         setEditing(null);
         tell("削除しました");
     };
@@ -25066,12 +25130,12 @@ function AppMain() {
         if (!ids || !ids.length)
             return;
         const set = new Set(ids);
-        const left = records.filter((r) => !set.has(r.id));
-        setRecords(left);
-        sweepPhotos({ records: left, plans, kinds, folders, prefs, draft, editing: (editing && set.has(editing.id)) ? null : editing });
-        const nf = folders.map((f) => ({ ...f, picked: (f.picked || []).filter((x) => !set.has(x)) }));
-        if (JSON.stringify(nf) !== JSON.stringify(folders))
-            setFolders(nf);
+        const left = setRecords((prev) => prev.filter((r) => !set.has(r.id)));
+        sweepPhotos({ records: left, plans: plansRef.current, kinds: kindsRef.current, folders: foldersRef.current, prefs: prefsRef.current, draft, editing: (editing && set.has(editing.id)) ? null : editing });
+        /* **変わらないときは書かないこと。** 触っていないのに
+           「まだ控えを取っていない」と数えられてしまう */
+        if (foldersRef.current.some((f) => (f.picked || []).some((x) => set.has(x))))
+            setFolders((prev) => prev.map((f) => ({ ...f, picked: (f.picked || []).filter((x) => !set.has(x)) })));
         tell(`${ids.length}件を削除しました`);
     };
     /* チェックの入れ外し。
@@ -25128,8 +25192,8 @@ function AppMain() {
             title: name, tags: from.tags, planId: from.planId,
             items: [{ ...item, id: uid(), done: false }],
         };
-        setRecords([
-            ...records.map((r) => (r.id === from.id ? { ...r, items: r.items.filter((i) => i.id !== item.id), updatedAt: new Date().toISOString() } : r)),
+        setRecords((prev) => [
+            ...prev.map((r) => (r.id === from.id ? { ...r, items: r.items.filter((i) => i.id !== item.id), updatedAt: new Date().toISOString() } : r)),
             fresh,
         ]);
         tell("新しいリストへ移しました");
@@ -25188,7 +25252,7 @@ function AppMain() {
         const v = normalizeTags([to])[0];
         if (!v)
             return;
-        setTagMaster(tagMaster.map((t) => (t === from ? v : t)));
+        setTagMaster((prev) => prev.map((t) => (t === from ? v : t)));
         setRecords((prev) => prev.map((r) => {
             const has = normalizeTags(r.tags).some((t) => t.toLowerCase() === from.toLowerCase());
             return has ? { ...r, tags: normalizeTags(r.tags.map((t) => (t.toLowerCase() === from.toLowerCase() ? v : t))) } : r;
@@ -25196,7 +25260,7 @@ function AppMain() {
         setFolders((prev) => prev.map((f) => ({ ...f, tags: normalizeTags(f.tags.map((t) => (t.toLowerCase() === from.toLowerCase() ? v : t))) })));
     };
     const deleteTag = (t) => {
-        setTagMaster(tagMaster.filter((x) => x !== t));
+        setTagMaster((prev) => prev.filter((x) => x !== t));
         setRecords((prev) => prev.map((r) => ({ ...r, tags: normalizeTags(r.tags).filter((x) => x.toLowerCase() !== t.toLowerCase()) })));
         setFolders((prev) => prev.map((f) => ({ ...f, tags: normalizeTags(f.tags).filter((x) => x.toLowerCase() !== t.toLowerCase()) })));
     };
@@ -25250,7 +25314,7 @@ function AppMain() {
         if (pl)
             base.planId = pl;
         if (fo)
-            setFolders(folders.map((f) => (f.id === fo ? { ...f, picked: [...(f.picked || []), base.id] } : f)));
+            setFolders((prev) => prev.map((f) => (f.id === fo ? { ...f, picked: [...(f.picked || []), base.id] } : f)));
         setEditing(base);
     };
     const addScoped = (scope, dateKey) => { setScoped({ scope, dateKey }); setTypePick(true); };
@@ -25321,10 +25385,10 @@ function AppMain() {
                                 !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page" },
                                     react_1.default.createElement("div", { className: "ft-col" },
                                         tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
-                                            react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
-                                        tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
-                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan({ ...pl, pinned: !pl.pinned }), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }) })),
-                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs({ ...prefs, sortOrder: v }), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder }))))),
+                                            react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped }))),
+                                        tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
+                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })) })),
+                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder }))))),
                                 loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                                 loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => { setTab(k); } }),
                                 react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, onClose: () => setMenuOpen(false), items: menuItems, 
@@ -25343,8 +25407,8 @@ function AppMain() {
                                 addPlanOpen && (react_1.default.createElement(NameIconSheet, { title: "\u8A08\u753B\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: true, photo: false, placeholder: "\u82F1\u8A9E\uFF0F\u4F53\u3065\u304F\u308A \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), onCancel: () => setAddPlanOpen(false), onSave: (n, ic) => { addPlan(null, n, ic); setAddPlanOpen(false); } })),
                                 addFolderOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: false, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 28 }), onCancel: () => setAddFolderOpen(false), onSave: (n, ic) => { addFolder(n, ic); setAddFolderOpen(false); } })),
                                 editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
-                                dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                                planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, plans: plans, onMoveStep: moveStep, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
+                                dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
+                                planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, plans: plans, onMoveStep: moveStep, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
                                         if (type) {
                                             setEditing({ ...emptyRecord(type, todayStr()), planId: pl.id });
                                             return;
@@ -25352,14 +25416,14 @@ function AppMain() {
                                         setInPlan(pl.id);
                                         setTypePick(true);
                                     }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                                folderObj && (react_1.default.createElement(FolderDetail, { folder: folderObj, records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs({ ...prefs, recordOrder: v }), onCreateTag: addTagToMaster, onClose: () => setFolderOpen(null), onChange: changeFolder, onDelete: deleteFolder, onAddRecord: (f) => { setInFolder(f.id); setTypePick(true); }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
+                                folderObj && (react_1.default.createElement(FolderDetail, { folder: folderObj, records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onCreateTag: addTagToMaster, onClose: () => setFolderOpen(null), onChange: changeFolder, onDelete: deleteFolder, onAddRecord: (f) => { setInFolder(f.id); setTypePick(true); }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
                                 settingsOpen && react_1.default.createElement(SettingsScreen, { prefs: prefs, onSave: savePrefs, onClose: () => setSettingsOpen(false) }),
                                 tagScreenOpen && (react_1.default.createElement(TagManageScreen, { tags: knownTags, records: records, onMove: moveTag, onReorder: setTagMaster, onAdd: addTagToMaster, onRename: renameTag, onDelete: deleteTag, onClose: () => setTagScreenOpen(false) })),
                                 backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, onClose: () => setBackupOpen(false), onRestore: restore, needBackup: needBackup, backupAt: backupAt, unsavedCount: unsavedCount, onBackedUp: () => {
                                         const now = new Date().toISOString();
                                         setBackupAt(now);
                                         storageSet(BACKUP_AT_KEY, now);
-                                        savePrefs({ ...prefs, lastBackup: now });
+                                        savePrefs((p) => ({ ...p, lastBackup: now }));
                                     } })),
                                 helpOpen && react_1.default.createElement(HelpScreen, { onClose: () => setHelpOpen(false) }),
                                 react_1.default.createElement(Toast, { msg: msg })))))))));
