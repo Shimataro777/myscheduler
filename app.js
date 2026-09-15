@@ -22961,7 +22961,13 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
     const goTab = (key) => { if (searching)
         setQ(""); setTab(key); };
     const stepTab = (dir) => {
-        const i = Math.max(0, Math.min(PLAN_TABS.length - 1, tabIndex + dir));
+        /* **端で止めないこと。** 「すべて」からさらに右へ払えば「進行中」へ、
+           「進行中」からさらに左へ払えば「すべて」へ、輪になってつながる。
+           固定の3件なので負の剰余も想定して +length してから% を取る */
+        const n = PLAN_TABS.length;
+        const i = ((tabIndex + dir) % n + n) % n;
+        if (searching)
+            setQ("");
         setTab(PLAN_TABS[i].key);
     };
     const { areaRef } = useSwipePages(() => stepTab(-1), () => stepTab(1));
