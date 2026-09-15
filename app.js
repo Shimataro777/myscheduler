@@ -19609,7 +19609,7 @@ function PlanSelect({ value, onChange, plans, placeholder = "計画を選択", t
                app.css の並び順によっては w-full が勝ってしまい、行ごとに幅が変わる */
             className: (className ? inputCls.replace("w-full ", "") : inputCls)
                 + " flex items-center justify-between text-left disabled:opacity-50 " + (className || "") },
-            react_1.default.createElement("span", { className: current ? "text-neutral-900 truncate" : "text-neutral-400 truncate" }, current ? (current.name || "\uFF08\u540D\u524D\u306A\u3057\uFF09") : placeholder),
+            react_1.default.createElement("span", { className: current ? "fs-subhead text-neutral-900 truncate" : "fs-subhead text-neutral-400 truncate" }, current ? (current.name || "\uFF08\u540D\u524D\u306A\u3057\uFF09") : placeholder),
             react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-500 shrink-0 ml-2" })),
         open && (react_1.default.createElement(WheelSheet, { plain: true, title: title || placeholder, onClose: () => setOpen(false), onConfirm: confirm, onClear: noEmpty ? null : () => { onChange(""); setOpen(false); } },
             react_1.default.createElement("div", { className: "w-full" },
@@ -24480,7 +24480,7 @@ html { scrollbar-gutter: stable; }
 /* 入力欄の文字は必ず16px。
    iPhoneのSafariは、16pxより小さい入力欄に触れると画面を勝手に拡大し、
    横にも動くようになって書きづらくなる。文字の大きさの設定からも外してある */
-.ft-input { font-size: 16px; }
+.ft-input { font-size: max(16px, calc(16px * var(--ft-scale))); }
 
 /* タップの質を上げるための共通設定。
    端末が勝手に出す青い枠や灰色の膜を消し、待ち時間をなくす */
@@ -24786,7 +24786,7 @@ button:active { transition-duration: 60ms; }
      区切りがはっきり分かるよう、ふだんの余白（12px）にこの分だけ足す（目安2行ぶん） */
 .ft-group-row { padding: 12px 16px; }
 .ft-group-row + .ft-group-row { border-top: 1px solid #E5E5E5; }
-.ft-group-input { width: 100%; background: transparent; border: 0; outline: none; font-size: 15.5px; color: #171717; }
+.ft-group-input { width: 100%; background: transparent; border: 0; outline: none; font-size: max(16px, calc(15.5px * var(--ft-scale))); color: #171717; }
 .ft-group-input::placeholder { color: #A3A3A3; }
 .ft-gap-tasknote { margin-top: 52px; }
 `;
