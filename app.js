@@ -17410,9 +17410,20 @@ function scheduleVerify(key, expect) {
         catch (e) {
             return;
         }
-        if (got === expect || writeLatest.has(key)) {
+        if (writeLatest.has(key)) {
             verifyTries.delete(key);
             return;
+        }
+        if (got === expect) {
+            /* **控えと一致しただけで「そろった」としないこと。**
+               印（::localnewer）が立っているあいだは、控えを読んでいるので必ず一致する。
+               専用ストレージは古いまま残り、控えが消えた（端末の入れ直し・更新など）とたん
+               古い中身に戻る。表示設定やフォルダのように**めったに書かないキーほど**
+               次の書き込みで上書きされる機会がなく、ここで直さないと永久に古いまま */
+            if (!(isLocalNewer(key) && hasPrimaryStorage())) {
+                verifyTries.delete(key);
+                return;
+            }
         }
         const n = (verifyTries.get(key) || 0) + 1;
         if (n > 2) {
@@ -17420,9 +17431,36 @@ function scheduleVerify(key, expect) {
             return;
         }
         verifyTries.set(key, n);
-        console.warn("保存を読み返したら食い違っていたので、書き直します", key);
+        if (got === expect)
+            console.warn("控えにしか入っていなかったので、専用ストレージへ入れ直します", key);
+        else
+            console.warn("保存を読み返したら食い違っていたので、書き直します", key);
         storageSet(key, expect);
     }, 600));
+}
+function hasPrimaryStorage() {
+    return typeof window !== "undefined" && !!window.storage && typeof window.storage.set === "function";
+}
+/* 控えのほうが新しいまま残っているキーを、専用ストレージへ入れ直す。
+   起ち上がりと、画面に戻ってきたときに呼ぶ。
+   **印が立っているときだけ書くこと。** 立っていないのに控えで上書きすると、
+   専用ストレージの新しい中身を古い控えで塗りつぶす */
+function resyncLocalNewer(keys) {
+    if (!hasPrimaryStorage())
+        return;
+    for (const key of keys || []) {
+        if (!isLocalNewer(key) || writeLatest.has(key))
+            continue;
+        let v = null;
+        try {
+            v = localStorage.getItem(key);
+        }
+        catch (e) {
+            v = null;
+        }
+        if (typeof v === "string")
+            storageSet(key, v);
+    }
 }
 /* 壊れた中身でも必ず配列を返す。
    **この防御を外さないこと。** 保存された中身が配列でなかったり null が混ざったりすると
@@ -17466,6 +17504,8 @@ function markChanged() {
 }
 const PREF_KEY = KEY("prefs");
 const DRAFT_KEY = KEY("draft");
+/* 起ち上がりに「控えのほうが新しいままか」を確かめるキー。**キーを増やしたらここにも足すこと** */
+const SYNC_KEYS = [REC_KEY, PLAN_KEY, KIND_KEY, FOLDER_KEY, TAG_KEY, BACKUP_AT_KEY, CHANGED_AT_KEY, PREF_KEY, DRAFT_KEY, KEY("decophotos")];
 /* ============================================================
    小さな道具
    ============================================================ */
@@ -18291,6 +18331,17 @@ function folderRecords(folder, records) {
    ============================================================ */
 const PHOTO_DB = "hibi-photos";
 const PHOTO_STORE = "photos";
+/* 置き場（IndexedDB）を開くのを待つ上限。これを過ぎたら「開けなかった」とみなす */
+const PHOTO_DB_WAIT_MS = 4000;
+/* 置き場が開けた・控えから絵を戻せたことを、絵を出している部品へ知らせる。
+   **一度読めなかった部品を、そのままあきらめさせないこと。** */
+const photoListeners = new Set();
+function notifyPhotoStore() {
+    photoListeners.forEach((fn) => { try {
+        fn();
+    }
+    catch (e) { /* noop */ } });
+}
 const photoCache = new Map(); // 一度読んだ絵は覚えておく（何度も読みに行かない）
 let photoDbPromise = null;
 function photoDB() {
@@ -18301,20 +18352,38 @@ function photoDB() {
        そのあいだずっと「置き場が無い」ことになり、
        ヘッダーやアイコンが白いまま戻らなくなる。
        失敗したら覚えを捨てて、次にまた開き直せるようにする */
+    /* **返事を待ち続けないこと。** iPhone では、アプリを入れ直した直後や
+       更新の直後に indexedDB.open が成功も失敗も返さないまま止まることがある。
+       待ち続けると、写真の読み書きがすべて止まる（ヘッダーの保存が終わらない・絵が出ない）。
+       決まった時間で「開けなかった」とみなし、あとから開けたらそれを使う */
     let failed = false;
+    let settled = false;
     const p = new Promise((resolve) => {
-        const fail = () => {
-            failed = true;
-            if (photoDbPromise === p)
-                photoDbPromise = null;
-            resolve(null);
+        const finish = (db) => {
+            if (settled) {
+                /* 待ちきれずにあきらめたあとで開けた。次からはこれを使う */
+                if (db && !photoDbPromise)
+                    photoDbPromise = Promise.resolve(db);
+                return;
+            }
+            settled = true;
+            if (!db) {
+                failed = true;
+                if (photoDbPromise === p)
+                    photoDbPromise = null;
+            }
+            resolve(db);
+            if (db)
+                notifyPhotoStore();
         };
+        const fail = () => finish(null);
         try {
             if (typeof indexedDB === "undefined") {
                 resolve(null);
                 return;
             }
             const req = indexedDB.open(PHOTO_DB, 1);
+            setTimeout(() => { if (!settled) fail(); }, PHOTO_DB_WAIT_MS);
             req.onupgradeneeded = () => {
                 const db = req.result;
                 if (!db.objectStoreNames.contains(PHOTO_STORE))
@@ -18329,14 +18398,12 @@ function photoDB() {
                             db.close();
                         }
                         catch (e2) { /* 閉じられなくても構わない */ }
-                        if (photoDbPromise === p)
-                            photoDbPromise = null;
+                        photoDbPromise = null;
                     };
-                    db.onclose = () => { if (photoDbPromise === p)
-                        photoDbPromise = null; };
+                    db.onclose = () => { photoDbPromise = null; };
                 }
                 catch (e2) { /* 使えなくても構わない */ }
-                resolve(db);
+                finish(db);
             };
             req.onerror = fail;
             req.onblocked = fail;
@@ -18379,6 +18446,15 @@ async function photoGet(id) {
     if (typeof v === "string") {
         photoCache.set(id, v);
         return v;
+    }
+    /* 置き場に無い（消された・開けなかった）ときは、ヘッダーとアイコンの控えを見る。
+       見つかったら置き場へ戻しておく（次からは置き場で読める） */
+    const m = await loadDecoPhotos();
+    const d = m && m[id];
+    if (typeof d === "string" && d) {
+        photoCache.set(id, d);
+        photoTx("readwrite", (st) => st.put(d, id));
+        return d;
     }
     return null;
 }
@@ -18442,12 +18518,133 @@ async function sweepPhotos(all) {
         return;
     }
     const used = collectPhotoRefs(all);
+    /* **ヘッダーとアイコンの控えにある絵は、ここでは消さないこと。**
+       控えは表示設定・フォルダ・計画を保存したときに作り直すので、
+       使われなくなったものはそちらで外れ、次の片づけで消える。
+       ここで消すと、ほかのタブや古い版が持っていた古い一覧で数えたとき、
+       ヘッダーやアイコンの絵だけが置き場から消える */
+    const deco = await loadDecoPhotos();
     const keys = await photoTx("readonly", (st) => st.getAllKeys());
     if (!Array.isArray(keys))
         return;
     for (const k of keys)
-        if (!used.has(k))
+        if (!used.has(k) && !(deco && Object.prototype.hasOwnProperty.call(deco, k)))
             await photoDel(k);
+}
+/* ============================================================
+   ヘッダーの写真・フォルダ（計画）のアイコンの控え
+   **絵を置き場（IndexedDB）ひとつにだけ預けないこと。**
+   記録の写真は、保存するたびに記録と一緒に「使用中」と数えられ、
+   記録の一覧もしょっちゅう書き直されるので、どこかで取りこぼしても自然に戻る。
+   ヘッダーとアイコンは
+   ・絵は切り抜いた時点で置き場へ、参照（photo:番号）は「保存」を押した時点で
+     表示設定／フォルダへ、と**別々のときに別々の場所へ**書く
+   ・表示設定もフォルダも、めったに書き直されない
+   ・片づけ（sweepPhotos）が数えるようになったのは後の版から。
+     更新の直後に端末に残った古い本体が一度でも片づけを走らせると、
+     ヘッダーとアイコンの絵だけが置き場から消える（置き場は版をまたいで共通）
+   ので、一度欠けると戻る道がなかった。
+   そこで、表示設定と同じ置き場（専用ストレージ＋控え）にも絵を写しておき、
+   置き場に無いときはここから読んで置き場へ戻す
+   ============================================================ */
+const DECO_PHOTO_KEY = KEY("decophotos");
+let decoPhotos = null; // { 番号: 絵 }。読めていなければ null
+let decoLoading = null;
+function loadDecoPhotos() {
+    if (decoPhotos)
+        return Promise.resolve(decoPhotos);
+    if (decoLoading)
+        return decoLoading;
+    decoLoading = (async () => {
+        let raw = null;
+        try {
+            raw = await storageGet(DECO_PHOTO_KEY);
+        }
+        catch (e) {
+            raw = null;
+        }
+        let m = null;
+        try {
+            const o = raw ? JSON.parse(raw) : null;
+            if (o && typeof o === "object" && !Array.isArray(o))
+                m = o;
+        }
+        catch (e) {
+            m = null;
+        }
+        decoLoading = null;
+        /* **読めなかったことを「空だった」と覚えないこと。** 次にまた読みにいく */
+        if (m)
+            decoPhotos = m;
+        return m || {};
+    })();
+    return decoLoading;
+}
+/* 表示設定・フォルダ・計画から、いま使っている photo: を集めて控えを作り直す。
+   **絵が手元に無い番号があるときは、書かないこと。**
+   控えの読み込みにたまたま失敗しただけのときに、控えにしか残っていない絵を
+   空の一覧で上書きして消してしまう */
+let decoSyncTimer = null;
+let decoSyncGetter = null;
+let decoSyncRunning = Promise.resolve();
+function scheduleDecoSync(getter) {
+    decoSyncGetter = getter;
+    if (decoSyncTimer)
+        clearTimeout(decoSyncTimer);
+    decoSyncTimer = setTimeout(() => {
+        decoSyncTimer = null;
+        decoSyncRunning = decoSyncRunning.then(() => syncDecoPhotos(decoSyncGetter), () => syncDecoPhotos(decoSyncGetter));
+    }, 300);
+}
+async function syncDecoPhotos(getter) {
+    try {
+        const src = typeof getter === "function" ? getter() : getter;
+        if (!src)
+            return;
+        const ids = collectPhotoRefs({ prefs: src.prefs, folders: src.folders, plans: src.plans });
+        let before = await loadDecoPhotos();
+        const next = {};
+        const missing = [];
+        for (const id of ids) {
+            let v = (before && typeof before[id] === "string" && before[id]) ? before[id] : null;
+            if (!v)
+                v = await photoGet(id);
+            if (v)
+                next[id] = v;
+            else
+                missing.push(id);
+        }
+        if (missing.length) {
+            /* 控えを読めていなかったのかもしれない。少し置いて、もう一度だけ読みにいく */
+            if (!decoPhotos) {
+                await new Promise((r) => setTimeout(r, 800));
+                before = await loadDecoPhotos();
+                for (const id of missing.slice()) {
+                    const v = before && before[id];
+                    if (typeof v === "string" && v) {
+                        next[id] = v;
+                        photoCache.set(id, v);
+                        missing.splice(missing.indexOf(id), 1);
+                    }
+                }
+            }
+            /* それでも無いものは、どこにも残っていない。
+               **ここで止めないこと。** 止めると、あとから設定した絵の控えもずっと作られない */
+            if (missing.length)
+                console.warn("ヘッダー・アイコンの絵がどこにも残っていません（設定し直すか、写真入りのバックアップから戻してください）", missing);
+        }
+        const oldKeys = Object.keys(before || {}).sort().join(",");
+        const newKeys = Object.keys(next).sort().join(",");
+        if (oldKeys === newKeys)
+            return;
+        decoPhotos = next;
+        const res = await storageSet(DECO_PHOTO_KEY, JSON.stringify(next));
+        if (res && res.ok === false)
+            console.error("ヘッダー・アイコンの控えを保存できませんでした", res.message);
+    }
+    catch (e) {
+        console.error("ヘッダー・アイコンの控えを作れませんでした", e);
+    }
 }
 /* 写真1枚のおよその重さ：長辺900px・webp0.72 で 40〜80KB ほど。
    **これ以上大きくしないこと。** 端末の保存できる量（5MBほど）はすぐ埋まる */
@@ -18814,24 +19011,32 @@ function usePhotoSrc(src) {
            開いた直後は置き場（IndexedDB）がまだ開き終わっておらず、
            ここで空にしてしまうと、ヘッダーやアイコンだけが白いまま残る。
            少し待って、二度まで読み直す */
+        /* **1秒足らずであきらめないこと。** 更新の直後は置き場が開くまでに数秒かかることがある。
+           間をのばしながら読み直し、置き場が開けたと知らせが来たら、もう一度読む */
         let timer = null;
-        const tryGet = (rest) => {
+        let got = false;
+        const WAITS = [300, 600, 1200, 2400, 4800];
+        const tryGet = (i) => {
             photoGet(src.slice(6)).then((v) => {
-                if (!alive)
+                if (!alive || got)
                     return;
                 if (v) {
+                    got = true;
                     setUrl(v);
                     return;
                 }
-                if (rest > 0) {
-                    timer = setTimeout(() => tryGet(rest - 1), 400);
+                if (i < WAITS.length) {
+                    timer = setTimeout(() => tryGet(i + 1), WAITS[i]);
                     return;
                 }
                 setUrl("");
             });
         };
-        tryGet(2);
-        return () => { alive = false; if (timer)
+        const onStore = () => { if (alive && !got)
+            tryGet(WAITS.length); };
+        photoListeners.add(onStore);
+        tryGet(0);
+        return () => { alive = false; photoListeners.delete(onStore); if (timer)
             clearTimeout(timer); };
     }, [src]);
     return url;
@@ -25224,6 +25429,11 @@ function AppMain() {
             catch (e) { /* noop */ }
             /* 端末に「この記録を消さないで」とお願いしておく */
             askPersist();
+            /* 控えにしか入っていないキーを、専用ストレージへ入れ直す。
+               **めったに書かない表示設定・フォルダほど、ここで直さないと古いまま残る** */
+            resyncLocalNewer(SYNC_KEYS);
+            /* いま入っているヘッダー・アイコンの絵を控えへ写す（前の版で設定したぶんも含めて） */
+            scheduleDecoSync(() => ({ prefs: prefsRef.current, folders: foldersRef.current, plans: plansRef.current }));
             setLoaded(true);
             try {
                 if (typeof window !== "undefined" && window.__hibiHideSplash)
@@ -25231,7 +25441,19 @@ function AppMain() {
             }
             catch (e) { /* noop */ }
         })();
-        return () => { alive = false; };
+        /* 画面に戻ってきたときも、控えにしか入っていないキーを入れ直す */
+        const onVisible = () => {
+            if (typeof document !== "undefined" && document.visibilityState === "visible")
+                resyncLocalNewer(SYNC_KEYS);
+        };
+        try {
+            document.addEventListener("visibilitychange", onVisible);
+        }
+        catch (e) { /* noop */ }
+        return () => { alive = false; try {
+            document.removeEventListener("visibilitychange", onVisible);
+        }
+        catch (e) { /* noop */ } };
     }, []);
     /* --- 保存 --- */
     /* 保存できなかったとき（端末の空きがない、写真が多すぎるなど）は、
@@ -25283,9 +25505,11 @@ function AppMain() {
            render スコープから拾い直さずに済む（そこが先祖返りの入り口だった） */
         return v;
     }, []);
-    const setPlans = (0, react_1.useCallback)((next) => { const v = resolveNext(next, plansRef); setPlansState(v); bumpChanged(); saveList(PLAN_KEY, v); return v; }, []); // eslint-disable-line
+    /* ヘッダー・アイコンの控えを作り直すときに渡す「いまの中身」。**覚え（ref）から読むこと** */
+    const decoSource = (0, react_1.useCallback)(() => ({ prefs: prefsRef.current, folders: foldersRef.current, plans: plansRef.current }), []);
+    const setPlans = (0, react_1.useCallback)((next) => { const v = resolveNext(next, plansRef); setPlansState(v); bumpChanged(); saveList(PLAN_KEY, v); scheduleDecoSync(decoSource); return v; }, []); // eslint-disable-line
     const setKinds = (0, react_1.useCallback)((next) => { const v = resolveNext(next, kindsRef); setKindsState(v); bumpChanged(); saveList(KIND_KEY, v); return v; }, []); // eslint-disable-line
-    const setFolders = (0, react_1.useCallback)((next) => { const v = resolveNext(next, foldersRef); setFoldersState(v); bumpChanged(); saveList(FOLDER_KEY, v); return v; }, []); // eslint-disable-line
+    const setFolders = (0, react_1.useCallback)((next) => { const v = resolveNext(next, foldersRef); setFoldersState(v); bumpChanged(); saveList(FOLDER_KEY, v); scheduleDecoSync(decoSource); return v; }, []); // eslint-disable-line
     const setTagMaster = (0, react_1.useCallback)((next) => {
         const v = normalizeTags(resolveNext(next, tagMasterRef));
         tagMasterRef.current = v;
@@ -25297,6 +25521,8 @@ function AppMain() {
         const v = resolveNext(next, prefsRef);
         setPrefsState(v);
         persistPrefs(v);
+        /* **ヘッダーの写真を置き場ひとつに預けっぱなしにしないこと**（DECO_PHOTO_KEY の説明を参照） */
+        scheduleDecoSync(decoSource);
         return v;
     }, []);
     /* 画面に出すタグの一覧。一覧と記録の両方から作る。
