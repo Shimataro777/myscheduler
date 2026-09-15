@@ -24146,7 +24146,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                     backupAt && (react_1.default.createElement("p", { className: "text-[12.5px] text-neutral-400 mt-1.5" },
                         "\u524D\u56DE\u306E\u4FDD\u5B58\uFF1A",
                         fmtDate(backupAt.slice(0, 10))))),
-                needBackup && (react_1.default.createElement("div", { className: "rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 mb-5 ft-noresult" },
+                needBackup && (react_1.default.createElement("div", { className: "rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 mb-5" },
                     react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-amber-800" }, backupAt ? `前回の書き出しのあとに、${unsavedCount || 0}件書きかえがあります` : "まだ一度も書き出していません"))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
                     react_1.default.createElement("h3", { className: "head-bar font-display text-[15.5px] text-neutral-900" }, "\u66F8\u304D\u51FA\u3059"),
@@ -24681,52 +24681,14 @@ button:active { transition-duration: 60ms; }
 
 /* ============================================================
    文字の大きさ（小・中・大）
-   クラス名ごとに大きさを上書きする形にしている。
-   画面じゅうの text-[…] を書き換えるより、ここ1か所で切り替えるほうが取りこぼしが無い。
-   **この一覧は手で書き足さないこと。** 使っている大きさをぜんぶ拾って、
-   中＝1.09倍、大＝1.22倍で作ってある（順序が逆転しないように）
+   以前はクラスごとに大きさを手で書き写した上書き表だったが、
+   app.css 側の .text-[…] と .fs-* をすべて calc(基準px * var(--ft-scale)) に
+   変更したため、ここでは --ft-scale を切り替えるだけでよい。
+   **新しい文字サイズを追加しても、この仕組みなら自動で連動する**
+   （中＝1.09倍、大＝1.22倍。以前の上書き表と同じ倍率を踏襲） 
    ============================================================ */
-.ft-font-m .text-\\[9px\\] { font-size: 10px; }
-.ft-font-m .text-\\[9\\.5px\\] { font-size: 10.5px; }
-.ft-font-m .text-\\[10\\.5px\\] { font-size: 11.5px; }
-.ft-font-m .text-\\[11px\\] { font-size: 12px; }
-.ft-font-m .text-\\[11\\.5px\\] { font-size: 12.5px; }
-.ft-font-m .text-\\[12px\\] { font-size: 13px; }
-.ft-font-m .text-\\[12\\.5px\\] { font-size: 13.5px; }
-.ft-font-m .text-\\[13px\\] { font-size: 14px; }
-.ft-font-m .text-\\[13\\.5px\\] { font-size: 14.5px; }
-.ft-font-m .text-\\[14px\\] { font-size: 15.5px; }
-.ft-font-m .text-\\[14\\.5px\\] { font-size: 16px; }
-.ft-font-m .text-\\[15px\\] { font-size: 16.5px; }
-.ft-font-m .text-\\[15\\.5px\\] { font-size: 17px; }
-.ft-font-m .text-\\[16px\\] { font-size: 17.5px; }
-.ft-font-m .text-\\[17px\\] { font-size: 18.5px; }
-.ft-font-m .text-\\[17\\.5px\\] { font-size: 19px; }
-.ft-font-m .text-\\[19px\\] { font-size: 20.5px; }
-.ft-font-m .text-\\[20px\\] { font-size: 22px; }
-.ft-font-m .text-\\[21px\\] { font-size: 23px; }
-.ft-font-m .text-\\[22px\\] { font-size: 24px; }
-
-.ft-font-l .text-\\[9px\\] { font-size: 11px; }
-.ft-font-l .text-\\[9\\.5px\\] { font-size: 11.5px; }
-.ft-font-l .text-\\[10\\.5px\\] { font-size: 13px; }
-.ft-font-l .text-\\[11px\\] { font-size: 13.5px; }
-.ft-font-l .text-\\[11\\.5px\\] { font-size: 14px; }
-.ft-font-l .text-\\[12px\\] { font-size: 14.5px; }
-.ft-font-l .text-\\[12\\.5px\\] { font-size: 15px; }
-.ft-font-l .text-\\[13px\\] { font-size: 16px; }
-.ft-font-l .text-\\[13\\.5px\\] { font-size: 16.5px; }
-.ft-font-l .text-\\[14px\\] { font-size: 17px; }
-.ft-font-l .text-\\[14\\.5px\\] { font-size: 17.5px; }
-.ft-font-l .text-\\[15px\\] { font-size: 18.5px; }
-.ft-font-l .text-\\[15\\.5px\\] { font-size: 19px; }
-.ft-font-l .text-\\[16px\\] { font-size: 19.5px; }
-.ft-font-l .text-\\[17px\\] { font-size: 20.5px; }
-.ft-font-l .text-\\[17\\.5px\\] { font-size: 21.5px; }
-.ft-font-l .text-\\[19px\\] { font-size: 23px; }
-.ft-font-l .text-\\[20px\\] { font-size: 24.5px; }
-.ft-font-l .text-\\[21px\\] { font-size: 25.5px; }
-.ft-font-l .text-\\[22px\\] { font-size: 27px; }
+.ft-font-m { --ft-scale: 1.09; }
+.ft-font-l { --ft-scale: 1.22; }
 
 /* ============================================================
    動きを止めるとき

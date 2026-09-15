@@ -1,3 +1,60 @@
+/* ============================================================
+   デザイントークン
+   文字サイズ・余白・アイコン・色・モーションの基準値をここに集約する。
+   新しい値を追加するときは、まずここに載っている役割クラス（.fs-* .icon-* .sp-*）
+   で足りないか確認してから、足りない場合だけ増やすこと。
+   ============================================================ */
+:root{
+  /* 文字サイズ設定（小・中・大）の倍率。.ft-font-m / .ft-font-l が上書きする。
+     ここを直接書き換えず、下の各 .text-[…] / .fs-* が calc() で参照する形にしている。
+     新しいサイズを追加しても、この仕組みなら自動で連動する（上書き表を手で足す必要がない） */
+  --ft-scale: 1;
+
+  --fs-micro:    calc(9.5px  * var(--ft-scale));
+  --fs-caption:  calc(11.5px * var(--ft-scale));
+  --fs-label:    calc(12.5px * var(--ft-scale));
+  --fs-body-sm:  calc(13.5px * var(--ft-scale));
+  --fs-body:     calc(14.5px * var(--ft-scale));
+  --fs-subhead:  calc(15.5px * var(--ft-scale));
+  --fs-title:    calc(17.5px * var(--ft-scale));
+  --fs-display:  calc(21px   * var(--ft-scale));
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 28px;
+
+  --icon-sm: 16px; --icon-md: 20px; --icon-lg: 24px;
+
+  --color-brand: var(--th-950, #4A7E9B);
+  --color-brand-surface: var(--th-800, #6FAFD2);
+  --color-danger: #BE123C;
+  --color-danger-surface: #FFF1F2;
+  --color-warning: #F59E0B;
+  --color-warning-surface: #FFFBEB;
+  --color-ink: #171717;
+  --color-surface: #FFFFFF;
+  --color-border: #E5E5E5;
+
+  --ease-out: cubic-bezier(0.22,1,0.36,1);
+  --ease-spring: cubic-bezier(0.34,1.3,0.5,1);
+  --ease-in: cubic-bezier(0.55,0,0.68,0.53);
+  --dur-fast: 140ms;
+  --dur-base: 240ms;
+  --dur-slow: 360ms;
+  --dur-celebrate: 620ms;
+}
+/* 役割ベースのフォントクラス。新規実装はこちらを使うこと（.text-[Npx] は非推奨） */
+.fs-micro   { font-size: var(--fs-micro); }
+.fs-caption { font-size: var(--fs-caption); }
+.fs-label   { font-size: var(--fs-label); }
+.fs-body-sm { font-size: var(--fs-body-sm); }
+.fs-body    { font-size: var(--fs-body); }
+.fs-subhead { font-size: var(--fs-subhead); font-weight: 600; }
+.fs-title   { font-size: var(--fs-title); font-weight: 700; }
+.fs-display { font-size: var(--fs-display); font-weight: 700; }
+/* 役割ベースの余白・アイコンクラス */
+.icon-sm { width: var(--icon-sm); height: var(--icon-sm); }
+.icon-md { width: var(--icon-md); height: var(--icon-md); }
+.icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
+
 *,::before,::after{box-sizing:border-box;border:0 solid #E5E5E5;margin:0;padding:0}
 html{scrollbar-gutter:stable}
 html,body,#root{height:100%}
@@ -273,27 +330,32 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .space-y-\[2px\] > * + *{margin-top:2px}
 .sticky{position:sticky}
 .tabular-nums{font-variant-numeric:tabular-nums}
-.text-\[10\.5px\]{font-size:10.5px}
-.text-\[10px\]{font-size:10px}
-.text-\[11\.5px\]{font-size:11.5px}
-.text-\[11px\]{font-size:11px}
-.text-\[12\.5px\]{font-size:12.5px}
-.text-\[12px\]{font-size:12px}
-.text-\[13\.5px\]{font-size:13.5px}
-.text-\[13px\]{font-size:13px}
-.text-\[14\.5px\]{font-size:14.5px}
-.text-\[14px\]{font-size:14px}
-.text-\[15\.5px\]{font-size:15.5px}
-.text-\[15px\]{font-size:15px}
-.text-\[16px\]{font-size:16px}
-.text-\[17\.5px\]{font-size:17.5px}
-.text-\[17px\]{font-size:17px}
-.text-\[20px\]{font-size:20px}
-.text-\[21px\]{font-size:21px}
-.text-\[22px\]{font-size:22px}
-.text-\[8px\]{font-size:8px}
-.text-\[9\.5px\]{font-size:9.5px}
-.text-\[9px\]{font-size:9px}
+/* 【重要】ここから先は生の px ではなく var(--ft-scale) 経由の calc() にしてある。
+   .ft-font-m / .ft-font-l は --ft-scale の値を変えるだけでよく、
+   このクラスひとつひとつを個別に上書きする表は廃止した（旧: app.js 内の手書き上書き表）。
+   新しく text-[Npx] を増やす場合も、同じ calc(Npx * var(--ft-scale)) の形にすること。
+   ただし新規実装は基本的に上の .fs-* 役割クラスを使うこと。*/
+.text-\[10\.5px\]{font-size:calc(10.5px * var(--ft-scale))}
+.text-\[10px\]{font-size:calc(10px * var(--ft-scale))}
+.text-\[11\.5px\]{font-size:calc(11.5px * var(--ft-scale))}
+.text-\[11px\]{font-size:calc(11px * var(--ft-scale))}
+.text-\[12\.5px\]{font-size:calc(12.5px * var(--ft-scale))}
+.text-\[12px\]{font-size:calc(12px * var(--ft-scale))}
+.text-\[13\.5px\]{font-size:calc(13.5px * var(--ft-scale))}
+.text-\[13px\]{font-size:calc(13px * var(--ft-scale))}
+.text-\[14\.5px\]{font-size:calc(14.5px * var(--ft-scale))}
+.text-\[14px\]{font-size:calc(14px * var(--ft-scale))}
+.text-\[15\.5px\]{font-size:calc(15.5px * var(--ft-scale))}
+.text-\[15px\]{font-size:calc(15px * var(--ft-scale))}
+.text-\[16px\]{font-size:calc(16px * var(--ft-scale))}
+.text-\[17\.5px\]{font-size:calc(17.5px * var(--ft-scale))}
+.text-\[17px\]{font-size:calc(17px * var(--ft-scale))}
+.text-\[20px\]{font-size:calc(20px * var(--ft-scale))}
+.text-\[21px\]{font-size:calc(21px * var(--ft-scale))}
+.text-\[22px\]{font-size:calc(22px * var(--ft-scale))}
+.text-\[8px\]{font-size:calc(8px * var(--ft-scale))}
+.text-\[9\.5px\]{font-size:calc(9.5px * var(--ft-scale))}
+.text-\[9px\]{font-size:calc(9px * var(--ft-scale))}
 .text-center{text-align:center}
 .text-left{text-align:left}
 .text-neutral-300{color:#D4D4D4}
