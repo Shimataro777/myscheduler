@@ -27,7 +27,11 @@
   /* 実績・達成率など、読む文字ではなく見て数えとる数字専用 */
   --fs-stat:     20px;
 
-  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 28px;
+  /* 実測（app.js 全体のクラス使用頻度）に基づく、4px刻み＋半段階の余白スケール。
+     すでにほぼこの刻みだけで統一されていたため、無理に6段階へ削らず、
+     実態に合わせて素直に定義した */
+  --sp-0_5: 2px; --sp-1: 4px; --sp-1_5: 6px; --sp-2: 8px; --sp-2_5: 10px;
+  --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-7: 28px; --sp-8: 32px;
 
   --icon-sm: 16px; --icon-md: 20px; --icon-lg: 24px;
 
@@ -50,6 +54,7 @@
 
   --ease-out: cubic-bezier(0.22,1,0.36,1);
   --ease-spring: cubic-bezier(0.34,1.3,0.5,1);
+  --ease-settle: cubic-bezier(0.16,1,0.3,1);
   --ease-in: cubic-bezier(0.55,0,0.68,0.53);
   --dur-fast: 140ms;
   --dur-base: 240ms;

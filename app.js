@@ -24537,7 +24537,7 @@ button:active { transition-duration: 60ms; }
 .anim-sheet-out { animation: ft-sheet-down 0.24s cubic-bezier(0.55,0,0.68,0.53) forwards; }
 .anim-fade      { animation: ft-fade-in 0.2s ease-out backwards; }
 .anim-fade-out  { animation: ft-fade-out 0.2s ease-out forwards; }
-.anim-pop       { animation: ft-pop 0.26s cubic-bezier(0.34,1.4,0.5,1) backwards; }
+.anim-pop       { animation: ft-pop 0.26s cubic-bezier(0.34,1.3,0.5,1) backwards; }
 .spin           { animation: ft-spin 0.75s linear infinite; }
 
 /* --- 押した手ごたえ（全ボタン共通の土台）---
@@ -24561,7 +24561,7 @@ button:active { transition-duration: 60ms; }
 .ft-tap-card.ft-tap-pressed { transform: scale(0.997); }
 
 @keyframes ft-bloom { 0% { opacity: 0; transform: scale(0.7); } 100% { opacity: 1; transform: scale(1); } }
-.ft-chip { animation: ft-bloom 0.26s cubic-bezier(0.34,1.45,0.5,1) backwards; }
+.ft-chip { animation: ft-bloom 0.26s cubic-bezier(0.34,1.3,0.5,1) backwards; }
 
 @keyframes ft-rise { from { opacity: 0; transform: translateY(7px); } to { opacity: 1; transform: none; } }
 .ft-rise { animation: ft-rise 0.28s cubic-bezier(0.22,1,0.36,1) backwards; }
@@ -24596,7 +24596,7 @@ button:active { transition-duration: 60ms; }
   0% { transform: scale(1); } 28% { transform: scale(0.82); }
   64% { transform: scale(1.18); } 100% { transform: scale(1); }
 }
-.ft-mark { animation: ft-mark 0.44s cubic-bezier(0.34,1.2,0.5,1) backwards; }
+.ft-mark { animation: ft-mark 0.44s cubic-bezier(0.34,1.3,0.5,1) backwards; }
 
 /* 折りたたみを開いたとき。
    ft-open は透明度だけ。**中にドラム（position:fixed のシート）がある場所は必ず ft-open**。
@@ -24605,7 +24605,7 @@ button:active { transition-duration: 60ms; }
 @keyframes ft-open-y { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
 .ft-open-y { animation: ft-open-y 0.24s cubic-bezier(0.22,1,0.36,1) backwards; }
 
-.ft-chev { transition: transform 0.34s cubic-bezier(0.34,1.45,0.5,1); }
+.ft-chev { transition: transform 0.34s cubic-bezier(0.34,1.3,0.5,1); }
 .ft-chev-on { transform: rotate(180deg); }
 
 @keyframes ft-stagger { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
@@ -24628,7 +24628,7 @@ button:active { transition-duration: 60ms; }
 .ft-daypop { animation: ft-daypop 0.34s cubic-bezier(0.34,1.3,0.5,1) backwards; }
 
 @keyframes ft-check-in { 0% { opacity: 0; transform: scale(0) rotate(-45deg); } 100% { opacity: 1; transform: none; } }
-.ft-check-in { animation: ft-check-in 0.3s cubic-bezier(0.34,1.5,0.5,1) backwards; }
+.ft-check-in { animation: ft-check-in 0.3s cubic-bezier(0.34,1.3,0.5,1) backwards; }
 
 /* 見つからなかったときの現れ方。
    ぱっと切り替わると「本当に探したのか」が分かりにくいので、
