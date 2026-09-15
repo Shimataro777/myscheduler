@@ -19669,6 +19669,26 @@ function MonthJumpSheet({ year, month, years, onClose, onConfirm, zIndex }) {
         react_1.default.createElement(WheelColumn, { minWidth: 96, value: y, onChange: setY, items: years.map((v) => ({ value: v, label: `${v}年` })) }),
         react_1.default.createElement(WheelColumn, { minWidth: 78, value: m, onChange: setM, items: Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `${i + 1}月` })) })));
 }
+function daysInMonth(y, m) { return new Date(y, m, 0).getDate(); }
+/* Today画面（日・週・月）専用の「表示する期間」ピッカー。
+   **年月だけにしないこと。** 日まで選んで、そのままその日へ飛べるようにする。
+   年・月を変えて、その月に無い日（2月30日など）を選んでいたら自動で補正する */
+function TodayPeriodSheet({ year, month, day, years, onClose, onConfirm, zIndex }) {
+    const [y, setY] = (0, react_1.useState)(year);
+    const [m, setM] = (0, react_1.useState)(month);
+    const [d, setD] = (0, react_1.useState)(day);
+    (0, react_1.useEffect)(() => {
+        const last = daysInMonth(y, m);
+        if (d > last)
+            setD(last);
+    }, [y, m]); // eslint-disable-line
+    const last = daysInMonth(y, m);
+    const dayItems = Array.from({ length: last }, (_, i) => ({ value: i + 1, label: `${i + 1}日` }));
+    return (react_1.default.createElement(WheelSheet, { title: "\u8868\u793A\u3059\u308B\u671F\u9593", onClose: onClose, onConfirm: () => onConfirm(y, m, Math.min(d, last)), zIndex: zIndex },
+        react_1.default.createElement(WheelColumn, { minWidth: 92, value: y, onChange: setY, items: years.map((v) => ({ value: v, label: `${v}年` })) }),
+        react_1.default.createElement(WheelColumn, { minWidth: 64, value: m, onChange: setM, items: Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `${i + 1}月` })) }),
+        react_1.default.createElement(WheelColumn, { minWidth: 60, value: Math.min(d, last), onChange: setD, items: dayItems })));
+}
 const YEARS_SPAN = 100;
 function jumpYears(shownY, extra = []) {
     const now = new Date().getFullYear();
@@ -20858,7 +20878,42 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
     const [whenOpen, setWhenOpen] = (0, react_1.useState)(false);
     const N = useTypeNames();
     const color = useTypeColor(rec.type);
-    const set = (patch) => { setRec((r) => ({ ...r, ...patch })); setDirty(true); };
+    /* アンドゥ・リドゥ：直前の書きかえを丸ごと覚えておき、戻す／やり直すだけの単純な形にする。
+       **rec 全体を積むこと。** 項目ごとに差分を持たせると、あとで一致しないおそれがある */
+    const undoStack = (0, react_1.useRef)([]);
+    const redoStack = (0, react_1.useRef)([]);
+    const set = (patch) => {
+        setRec((r) => {
+            undoStack.current = [...undoStack.current, r].slice(-100);
+            redoStack.current = [];
+            return { ...r, ...patch };
+        });
+        setDirty(true);
+    };
+    const undo = () => {
+        if (!undoStack.current.length)
+            return;
+        setRec((r) => {
+            const prev = undoStack.current[undoStack.current.length - 1];
+            undoStack.current = undoStack.current.slice(0, -1);
+            redoStack.current = [...redoStack.current, r];
+            return prev;
+        });
+        setDirty(true);
+    };
+    const redo = () => {
+        if (!redoStack.current.length)
+            return;
+        setRec((r) => {
+            const next = redoStack.current[redoStack.current.length - 1];
+            redoStack.current = redoStack.current.slice(0, -1);
+            undoStack.current = [...undoStack.current, r];
+            return next;
+        });
+        setDirty(true);
+    };
+    const canUndo = undoStack.current.length > 0;
+    const canRedo = redoStack.current.length > 0;
     /* 自動下書き：入力が止まって0.8秒後と、アプリが背面に回ったとき。
        **保存し終えたあとは書かないこと。**（doneRef）
        書いてしまうと、保存ずみの記録が「書きかけ」として残り、
@@ -20927,12 +20982,17 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                 react_1.default.createElement("span", { className: "flex-1 min-w-0 flex items-center justify-center gap-1.5" },
                     react_1.default.createElement("span", { style: { color: color.deep } }, typeIcon(rec.type, 17)),
                     react_1.default.createElement("span", { className: "text-[15.5px] font-bold text-neutral-700 truncate" }, N[rec.type] || TYPE_LABELS[rec.type])),
+                react_1.default.createElement("span", { className: "flex items-center shrink-0" },
+                    react_1.default.createElement("button", { type: "button", onClick: undo, disabled: !canUndo, "aria-label": "\u5143\u306B\u623B\u3059", className: "w-10 h-10 flex items-center justify-center rounded-full ft-tap ft-tap-icon " + (canUndo ? "text-neutral-500 hover:bg-neutral-100" : "text-neutral-300") },
+                        react_1.default.createElement(lucide_react_1.Undo2, { size: 20 })),
+                    react_1.default.createElement("button", { type: "button", onClick: redo, disabled: !canRedo, "aria-label": "\u3084\u308A\u76F4\u3059", className: "w-10 h-10 flex items-center justify-center rounded-full ft-tap ft-tap-icon " + (canRedo ? "text-neutral-500 hover:bg-neutral-100" : "text-neutral-300") },
+                        react_1.default.createElement(lucide_react_1.Redo2, { size: 20 }))),
                 react_1.default.createElement("button", { type: "button", onClick: () => set({ mark: starred ? null : "star" }), "aria-pressed": starred, "aria-label": "\u5927\u4E8B\u306A\u8A18\u9332\u306B\u3059\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-full ft-tap ft-tap-icon shrink-0", style: { color: starred ? "#F59E0B" : "#A3A3A3" } },
                     react_1.default.createElement("span", { key: starred ? "on" : "off", className: "flex " + (starred ? "ft-mark" : "") },
                         react_1.default.createElement(lucide_react_1.Star, { size: 25, fill: starred ? "#F59E0B" : "none" })))),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
                 err && react_1.default.createElement("p", { className: "text-[13.5px] font-bold text-rose-700 mb-3" }, err),
-                (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: rec.type === "schedule" ? "予定の名前" : "リストの題", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-[17px] font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
+                (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: "タイトル", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-[17px] font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
                 /* ②終日・開始・終了・繰り返し。既定は折りたたみ、要約タップで展開 */
                 rec.type === "checklist" && (react_1.default.createElement(WhenCollapse, { summary: checklistWhenSummary(rec), open: whenOpen, onToggle: () => setWhenOpen((v) => !v) },
                     react_1.default.createElement(RowCard, { className: "mb-3" },
@@ -21883,7 +21943,7 @@ function DayPanel({ date, records, onEdit, onToggleItem, onPin, onOpenDay }) {
 /* ============================================================
    1ヶ月ごとの画面（各日付のスケジュール）
    ============================================================ */
-function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPin }) {
+function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPin, focusDate }) {
     const colorMap = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
     const slotColor = useSchedColor();
     const firstDow = new Date(year, month - 1, 1).getDay();
@@ -21899,6 +21959,9 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
        はじめは今日をえらんでおく（下に今日の予定が出る） */
     const [sel, setSel] = (0, react_1.useState)(inThisMonth ? today : null);
     (0, react_1.useEffect)(() => { setSel(inThisMonth ? today : null); }, [year, month]); // eslint-disable-line
+    /* 「表示する期間」ピッカーで日まで選んだときは、その日にフォーカスを合わせる */
+    (0, react_1.useEffect)(() => { if (focusDate)
+        setSel(focusDate); }, [focusDate]); // eslint-disable-line
     const byDate = (0, react_1.useMemo)(() => {
         const m = new Map();
         records.forEach((r) => {
@@ -22046,7 +22109,7 @@ function SelectButton({ sel, onDark }) {
     if (!sel.can)
         return null;
     const on = sel.on;
-    return (react_1.default.createElement("button", { type: "button", onClick: () => (on ? sel.stop() : sel.start()), "aria-pressed": on, "aria-label": on ? "選ぶのをやめる" : "選択", className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-full ft-tap ft-tap-icon "
+    return (react_1.default.createElement("button", { type: "button", onMouseDown: (e) => e.preventDefault(), onClick: () => (on ? sel.stop() : sel.start()), "aria-pressed": on, "aria-label": on ? "選ぶのをやめる" : "選択", className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-full ft-tap ft-tap-icon "
             + (on ? "bg-th-800 text-white" : onDark ? "text-white" : "text-neutral-500 hover:bg-neutral-100") }, on ? react_1.default.createElement(lucide_react_1.X, { size: 20 }) : react_1.default.createElement(lucide_react_1.ListChecks, { size: 20 })));
 }
 /* 結果のすぐ上に置く「全選択」。
@@ -22066,13 +22129,13 @@ function ListHeadRow({ sel, list, right, sort }) {
             react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(list || []), className: "h-9 px-0 rounded-lg text-[14px] font-bold text-th-900 ft-tap text-left" }, all ? "すべて選択解除" : "すべて選択"),
             react_1.default.createElement("span", { className: "flex-1" }),
             sort,
-            react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: "h-9 px-2 -mr-2 ml-1 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86")));
+            react_1.default.createElement("button", { type: "button", onMouseDown: (e) => e.preventDefault(), onClick: sel.stop, className: "h-9 px-2 -mr-2 ml-1 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u5B8C\u4E86")));
     }
     return (react_1.default.createElement("div", { className: "flex items-center gap-1 mb-2" },
         react_1.default.createElement("p", { className: "text-[12.5px] font-bold text-neutral-500 tabular-nums" }, right),
         react_1.default.createElement("span", { className: "flex-1" }),
         sort,
-        sel && sel.can && (react_1.default.createElement("button", { type: "button", onClick: sel.start, className: "h-9 px-2 -mr-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u9078\u629E"))));
+        sel && sel.can && (react_1.default.createElement("button", { type: "button", onMouseDown: (e) => e.preventDefault(), onClick: sel.start, className: "h-9 px-2 -mr-2 rounded-lg text-[14px] font-bold text-th-900 ft-tap" }, "\u9078\u629E"))));
 }
 function SelectBar({ sel, list, extraLabel, onExtra }) {
     if (!sel.on)
@@ -22080,7 +22143,7 @@ function SelectBar({ sel, list, extraLabel, onExtra }) {
     return (react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("div", { className: "fixed left-0 right-0 bg-white border-t border-neutral-200 px-4 py-2.5", style: { zIndex: 45, bottom: 0, paddingBottom: "calc(env(safe-area-inset-bottom) + 10px)" } },
             react_1.default.createElement("div", { className: "max-w-lg mx-auto flex gap-2.5" },
-                react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: BTN_SECONDARY + " btn-h-lg px-4 text-[15.5px] shrink-0" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
+                react_1.default.createElement("button", { type: "button", onMouseDown: (e) => e.preventDefault(), onClick: sel.stop, className: BTN_SECONDARY + " btn-h-lg px-4 text-[15.5px] shrink-0" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 onExtra ? (react_1.default.createElement("button", { type: "button", onClick: () => onExtra(Array.from(sel.ids)), disabled: sel.ids.size === 0, className: BTN_PRIMARY + " flex-1 btn-h-lg text-[15.5px]" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 17 }),
                     " ",
@@ -22146,6 +22209,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
     const [filterOpen, setFilterOpen] = (0, react_1.useState)(false);
     const [hidden, setHidden] = (0, react_1.useState)([]); // 出さない記録の種類
     const [weekSel, setWeekSel] = (0, react_1.useState)(null); // 週の画面で押している日
+    const [monthFocusDate, setMonthFocusDate] = (0, react_1.useState)(null); // 「表示する期間」で日まで選んだとき、月の画面でどこにフォーカスするか
     const sel = useSelectMode(onDeleteMany);
     (0, react_1.useEffect)(() => { if (onSelecting)
         onSelecting(sel.on); }, [sel.on]); // eslint-disable-line
@@ -22247,7 +22311,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 span === "week" && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(WeekView, { start: weekStart, records: records, onOpenDay: (d) => { setDate(d); setSpan("day"); }, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selected: weekSel, onSelect: setWeekSel }),
                     react_1.default.createElement(DayPanel, { date: weekSel || todayInWeek, records: records, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, onOpenDay: (d) => { setDate(d); setSpan("day"); } }))),
-                span === "month" && (react_1.default.createElement(MonthView, { year: y, month: mo, records: records, onToggleItem: onToggleItem, onEdit: onEdit, onPin: onPin, onOpenDay: (d) => { setDate(d); setSpan("day"); } })))),
+                span === "month" && (react_1.default.createElement(MonthView, { year: y, month: mo, records: records, onToggleItem: onToggleItem, onEdit: onEdit, onPin: onPin, focusDate: monthFocusDate, onOpenDay: (d) => { setDate(d); setSpan("day"); } })))),
         react_1.default.createElement(SelectBar, { sel: sel, list: dayList.filter((r) => !hidden.includes(r.type)) }),
         filterOpen && (react_1.default.createElement(SheetDialog, { title: "\u8868\u793A\u3059\u308B\u7A2E\u985E", onCancel: () => setFilterOpen(false), onConfirm: () => setFilterOpen(false), confirmLabel: "\u6C7A\u5B9A" },
             react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" }, TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: !hidden.includes(t), onClick: () => setHidden((v) => (v.includes(t) ? v.filter((x) => x !== t) : [...v, t])) },
@@ -22258,9 +22322,16 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         !sel.on && (react_1.default.createElement("button", { type: "button", onClick: cycleSpan, "aria-label": `${nextSpanLabel}の画面に切り替える`, className: "fixed rounded-2xl bg-white text-th-900 border border-th-200 card-soft flex items-center justify-center ft-tap ft-fab-side z-40", style: { width: 46, height: 46, bottom: "calc(env(safe-area-inset-bottom) + 101px)" } },
             react_1.default.createElement("span", { key: span, className: "ft-tabpop inline-flex" },
                 react_1.default.createElement(SpanCycleIcon, { size: 21 })))),
-        jumpOpen && (react_1.default.createElement(MonthJumpSheet, { year: y, month: mo, years: jumpYears(y), onClose: () => setJumpOpen(false), onConfirm: (yy, mm) => {
-                const d = Math.min(Number(date.slice(8, 10)), new Date(yy, mm, 0).getDate());
-                setDate(`${yy}-${String(mm).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+        jumpOpen && (react_1.default.createElement(TodayPeriodSheet, { year: y, month: mo, day: Number(date.slice(8, 10)), years: jumpYears(y), onClose: () => setJumpOpen(false), onConfirm: (yy, mm, dd) => {
+                const t = `${yy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+                setDir(0);
+                setDate(t);
+                /* 「日」→その日へ直接ジャンプ。「週」→その日を含む週を表示し、その日を選択。
+                   「月」→その日を含む月を表示し、その日にフォーカス。 */
+                if (span === "week")
+                    setWeekSel(t);
+                if (span === "month")
+                    setMonthFocusDate(t);
                 setJumpOpen(false);
             } }))));
 }
@@ -23030,7 +23101,41 @@ function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
     const [confirmDel, setConfirmDel] = (0, react_1.useState)(false);
     const [confirmLeave, setConfirmLeave] = (0, react_1.useState)(false);
     const items = step.items || [];
-    const set = (patch) => { setStep((s) => ({ ...s, ...patch })); setDirty(true); };
+    /* アンドゥ・リドゥ：RecordForm と同じ、直前の書きかえを丸ごと覚えておく形 */
+    const undoStack = (0, react_1.useRef)([]);
+    const redoStack = (0, react_1.useRef)([]);
+    const set = (patch) => {
+        setStep((s) => {
+            undoStack.current = [...undoStack.current, s].slice(-100);
+            redoStack.current = [];
+            return { ...s, ...patch };
+        });
+        setDirty(true);
+    };
+    const undo = () => {
+        if (!undoStack.current.length)
+            return;
+        setStep((s) => {
+            const prev = undoStack.current[undoStack.current.length - 1];
+            undoStack.current = undoStack.current.slice(0, -1);
+            redoStack.current = [...redoStack.current, s];
+            return prev;
+        });
+        setDirty(true);
+    };
+    const redo = () => {
+        if (!redoStack.current.length)
+            return;
+        setStep((s) => {
+            const next = redoStack.current[redoStack.current.length - 1];
+            redoStack.current = redoStack.current.slice(0, -1);
+            undoStack.current = [...undoStack.current, s];
+            return next;
+        });
+        setDirty(true);
+    };
+    const canUndo = undoStack.current.length > 0;
+    const canRedo = redoStack.current.length > 0;
     /* どの計画のものか。**別の計画へ移せること**（作り直させない） */
     const [toPlan, setToPlan] = (0, react_1.useState)(planId || "");
     const finish = () => onSave(step, toPlan);
@@ -23049,9 +23154,13 @@ function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
                     react_1.default.createElement("span", { style: { color: color.deep } },
                         react_1.default.createElement(lucide_react_1.ListChecks, { size: 17 })),
                     react_1.default.createElement("span", { className: "text-[15.5px] font-bold text-neutral-700 truncate" }, "\u30A4\u30D9\u30F3\u30C8")),
-                react_1.default.createElement("span", { className: "min-w-[52px] shrink-0", "aria-hidden": "true" })),
+                react_1.default.createElement("span", { className: "flex items-center shrink-0" },
+                    react_1.default.createElement("button", { type: "button", onClick: undo, disabled: !canUndo, "aria-label": "\u5143\u306B\u623B\u3059", className: "w-10 h-10 flex items-center justify-center rounded-full ft-tap ft-tap-icon " + (canUndo ? "text-neutral-500 hover:bg-neutral-100" : "text-neutral-300") },
+                        react_1.default.createElement(lucide_react_1.Undo2, { size: 20 })),
+                    react_1.default.createElement("button", { type: "button", onClick: redo, disabled: !canRedo, "aria-label": "\u3084\u308A\u76F4\u3059", className: "w-10 h-10 flex items-center justify-center rounded-full ft-tap ft-tap-icon " + (canRedo ? "text-neutral-500 hover:bg-neutral-100" : "text-neutral-300") },
+                        react_1.default.createElement(lucide_react_1.Redo2, { size: 20 })))),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
-                react_1.default.createElement(TextInput, { value: step.title, onChange: (e) => set({ title: e.target.value }), placeholder: "\u30A4\u30D9\u30F3\u30C8\u306E\u540D\u524D", className: "font-bold mb-3" }),
+                react_1.default.createElement(TextInput, { value: step.title, onChange: (e) => set({ title: e.target.value }), placeholder: "\u30BF\u30A4\u30C8\u30EB", className: "font-bold mb-3" }),
                 /* ②期限・Todayに表示 */
                 react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u671F\u9650" },
@@ -23531,7 +23640,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
                             react_1.default.createElement("span", { className: "flex", style: { color: pickedList.length ? fc.deep : "#A3A3A3" } },
                                 react_1.default.createElement(lucide_react_1.Search, { size: 14 })),
                             react_1.default.createElement("span", { className: "text-[12.5px] font-bold", style: { color: pickedList.length ? fc.deep : "#737373" } }, "\u624B\u52D5\u3067\u5165\u308C\u308B")),
-                        react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 truncate tabular-nums" }, pickedList.length ? `${pickedList.length}件` : "さがして選ぶ"))),
+                        react_1.default.createElement("span", { className: "block text-[12px] text-neutral-500 truncate tabular-nums" }, pickedList.length ? `${pickedList.length}件` : "指定なし"))),
                 list.length > 0 && (react_1.default.createElement("div", { className: "-mx-5 px-4" }, pickableList.length > 0
                     ? react_1.default.createElement(ListHeadRow, { sel: sel, list: pickableList, right: `${list.length}件`, sort: react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }) })
                     : (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
@@ -25198,6 +25307,14 @@ function AppMain() {
                 recordOrder: obj.prefs.recordOrder === "recent" ? "recent" : "old" }
             : { ...prefs, lastBackup: new Date().toISOString() };
         savePrefs(nextPrefs);
+        /* 取り込み直後は「書き出し済み」の状態として扱う。
+           **backupAt を進めないと、直後に読み込みの書きかえ自体が
+           「書き出していない記録」として警告に出てしまう。** */
+        const restoredAt = new Date().toISOString();
+        setBackupAt(restoredAt);
+        storageSet(BACKUP_AT_KEY, restoredAt);
+        setChangedAt(restoredAt);
+        storageSet(CHANGED_AT_KEY, restoredAt);
         setBackupOpen(false);
         tell("読み込みました");
     };
