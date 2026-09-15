@@ -21318,8 +21318,8 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 react_1.default.createElement("span", { className: "shrink-0 flex", style: { color: color.deep } }, typeIcon(r.type, 15)),
                 showDate && r.date && (react_1.default.createElement("span", { className: "fs-label font-bold tabular-nums", style: { color: color.deep } }, shortDate(r.date))),
                 t && (isAllDay(r)
-                    ? react_1.default.createElement("span", { className: "text-[12px] font-bold rounded-md px-1.5 py-[1px] shrink-0", style: { background: color.soft, color: color.deep } }, t)
-                    : react_1.default.createElement("span", { className: "text-[13px] font-bold tabular-nums text-neutral-800" }, t)),
+                    ? react_1.default.createElement("span", { className: "fs-label font-bold rounded-md px-1.5 py-[1px] shrink-0", style: { background: color.soft, color: color.deep } }, t)
+                    : react_1.default.createElement("span", { className: "fs-body-sm font-bold tabular-nums text-neutral-800" }, t)),
                 spansDays(r) && (react_1.default.createElement("span", { className: "fs-caption tabular-nums", style: { color: color.deep } },
                     Number(r.date.slice(5, 7)),
                     "/",
@@ -21341,7 +21341,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                             react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: r.pinned ? "currentColor" : "none" })))),
                     react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onEdit(r); }, "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
                         react_1.default.createElement(lucide_react_1.Pencil, { size: 16 }))))),
-            r.type !== "memo" && recordTitle(r, N) && recordTitle(r, N) !== (N[r.type] || TYPE_LABELS[r.type]) && (react_1.default.createElement("p", { className: "text-[15px] font-bold leading-snug break-words mb-1 "
+            r.type !== "memo" && recordTitle(r, N) && recordTitle(r, N) !== (N[r.type] || TYPE_LABELS[r.type]) && (react_1.default.createElement("p", { className: "fs-subhead font-bold leading-snug break-words mb-1 "
                     + (allDone ? "text-neutral-400" : "text-neutral-900") }, recordTitle(r, N))),
             r.type === "memo" && (r.text || "").trim() && (react_1.default.createElement(react_1.default.Fragment, null,
                 react_1.default.createElement(LongText, { text: r.text, open: expanded, long: memoLong, className: "fs-body leading-relaxed text-neutral-800" }),
@@ -21353,7 +21353,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 react_1.default.createElement(LinkedText, { text: r.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
                 react_1.default.createElement(LinkCards, { text: r.body }))),
             r.type === "schedule" && r.endDate && r.endDate !== r.date && (react_1.default.createElement("p", { className: "fs-label text-neutral-500 mb-1.5 tabular-nums" }, scheduleWhen(r))),
-            r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "text-[13px] mb-1.5 flex items-center gap-1" },
+            r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "fs-body-sm mb-1.5 flex items-center gap-1" },
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14, className: "text-neutral-400 shrink-0" }),
                 isPlaceUrl(r.placeUrl || r.place)
                     ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", className: "ft-link text-sky-700 min-w-0 break-words" }, r.placeUrl || r.place)
@@ -21377,7 +21377,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 listBody && expanded && (react_1.default.createElement("div", { className: "mt-2 pl-1.5 border-l-2 border-neutral-200" },
                     react_1.default.createElement(LinkedText, { text: r.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
                     react_1.default.createElement(LinkCards, { text: r.body, small: true }))),
-                r.repeat && r.repeat.freq !== "none" && (react_1.default.createElement("p", { className: "text-[12px] text-neutral-400 mt-0.5 flex items-center gap-1" },
+                r.repeat && r.repeat.freq !== "none" && (react_1.default.createElement("p", { className: "fs-caption text-neutral-400 mt-0.5 flex items-center gap-1" },
                     react_1.default.createElement(lucide_react_1.Repeat, { size: 12 }),
                     repeatLabel(r.repeat))))),
             /* カード下部の「すべて表示／折りたたむ」。**折りたためる中身があるときだけ出す** */
