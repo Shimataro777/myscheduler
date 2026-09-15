@@ -19153,8 +19153,10 @@ function OverlayScreen({ from = "right", closing, children, zIndex = 50 }) {
     useLockBackground();
     const inCls = from === "bottom" ? "anim-up" : "anim-right";
     const outCls = from === "bottom" ? "anim-down-out" : "anim-right-out";
-    return (react_1.default.createElement("div", { className: "fixed inset-0", style: { zIndex } },
-        react_1.default.createElement("div", { className: "absolute inset-0 bg-black/25 " + (closing ? "anim-fade-out" : "anim-fade") }),
+    return (react_1.default.createElement("div", { className: "fixed inset-0", "data-ft-overlay": "", style: { zIndex } },
+        /* 地の暗がり。左端から払って戻るときは useEdgeSwipeBack が指に合わせて薄くする。
+           **data-ft-scrim を外さないこと。** 外すと、払い終えたあと画面だけ消えて暗がりが残る */
+        react_1.default.createElement("div", { "data-ft-scrim": "", className: "absolute inset-0 bg-black/25 " + (closing ? "anim-fade-out" : "anim-fade") }),
         react_1.default.createElement("div", { className: "absolute inset-0 " + (closing ? outCls : inCls) }, children)));
 }
 /* 画面左端を右へ払うと戻る。
@@ -19178,13 +19180,29 @@ function useEdgeSwipeBack(onBack, canClose) {
         const SPRING_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
         let active = false, dragging = false, startX = 0, startY = 0, startTime = 0, width = 1, pointerId = null;
         let clearTimer = null;
+        /* 地の暗がりと、重なる画面の外わく。
+           **暗がりを画面といっしょに動かすこと。** 画面だけ払い出して暗がりを残すと、
+           閉じ終わる（useClosing の待ち）までのあいだ、うしろの画面が暗いまま見える */
+        const root = screen.closest("[data-ft-overlay]");
+        const scrim = root ? root.querySelector("[data-ft-scrim]") : null;
         const setTransform = (x, animate, easing, duration) => {
             clearTimeout(clearTimer);
             screen.style.transition = animate ? `transform ${duration}ms ${easing}` : "none";
             screen.style.transform = x === 0 ? "translateX(0px)" : `translateX(${x}px)`;
+            if (scrim) {
+                scrim.style.transition = animate ? `opacity ${duration}ms ${easing}` : "none";
+                scrim.style.opacity = String(Math.max(0, 1 - x / (width || 1)));
+            }
             if (x === 0) {
                 const wait = animate ? duration + 30 : 0;
-                clearTimer = setTimeout(() => { screen.style.transition = ""; screen.style.transform = ""; }, wait);
+                clearTimer = setTimeout(() => {
+                    screen.style.transition = ""; screen.style.transform = "";
+                    if (scrim) {
+                        scrim.style.transition = ""; scrim.style.opacity = "";
+                    }
+                    if (root)
+                        root.style.pointerEvents = "";
+                }, wait);
             }
         };
         const onPointerDown = (e) => {
@@ -19235,6 +19253,10 @@ function useEdgeSwipeBack(onBack, canClose) {
                 }
                 const duration = Math.max(110, Math.min(220, (width - dx) / 1.3));
                 setTransform(width, true, SETTLE_EASE, duration);
+                /* 払い終えたら、もう見えない。閉じ終わるまでの間に押されたぶんは、
+                   うしろの画面へ通す（見えない膜で押しても効かない、を作らないこと） */
+                if (root)
+                    root.style.pointerEvents = "none";
                 setTimeout(() => onBackRef.current && onBackRef.current(), duration);
             }
             else {
