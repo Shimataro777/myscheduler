@@ -19310,25 +19310,28 @@ function useLongPress(onLong, ms = 480) {
         },
     };
 }
-function useClosing(onClose, ms = 230) {
-    const [closing, setClosing] = (0, react_1.useState)(false);
-    const timer = (0, react_1.useRef)(null);
-    (0, react_1.useEffect)(() => () => clearTimeout(timer.current), []);
+/* 閉じる。**待たずに、その場で閉じること。**
+   以前は ms（180〜240ms）待ってから onClose を呼んでいたが、退場の動き
+   （anim-sheet-out / anim-fade-out / anim-right-out など）は GLOBAL_CSS で空にしてあるので、
+   待つあいだ画面が止まって見えるだけで、「キャンセル」「戻る」がもたついて感じられた。
+   **退場の動きを戻さないかぎり、ここに待ち時間を入れ直さないこと。**
+   ・closing はいつも false（呼び出し側のクラスの切り替えは、そのまま残してある）
+   ・同じひと押しから二重に届いたぶん（ボタンと暗がりなど）だけ弾く。
+     時間で長く弾かないこと。閉じずに残る画面（「保存しますか」をはさむものなど）で、
+     次の「閉じる」が効かなくなる
+   ・「戻る」などの「ひと呼吸」は TapButton（60ms）の役目。ここでは足さない */
+function useClosing(onClose) {
+    const cb = (0, react_1.useRef)(onClose);
+    cb.current = onClose;
+    const busy = (0, react_1.useRef)(false);
     const startClose = (0, react_1.useCallback)((...args) => {
-        setClosing((c) => {
-            if (c)
-                return c;
-            timer.current = setTimeout(() => {
-                onClose && onClose(...args);
-                /* **閉じ終わったら「閉じ中」を必ず解くこと。**
-                   解かないと、次に開いたときも閉じる動きのまま描かれ、
-                   見えないのに覆いだけが残って、画面のどこを押しても効かなくなる */
-                setClosing(false);
-            }, ms);
-            return true;
-        });
-    }, [onClose, ms]);
-    return [closing, startClose];
+        if (busy.current)
+            return;
+        busy.current = true;
+        setTimeout(() => { busy.current = false; }, 0);
+        cb.current && cb.current(...args);
+    }, []);
+    return [false, startClose];
 }
 /* 重なる画面が開いているあいだ、うしろの画面を動かないようにする。
    何枚か重なることがあるので、枚数を数えて最後の1枚が閉じたときだけ元に戻す。
@@ -19387,7 +19390,7 @@ function useEdgeSwipeBack(onBack, canClose) {
         let clearTimer = null;
         /* 地の暗がりと、重なる画面の外わく。
            **暗がりを画面といっしょに動かすこと。** 画面だけ払い出して暗がりを残すと、
-           閉じ終わる（useClosing の待ち）までのあいだ、うしろの画面が暗いまま見える */
+           閉じ終わるまでのあいだ、うしろの画面が暗いまま見える */
         const root = screen.closest("[data-ft-overlay]");
         const scrim = root ? root.querySelector("[data-ft-scrim]") : null;
         const setTransform = (x, animate, easing, duration) => {
@@ -20136,7 +20139,8 @@ function DateInput({ className, value, onChange, placeholder = "日付を選択"
     const p = parse(value);
     const [cursor, setCursor] = (0, react_1.useState)(() => (p ? { y: p.y, mo: p.mo } : { y: today.getFullYear(), mo: today.getMonth() + 1 }));
     const [picked, setPicked] = (0, react_1.useState)(() => value || "");
-    const [closing, close] = useClosing(() => setOpen(false), 200);
+    /* 閉じるときは待たない（useClosing の説明を参照） */
+    const [closing, close] = useClosing(() => { setJumpOpen(false); setOpen(false); });
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
     const openSheet = () => {
         const q = parse(value);
@@ -20200,7 +20204,7 @@ function DateInput({ className, value, onChange, placeholder = "日付を選択"
 /* 複数の日付をカレンダーから選ぶ（計画の一括登録で使う） */
 function MultiDateSheet({ initial, onCancel, onConfirm }) {
     const today = new Date();
-    const [closing, close] = useClosing(onCancel, 200);
+    const [closing, close] = useClosing(onCancel);
     const [picked, setPicked] = (0, react_1.useState)(() => (initial || []).slice());
     const [cursor, setCursor] = (0, react_1.useState)({ y: today.getFullYear(), mo: today.getMonth() + 1 });
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
@@ -20269,7 +20273,7 @@ function MultiDateSheet({ initial, onCancel, onConfirm }) {
 function TagPickDialog({ title, selected, known, onApply, onCancel, onCreate, note, zIndex = 2147483000 }) {
     const [picked, setPicked] = (0, react_1.useState)(normalizeTags(selected));
     const [draft, setDraft] = (0, react_1.useState)("");
-    const [closing, close] = useClosing(onCancel, 200);
+    const [closing, close] = useClosing(onCancel);
     const q = draft.trim().toLowerCase();
     const list = normalizeTags(known);
     const shown = q ? list.filter((t) => t.toLowerCase().includes(q)) : list;
@@ -20377,7 +20381,7 @@ function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, 
    さわるたびに反映すると、決めたつもりがないのに変わってしまう
    ============================================================ */
 function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保存", disabled, hideConfirm }) {
-    const [closing, close] = useClosing(onCancel, 200);
+    const [closing, close] = useClosing(onCancel);
     useLockBackground();
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483200 }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
@@ -20393,7 +20397,7 @@ function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保
                 !hideConfirm && (react_1.default.createElement("button", { type: "button", onClick: onConfirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" }, confirmLabel))))));
 }
 function ConfirmDialog({ title, body, confirmLabel = "削除する", danger = true, onConfirm, onCancel }) {
-    const [closing, close] = useClosing(onCancel, 180);
+    const [closing, close] = useClosing(onCancel);
     useLockBackground();
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-center justify-center p-6 " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483300 }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/50" }),
@@ -20407,7 +20411,7 @@ function ConfirmDialog({ title, body, confirmLabel = "削除する", danger = tr
 /* 名前をひとつ打ち込むだけの小窓（フォルダ名・リスト名・カテゴリなど） */
 function NameDialog({ title, label, initial = "", placeholder, confirmLabel = "決定", onConfirm, onCancel }) {
     const [v, setV] = (0, react_1.useState)(initial);
-    const [closing, close] = useClosing(onCancel, 180);
+    const [closing, close] = useClosing(onCancel);
     useLockBackground();
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-start justify-center px-6 " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483300, paddingTop: "calc(env(safe-area-inset-top) + 64px)" }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/50" }),
@@ -21519,7 +21523,7 @@ function TypeRow({ t, onPick, label, icon, colorKey }) {
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" })));
 }
 function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons, colorKeys }) {
-    const [closing, close] = useClosing(onCancel, 240);
+    const [closing, close] = useClosing(onCancel);
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center", style: { zIndex: 2147483000 }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/40 " + (closing ? "anim-fade-out" : "anim-fade") }),
         react_1.default.createElement("div", { className: "relative w-full max-w-lg bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg "
@@ -21534,7 +21538,7 @@ function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TY
 function DraftCard({ draft, onResume, onDiscard }) {
     const N = useTypeNames();
     const color = useTypeColor(draft.type);
-    const [closing, close] = useClosing(onDiscard, 180);
+    const [closing, close] = useClosing(onDiscard);
     useLockBackground();
     /* **画面の上に居すわらせないこと。**
        毎回そこにあると、記録の並びを押しのけてしまう。
@@ -22852,7 +22856,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
    チェックリストの項目を、別のチェックリストへ移し替える（持ち越し）
    ============================================================ */
 function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
-    const [closing, close] = useClosing(onCancel, 200);
+    const [closing, close] = useClosing(onCancel);
     const [nameOpen, setNameOpen] = (0, react_1.useState)(false);
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
     const N = useTypeNames();
@@ -23912,7 +23916,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
    ============================================================ */
 const FOLDER_TABS = [{ key: "auto", label: "自動で集める" }, { key: "manual", label: "手動で入れる" }];
 function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, onSave }) {
-    const [closing, close] = useClosing(onCancel, 200);
+    const [closing, close] = useClosing(onCancel);
     const [tab, setTab] = (0, react_1.useState)(initialTab || "auto");
     const [leaveAsk, setLeaveAsk] = (0, react_1.useState)(false);
     const N = useTypeNames();
