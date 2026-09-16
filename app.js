@@ -22756,10 +22756,16 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
        どこで払っても効くようにしておく。
        日→週→月の切り替えは、上の帯か、右下の丸いボタンで行う */
     const { areaRef, pageCls, setDir } = useSwipePages(() => step(-1), () => step(1));
-    /* 下のタブの「Today」を押したときの戻り方。
+    /* 下のタブの「Today」を押したときの戻り方（2.11.1〜 二段階）。
        ・ほかのタブから来たとき … 記録の面をふわっと出し、上までなめらかに戻す
-       ・別の日／週／月を見ているとき … 今日の「日」へ、向きのある動きで戻し、上まで戻す
+       ・別の日／週／月を見ているとき
+           1回め … いま見ている画面（日・週・月）のまま、上までなめらかに戻す
+           2回め … 今日の「日」へ、向きのある動きで戻し、上まで戻す
        ・もう今日の日を見ているとき … 上までなめらかに戻すだけ
+       「2回め」は、1回めを押したときと同じ画面（span と date）を見ているときだけ。
+       あいだに日送り・日週月の切り替えをしたら、また1回めから数える（行って戻っても数え直す）。
+       **押した回数そのもので数えないこと。** 別の日へ送ったあとの1回めで、
+       いきなり今日へ飛んでしまう
        **動きのクラスを貼りっぱなしにしないこと**（useSwipePages と同じ理由）。
        **最初の描画から付けること。** あとから付けると、一瞬見えてから消えて、ちらつく */
     const [returnCls, setReturnCls] = (0, react_1.useState)(() => (resetSig > 0 ? "ft-today-in" : ""));
@@ -22769,13 +22775,24 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
        描きはじめたときに持っていた合図と同じかどうかで見分ける */
     const mountSigRef = (0, react_1.useRef)(resetSig);
     const handledSigRef = (0, react_1.useRef)(null);
+    /* 1回め（上へ戻すだけ）を押したときの画面。null なら、次は1回めとして扱う */
+    const topArmedRef = (0, react_1.useRef)(null);
     (0, react_1.useEffect)(() => {
         if (!resetSig || handledSigRef.current === resetSig)
             return;
         const mounting = handledSigRef.current === null && resetSig === mountSigRef.current;
         handledSigRef.current = resetSig;
         const t = todayStr();
-        if (!mounting && (span !== "day" || date !== t)) {
+        const viewKey = span + "|" + date;
+        const away = !mounting && (span !== "day" || date !== t);
+        if (away && topArmedRef.current !== viewKey) {
+            /* 1回め：いま見ている画面のまま、上まで戻すだけ */
+            topArmedRef.current = viewKey;
+            requestAnimationFrame(() => smoothScrollToTop());
+            return;
+        }
+        topArmedRef.current = null;
+        if (away) {
             if (sel.on)
                 sel.stop();
             setDir(0);
@@ -22792,6 +22809,12 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         /* 新しい中身の高さが決まってから送る */
         requestAnimationFrame(() => smoothScrollToTop());
     }, [resetSig]); // eslint-disable-line
+    /* 日送り・日週月の切り替えで画面が変わったら、次の Today はまた1回めから。
+       行って戻って同じ画面になっても、数え直す */
+    (0, react_1.useEffect)(() => {
+        if (topArmedRef.current && topArmedRef.current !== span + "|" + date)
+            topArmedRef.current = null;
+    }, [span, date]);
     (0, react_1.useEffect)(() => () => { if (returnOffRef.current)
         clearTimeout(returnOffRef.current); }, []);
     /* 日→週→月→日 と、ひと押しで順に切り替える。
