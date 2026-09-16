@@ -20892,7 +20892,14 @@ function headOfText(t, maxChars = LONG_CHARS, maxLines = LONG_LINES) {
     /* 行が多いときは行で、字が多いときは字で切る。**どちらか短いほう** */
     const byLine = v.split("\n").slice(0, maxLines).join("\n");
     const cut = byLine.length > maxChars ? byLine.slice(0, maxChars) : byLine;
-    return cut.replace(/\s+$/, "");
+    /* **ここで必ず「……」を足す（2.11.9〜）。**
+       この関数は呼び出し側（LongText）が isLongText で「隠れる中身がある」と
+       判定したときだけ呼ばれるので、ここを通る＝必ず本当に切り詰められている。
+       それでも末尾に記号を付けずに返していたため、「イベント 記」「現状として、「フォ」の
+       ように文の途中でぶつ切りになって見えていた。
+       **全文がそのまま収まるときはこの関数を呼ばない側で分岐している**（LongText の
+       `open || !long`）ので、ここは常に付けてよい */
+    return cut.replace(/\s+$/, "") + "……";
 }
 /* **見た目だけの箱にすること。** 開く/たたむの状態は、
    カード側（RecordRow）が持つ。カード本体をタップしても切り替わるようにするため、
@@ -22886,8 +22893,10 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
             if (sel.on)
                 sel.stop();
             setDir(0);
-            /* 未来から戻るときは左から、過去から戻るときは右から入る（矢印で送ったときと同じ向き） */
-            setReturnCls(span !== "day" ? "ft-today-in" : date < t ? "ft-today-r" : "ft-today-l");
+            /* 未来から戻るときは左から、過去から戻るときは右から入る（矢印で送ったときと同じ向き）。
+               **span で縦/横を出し分けない（2.11.9〜）。** 日からでも週・月からでも、
+               今日へ戻る動きはこの横揺れひとつにそろえる */
+            setReturnCls(date < t ? "ft-today-r" : "ft-today-l");
             setSpan("day");
             setDate(t);
             setWeekSel(null);
@@ -22973,7 +22982,12 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "mb-1" }, upcoming.map(({ plan, list }) => (react_1.default.createElement("div", { key: plan.id, className: CARD_SLOT },
             react_1.default.createElement(PlanDueCard, { plan: plan, list: list, onOpen: () => onOpenPlan(plan) })))))),
         react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
-            react_1.default.createElement("div", { key: span === "day" ? span + date : span, className: (span === "day" ? pageCls : "") + (returnCls ? " " + returnCls : "") },
+            /* **key に span だけでなく date も入れる（2.11.9〜）。**
+               以前は週・月では span だけを key にしていたため、日付を送っても
+               この箱が作り直されず、揺れる動きが再生されなかった（日だけ動き、
+               週・月は動かない、という食い違いの原因）。date を入れて、
+               隣へ送るたびに必ず作り直されるようにする */
+            react_1.default.createElement("div", { key: span + "|" + date, className: pageCls + (returnCls ? " " + returnCls : "") },
                 span === "day" && react_1.default.createElement(NeedBackupBanner, { onOpen: onOpenBackup, dim: sel.on }),
                 span === "day" && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
                 span === "week" && (react_1.default.createElement(react_1.default.Fragment, null,
@@ -25352,18 +25366,18 @@ button:active { transition-duration: 60ms; }
 
 .ft-seq > * { }
 
-.ft-page-l { }
-.ft-page-r { }
-/* 下のタブの「Today」で今日へ戻るときだけの動き。
-   **ここだけは動かすこと。** 別の日から今日へ飛ぶと、何が起きたか目で追えないため。
+/* 下のタブの「Today」で今日へ戻るときと、画面上部の日・週・月を隣へ送るとき。
+   **どちらも同じ横揺れにそろえる（2.11.9〜）。** 以前は Today に戻るとき、
+   週・月からだと縦に揺れていたが、目で追いにくいので廃止し、横揺れへ統一した。
+   **ここだけは動かすこと。** 何が起きたか目で追えないと困るため。
    横にずらす量は、記録の面の左右の余白（px-5＝20px）より小さくすること。
    それを超えると、動いているあいだだけ画面が横に送れるようになる */
 @keyframes ft-today-r { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
 @keyframes ft-today-l { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
-@keyframes ft-today-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .ft-today-r  { animation: ft-today-r 320ms var(--ease-out) both; }
 .ft-today-l  { animation: ft-today-l 320ms var(--ease-out) both; }
-.ft-today-in { animation: ft-today-in 320ms var(--ease-out) both; }
+.ft-page-l   { animation: ft-today-l 320ms var(--ease-out) both; }
+.ft-page-r   { animation: ft-today-r 320ms var(--ease-out) both; }
 .ft-daypop { }
 
 .ft-check-in { }
