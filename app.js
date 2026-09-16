@@ -23728,28 +23728,87 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
         : left < 0 ? { background: "#FFF1F4", color: "#BE123C" }
             : left <= 7 ? { background: color.soft, color: color.deep }
                 : { background: "#F3F3F5", color: "#63636A" };
+    /* 完了の入り切りは、リスト記録カード（RecordRow）と同じ操作感にそろえる。
+       **札にチェックの丸を置かないこと。** 長押しで小窓（TypePickSheet）を出し、
+       そこにある「完了にする（完了済みの場合は未完了に戻す）」を選んで切り替える。
+       タップ（鉛筆・タイトル）は、これまで通り編集をひらく。
+       長押しの作り方は RecordRow / PlanScreen の長押しと同じにそろえてある。
+       ・押しはじめ（pointerdown）から480msで発火。指が10pxを超えて動いたら取り消す
+       ・発火したら、そのあとの click は onClickCapture で捨てる
+         （捨てないと、指を離した拍子に編集がひらいてしまう） */
+    const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
+    const [pressing, setPressing] = (0, react_1.useState)(false);
+    const press = (0, react_1.useRef)({ t: null, from: null, fired: false });
+    const stopPress = () => {
+        if (press.current.t) {
+            clearTimeout(press.current.t);
+            press.current.t = null;
+        }
+        setPressing(false);
+    };
+    (0, react_1.useEffect)(() => stopPress, []);
+    const pressProps = {
+        onPointerDown: (e) => {
+            if (e.pointerType === "mouse" && e.button !== 0)
+                return;
+            press.current.fired = false;
+            press.current.from = { x: e.clientX, y: e.clientY };
+            stopPress();
+            setPressing(true);
+            press.current.t = setTimeout(() => {
+                press.current.fired = true;
+                setPressing(false);
+                try {
+                    if (navigator.vibrate)
+                        navigator.vibrate(8);
+                }
+                catch (err) { /* 使えなくても構わない */ }
+                setMenuOpen(true);
+            }, 480);
+        },
+        onPointerMove: (e) => {
+            const f = press.current.from;
+            if (!f)
+                return;
+            if (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10)
+                stopPress();
+        },
+        onPointerUp: stopPress,
+        onPointerCancel: stopPress,
+        /* 長押しの吹き出し（コピーなど）を出させない */
+        onContextMenu: (e) => e.preventDefault(),
+        onClickCapture: (e) => {
+            if (press.current.fired) {
+                e.preventDefault();
+                e.stopPropagation();
+                press.current.fired = false;
+            }
+        },
+    };
     return (react_1.default.createElement("div", { className: inset ? "relative flex gap-2 pb-1.5 px-2" : CARD_SLOT },
-        react_1.default.createElement("div", { className: "flex-1 min-w-0 rounded-2xl bg-white border overflow-hidden", style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5" } },
-            react_1.default.createElement("div", { className: "flex items-start gap-1 px-2.5 py-2", style: step.pinned && !allDone ? { boxShadow: `inset 3px 0 0 ${color.mid}` } : undefined },
-                react_1.default.createElement(TapOnceButton, { onTap: () => patch((st) => ({ ...st, done: !st.done })), "aria-label": allDone ? "やっていないに戻す" : "やり終えた", "aria-pressed": allDone, className: "w-11 h-11 shrink-0 flex items-center justify-center rounded-xl ft-tap ft-tap-icon" },
-                    react_1.default.createElement("span", { className: "w-6 h-6 rounded-full border-2 flex items-center justify-center", style: allDone ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4" } }, allDone && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
-                        react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })))),
-                react_1.default.createElement("button", { type: "button", onClick: onEdit, className: "flex-1 min-w-0 py-1.5 text-left ft-tap rounded-lg" },
+        react_1.default.createElement("div", { ...pressProps, className: "flex-1 min-w-0 rounded-2xl bg-white border overflow-hidden ft-tap ft-tap-card " + (pressing ? "ft-pressing " : ""), style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5" } },
+            react_1.default.createElement("div", { className: "px-4 pt-3.5 pb-2", style: step.pinned && !allDone ? { boxShadow: `inset 3px 0 0 ${color.mid}` } : undefined },
+                /* 見出しの段：しるし・期限の札 …… 固定・編集。
+                   **リスト記録カード（RecordRow）の上段と同じ並びにそろえる。** */
+                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-0.5" },
+                    react_1.default.createElement("span", { className: "shrink-0 flex", style: { color: color.deep } }, typeIcon(STEP_TYPE, 15)),
+                    step.dueDate && !allDone && (react_1.default.createElement("span", { className: "fs-body-sm font-bold tabular-nums rounded-lg px-2 py-[3px] leading-tight", style: leftStyle }, stepLeftLabel(left))),
+                    step.dueDate && (react_1.default.createElement("span", { className: "fs-label tabular-nums text-neutral-400" }, shortDate(step.dueDate))),
+                    !step.dueDate && react_1.default.createElement("span", { className: "fs-label text-neutral-400" }, "期限なし"),
+                    react_1.default.createElement("span", { className: "flex-1" }),
+                    react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-1.5 -mt-1.5 shrink-0" },
+                        onPin && (react_1.default.createElement(TapOnceButton, { onTap: () => onPin(step), "aria-label": step.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!step.pinned, className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: step.pinned ? { background: color.soft, color: color.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
+                            react_1.default.createElement("span", { key: step.pinned ? "on" : "off", className: "flex " + (step.pinned ? "ft-mark" : "") },
+                                react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: step.pinned ? "currentColor" : "none" })))),
+                        react_1.default.createElement("button", { type: "button", onClick: onEdit, onPointerDown: (e) => e.stopPropagation(), "aria-label": "編集", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
+                            react_1.default.createElement(lucide_react_1.Pencil, { size: 16 })))),
+                /* タイトルの段：左端のチェックが無くなったぶん、左詰めでカード幅いっぱいに */
+                react_1.default.createElement("button", { type: "button", onClick: onEdit, className: "block w-full text-left ft-tap rounded-lg" },
                     react_1.default.createElement("span", { className: "block ft-input font-bold break-words "
-                            + (allDone ? "line-through text-neutral-400" : "text-neutral-900") }, step.title || react_1.default.createElement("span", { className: "text-neutral-300" }, "\uFF08\u540D\u524D\u306A\u3057\uFF09")),
-                    react_1.default.createElement("span", { className: "flex items-center gap-1.5 mt-1.5 flex-wrap" },
-                        step.dueDate && !allDone && (react_1.default.createElement("span", { className: "fs-body-sm font-bold tabular-nums rounded-lg px-2 py-[3px] leading-tight", style: leftStyle }, stepLeftLabel(left))),
-                        step.dueDate && (react_1.default.createElement("span", { className: "fs-label tabular-nums text-neutral-400" }, shortDate(step.dueDate))),
-                        !step.dueDate && react_1.default.createElement("span", { className: "fs-label text-neutral-400" }, "\u671F\u9650\u306A\u3057")),
-                    items.length > 0 && (react_1.default.createElement("div", { className: "block mt-1.5" },
-                        react_1.default.createElement(ProgressLine, { done: doneCount, total: items.length, items: items, color: color, strong: doneCount === items.length })))),
-                react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-0.5 mt-0.5 shrink-0" },
-                    onPin && (react_1.default.createElement("button", { type: "button", onClick: () => onPin(step), "aria-label": step.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!step.pinned, className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: step.pinned ? { background: color.soft, color: color.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
-                        react_1.default.createElement("span", { key: step.pinned ? "on" : "off", className: "flex " + (step.pinned ? "ft-mark" : "") },
-                            react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: step.pinned ? "currentColor" : "none" })))),
-                    react_1.default.createElement("button", { type: "button", onClick: onEdit, "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
-                        react_1.default.createElement(lucide_react_1.Pencil, { size: 16 })))),
-            items.length > 0 && (react_1.default.createElement("div", { className: "pl-5 pr-3 pb-1.5 space-y-[2px]" }, items.map((it) => (react_1.default.createElement(TapOnceButton, { key: it.id, onTap: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
+                            + (allDone ? "line-through text-neutral-400" : "text-neutral-900") }, step.title || react_1.default.createElement("span", { className: "text-neutral-300" }, "（名前なし）"))),
+                items.length > 0 && (react_1.default.createElement("div", { className: "mt-1.5" },
+                    react_1.default.createElement(ProgressLine, { done: doneCount, total: items.length, items: items, color: color, strong: doneCount === items.length })))),
+            items.length > 0 && (react_1.default.createElement("div", { className: "px-2.5 pb-1.5 space-y-[2px]" }, items.map((it) => (react_1.default.createElement(TapOnceButton, { key: it.id, onTap: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
                 react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
                 react_1.default.createElement("span", { className: "fs-body leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text),
@@ -23758,7 +23817,9 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
                イベントはたたまない（スケジュール／イベントは常にそのまま表示） */
             (step.body || "").trim() && (react_1.default.createElement("div", { className: "mx-2.5 mb-2.5 mt-0.5 pl-1.5 border-l-2 border-neutral-200" },
                 react_1.default.createElement(LinkedText, { text: step.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
-                react_1.default.createElement(LinkCards, { text: step.body, small: true }))))));
+                react_1.default.createElement(LinkCards, { text: step.body, small: true })))),
+        /* 長押しで出す、完了の入り切りだけの小窓。**カード内に別のボタンを増やさないこと。** */
+        menuOpen && (react_1.default.createElement(TypePickSheet, { title: step.title || "イベント", types: ["__toggle"], labels: { __toggle: "完了にする（完了済みの場合は未完了に戻す）" }, icons: { __toggle: react_1.default.createElement(lucide_react_1.Check, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: () => { setMenuOpen(false); patch((st) => ({ ...st, done: !st.done })); } }))));
 }
 /* イベントを書く画面。
    **記録を書く画面と別の作りにしないこと。** 同じ「書くこと」なのに
