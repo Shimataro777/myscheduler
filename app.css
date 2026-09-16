@@ -1,85 +1,3 @@
-/* ============================================================
-   デザイントークン
-   文字サイズ・余白・アイコン・色・モーションの基準値をここに集約する。
-   新しい値を追加するときは、まずここに載っている役割クラス（.fs-* .icon-* .sp-*）
-   で足りないか確認してから、足りない場合だけ増やすこと。
-   ============================================================ */
-:root{
-  /* 文字サイズ設定（小・中・大）の倍率。.ft-font-m / .ft-font-l が上書きする。
-     ここを直接書き換えず、下の各 .text-[…] / .fs-* が calc() で参照する形にしている。
-     新しいサイズを追加しても、この仕組みなら自動で連動する（上書き表を手で足す必要がない） */
-  --ft-scale: 1;
-
-  /* 【重要】ここは倍率を掛けない「素の基準値」にすること。
-     :root の中で calc(… * var(--ft-scale)) と書くと、その場で --ft-scale:1 が
-     代入されて値が固定されてしまい、あとから .ft-font-m が倍率を変えても効かない
-     （カスタムプロパティは「宣言した要素」で中身が確定する仕様のため）。
-     倍率は下の .fs-* クラスの font-size 側で掛けること。 */
-  --fs-micro:    9.5px;
-  --fs-caption:  11.5px;
-  --fs-label:    12.5px;
-  --fs-body-sm:  13.5px;
-  --fs-body:     14.5px;
-  --fs-subhead:  15.5px;
-  --fs-title:    17.5px;
-  --fs-display:  21px;
-  --fs-display-lg: 22px;
-  /* 実績・達成率など、読む文字ではなく見て数えとる数字専用 */
-  --fs-stat:     20px;
-
-  /* 実測（app.js 全体のクラス使用頻度）に基づく、4px刻み＋半段階の余白スケール。
-     すでにほぼこの刻みだけで統一されていたため、無理に6段階へ削らず、
-     実態に合わせて素直に定義した */
-  --sp-0_5: 2px; --sp-1: 4px; --sp-1_5: 6px; --sp-2: 8px; --sp-2_5: 10px;
-  --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px; --sp-7: 28px; --sp-8: 32px;
-
-  --icon-sm: 16px; --icon-md: 20px; --icon-lg: 24px;
-
-  --color-brand: var(--th-950, #4A7E9B);
-  --color-brand-surface: var(--th-800, #6FAFD2);
-  --color-danger: #BE123C;
-  --color-danger-strong: #9F1239;
-  --color-danger-surface: #FFF1F2;
-  --color-danger-border: #FECDD3;
-  --color-warning: #F59E0B;
-  --color-warning-surface: #FFFBEB;
-  --color-warning-surface-strong: #FEF3C7;
-  --color-warning-border: #FDE68A;
-  --color-warning-text-soft: #FBBF24;
-  --color-warning-text: #B45309;
-  --color-warning-text-strong: #92400E;
-  --color-ink: #171717;
-  --color-surface: #FFFFFF;
-  --color-border: #E5E5E5;
-
-  --ease-out: cubic-bezier(0.22,1,0.36,1);
-  --ease-spring: cubic-bezier(0.34,1.3,0.5,1);
-  --ease-settle: cubic-bezier(0.16,1,0.3,1);
-  --ease-in: cubic-bezier(0.55,0,0.68,0.53);
-  --dur-fast: 140ms;
-  --dur-base: 240ms;
-  --dur-slow: 360ms;
-  --dur-celebrate: 620ms;
-}
-/* 役割ベースのフォントクラス。新規実装はこちらを使うこと（.text-[Npx] は非推奨）。
-   **倍率はここで掛けること。** font-size を当てる要素の上で calc() を評価させることで、
-   その要素が受け継いだ --ft-scale（.ft-font-m なら 1.09）が正しく効く。
-   **var(--fs-body) を font-size に直接書かないこと。** 倍率が掛からず小のままになる */
-.fs-micro   { font-size: calc(var(--fs-micro)   * var(--ft-scale)); }
-.fs-caption { font-size: calc(var(--fs-caption) * var(--ft-scale)); }
-.fs-label   { font-size: calc(var(--fs-label)   * var(--ft-scale)); }
-.fs-body-sm { font-size: calc(var(--fs-body-sm) * var(--ft-scale)); }
-.fs-body    { font-size: calc(var(--fs-body)    * var(--ft-scale)); }
-.fs-subhead { font-size: calc(var(--fs-subhead) * var(--ft-scale)); }
-.fs-title   { font-size: calc(var(--fs-title)   * var(--ft-scale)); }
-.fs-display { font-size: calc(var(--fs-display) * var(--ft-scale)); }
-.fs-display-lg { font-size: calc(var(--fs-display-lg) * var(--ft-scale)); }
-.fs-stat    { font-size: calc(var(--fs-stat)    * var(--ft-scale)); }
-/* 役割ベースの余白・アイコンクラス */
-.icon-sm { width: var(--icon-sm); height: var(--icon-sm); }
-.icon-md { width: var(--icon-md); height: var(--icon-md); }
-.icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
-
 *,::before,::after{box-sizing:border-box;border:0 solid #E5E5E5;margin:0;padding:0}
 html{scrollbar-gutter:stable}
 html,body,#root{height:100%}
@@ -89,10 +7,7 @@ img,svg,video{display:block;max-width:100%}
 button,input,textarea,select{font:inherit;color:inherit;background:transparent}
 button{cursor:pointer}
 input:focus,textarea:focus,button:focus,select:focus{outline:none}
-/* 入力欄の字。**16pxを下回らせないこと。** iPhoneのSafariは16px未満の入力欄に
-   触れると画面を勝手に拡大してしまう。max() で下限を16pxに留めたまま、
-   文字の大きさの設定では「大きくなる方向にだけ」連動させる */
-input,textarea,select{font-size:max(16px, calc(16px * var(--ft-scale)))}
+input,textarea,select{font-size:16px}
 ul,ol{list-style:none}
 a{color:inherit;text-decoration:none}
 h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
@@ -107,7 +22,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .-translate-x-1\/2{transform:translateX(-50%)}
 .absolute{position:absolute}
 .aspect-square{aspect-ratio:1/1}
-.bg-amber-500{background-color:var(--color-warning)}
+.bg-amber-500{background-color:#F59E0B}
 .bg-app{background-color:#FFFFFF}
 .bg-black\/25{background-color:rgba(0,0,0,0.25)}
 .bg-black\/35{background-color:rgba(0,0,0,0.35)}
@@ -123,7 +38,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .bg-neutral-300{background-color:#D4D4D4}
 .bg-neutral-50{background-color:#FAFAFA}
 .bg-neutral-900{background-color:#171717}
-.bg-rose-700{background-color:var(--color-danger)}
+.bg-rose-700{background-color:#BE123C}
 .bg-th-50{background-color:#F4FAFD}
 .bg-th-800{background-color:#6FAFD2}
 .bg-th-950{background-color:#4A7E9B}
@@ -135,12 +50,11 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .border-\[1\.5px\]{border-width:1.5px}
 .border-b{border-bottom-width:1px;border-style:solid}
 .border-dashed{border-style:dashed}
-.border-l-2{border-left-width:2px;border-style:solid}
 .border-neutral-100{border-color:#F5F5F5}
 .border-neutral-200{border-color:#E5E5E5}
 .border-neutral-300{border-color:#D4D4D4}
 .border-r{border-right-width:1px;border-style:solid}
-.border-rose-200{border-color:var(--color-danger-border)}
+.border-rose-200{border-color:#FECDD3}
 .border-t{border-top-width:1px;border-style:solid}
 .border-th-200{border-color:#C6EBDD}
 .border-y-2{border-top-width:2px;border-bottom-width:2px;border-style:solid}
@@ -154,6 +68,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .disabled\:opacity-25:disabled{opacity:0.25}
 .disabled\:opacity-40:disabled{opacity:0.4}
 .disabled\:opacity-50:disabled{opacity:0.5}
+.duration-300{transition-duration:300ms}
 .fixed{position:fixed}
 .flex{display:flex}
 .flex-1{flex:1 1 0%}
@@ -196,10 +111,10 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .hidden{display:none}
 .hover\:bg-neutral-100:hover{background-color:#F5F5F5}
 .hover\:bg-neutral-50:hover{background-color:#FAFAFA}
-.hover\:bg-rose-50:hover{background-color:var(--color-danger-surface)}
-.hover\:bg-rose-800:hover{background-color:var(--color-danger-strong)}
+.hover\:bg-rose-50:hover{background-color:#FFF1F2}
+.hover\:bg-rose-800:hover{background-color:#9F1239}
 .hover\:text-red-700:hover{color:#B91C1C}
-.hover\:text-rose-700:hover{color:var(--color-danger)}
+.hover\:text-rose-700:hover{color:#BE123C}
 .inline-block{display:inline-block}
 .inline-flex{display:inline-flex}
 .inset-0{top:0;right:0;bottom:0;left:0}
@@ -244,7 +159,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .mb-8{margin-bottom:32px}
 .min-h-0{min-height:0px}
 .min-h-\[160px\]{min-height:160px}
-.min-h-\[36px\]{min-height:36px}
 .min-h-\[40px\]{min-height:40px}
 .min-h-\[42px\]{min-height:42px}
 .min-h-\[44px\]{min-height:44px}
@@ -267,7 +181,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .mt-2{margin-top:8px}
 .mt-2\.5{margin-top:10px}
 .mt-3{margin-top:12px}
-.mx-2\.5{margin-left:10px;margin-right:10px}
 .mx-auto{margin-left:auto;margin-right:auto}
 .overflow-hidden{overflow:hidden}
 .overflow-y-auto{overflow-y:auto}
@@ -287,7 +200,6 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .pb-28{padding-bottom:112px}
 .pb-3\.5{padding-bottom:14px}
 .pb-4{padding-bottom:16px}
-.pl-1\.5{padding-left:6px}
 .pl-3{padding-left:12px}
 .pl-5{padding-left:20px}
 .placeholder-neutral-300::placeholder{color:#D4D4D4}
@@ -357,32 +269,27 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .space-y-\[2px\] > * + *{margin-top:2px}
 .sticky{position:sticky}
 .tabular-nums{font-variant-numeric:tabular-nums}
-/* 【重要】ここから先は生の px ではなく var(--ft-scale) 経由の calc() にしてある。
-   .ft-font-m / .ft-font-l は --ft-scale の値を変えるだけでよく、
-   このクラスひとつひとつを個別に上書きする表は廃止した（旧: app.js 内の手書き上書き表）。
-   新しく text-[Npx] を増やす場合も、同じ calc(Npx * var(--ft-scale)) の形にすること。
-   ただし新規実装は基本的に上の .fs-* 役割クラスを使うこと。*/
-.text-\[10\.5px\]{font-size:calc(10.5px * var(--ft-scale))}
-.text-\[10px\]{font-size:calc(10px * var(--ft-scale))}
-.text-\[11\.5px\]{font-size:calc(11.5px * var(--ft-scale))}
-.text-\[11px\]{font-size:calc(11px * var(--ft-scale))}
-.text-\[12\.5px\]{font-size:calc(12.5px * var(--ft-scale))}
-.text-\[12px\]{font-size:calc(12px * var(--ft-scale))}
-.text-\[13\.5px\]{font-size:calc(13.5px * var(--ft-scale))}
-.text-\[13px\]{font-size:calc(13px * var(--ft-scale))}
-.text-\[14\.5px\]{font-size:calc(14.5px * var(--ft-scale))}
-.text-\[14px\]{font-size:calc(14px * var(--ft-scale))}
-.text-\[15\.5px\]{font-size:calc(15.5px * var(--ft-scale))}
-.text-\[15px\]{font-size:calc(15px * var(--ft-scale))}
-.text-\[16px\]{font-size:calc(16px * var(--ft-scale))}
-.text-\[17\.5px\]{font-size:calc(17.5px * var(--ft-scale))}
-.text-\[17px\]{font-size:calc(17px * var(--ft-scale))}
-.text-\[20px\]{font-size:calc(20px * var(--ft-scale))}
-.text-\[21px\]{font-size:calc(21px * var(--ft-scale))}
-.text-\[22px\]{font-size:calc(22px * var(--ft-scale))}
-.text-\[8px\]{font-size:calc(8px * var(--ft-scale))}
-.text-\[9\.5px\]{font-size:calc(9.5px * var(--ft-scale))}
-.text-\[9px\]{font-size:calc(9px * var(--ft-scale))}
+.text-\[10\.5px\]{font-size:10.5px}
+.text-\[10px\]{font-size:10px}
+.text-\[11\.5px\]{font-size:11.5px}
+.text-\[11px\]{font-size:11px}
+.text-\[12\.5px\]{font-size:12.5px}
+.text-\[12px\]{font-size:12px}
+.text-\[13\.5px\]{font-size:13.5px}
+.text-\[13px\]{font-size:13px}
+.text-\[14\.5px\]{font-size:14.5px}
+.text-\[14px\]{font-size:14px}
+.text-\[15\.5px\]{font-size:15.5px}
+.text-\[15px\]{font-size:15px}
+.text-\[16px\]{font-size:16px}
+.text-\[17\.5px\]{font-size:17.5px}
+.text-\[17px\]{font-size:17px}
+.text-\[20px\]{font-size:20px}
+.text-\[21px\]{font-size:21px}
+.text-\[22px\]{font-size:22px}
+.text-\[8px\]{font-size:8px}
+.text-\[9\.5px\]{font-size:9.5px}
+.text-\[9px\]{font-size:9px}
 .text-center{text-align:center}
 .text-left{text-align:left}
 .text-neutral-300{color:#D4D4D4}
@@ -393,7 +300,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .text-neutral-800{color:#262626}
 .text-neutral-900{color:#171717}
 .text-right{text-align:right}
-.text-rose-700{color:var(--color-danger)}
+.text-rose-700{color:#BE123C}
 .text-sky-700{color:#0369A1}
 .text-th-800\/60{color:rgba(111,175,210,.6)}
 .text-white{color:#FFFFFF}
@@ -405,6 +312,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .top-3{top:12px}
 .tracking-tight{letter-spacing:-.01em}
 .tracking-wide{letter-spacing:.02em}
+.transition-all{transition:all .2s}
 .truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .w-10{width:40px}
 .w-11{width:44px}
@@ -429,67 +337,3 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .z-10{z-index:10}
 .z-30{z-index:30}
 .z-40{z-index:40}
-
-/* ============================================================
-   タップ・フィードバック（.ft-tap 系）
-   記録カード（スケジュール・リスト・メモ・イベントなど）をはじめ、
-   押せる要素すべてに共通で使う「いま押している／受け付けた」ハイライト。
-   ここ一箇所を直せば、個々の画面を書き換えずに全体へ反映される。
-
-   仕組み：疑似要素 ::after を要素いっぱいに重ね、押している間だけ
-   ごく薄い黒を mix-blend-mode:multiply で乗せる。乗算なので、
-   もとの背景色（白いカードでも、選択中の色付き背景でも、丸いボタンの
-   色つき背景でも）の上でそのまま少し沈んだ色になり、文字は
-   （もともと濃い色なので）乗算してもほぼ変わらず読みやすいまま保たれる。
-   単純な background-color の上書きにしないのは、カードごとに違う
-   下地の色を消してしまわないため。 */
-.ft-tap{
-  -webkit-tap-highlight-color: transparent; /* 既定の青いフラッシュを消し、下のハイライトに差し替える */
-  touch-action: manipulation; /* ダブルタップ拡大とタップ遅延を止める。縦スクロールはそのまま効く */
-}
-.ft-tap-card,
-.ft-tap-icon{
-  position: relative;
-}
-.ft-tap-card::after,
-.ft-tap-icon::after{
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: #18181B;
-  opacity: 0;
-  mix-blend-mode: multiply;
-  pointer-events: none; /* 重ねの下にある編集・ピン留めボタン等のタップを妨げない */
-  transition: opacity var(--dur-fast) var(--ease-out);
-}
-/* タップしている間（:active）と、長押しで選択モードへ入ろうとしている間
-   （JS側が付け外しする .ft-pressing）の、両方で同じ沈みにそろえる */
-.ft-tap-card:active::after,
-.ft-tap-card.ft-pressing::after{
-  opacity: .07;
-  transition-duration: 40ms; /* 押した瞬間はすぐ反応、離すときだけゆっくり戻す */
-}
-.ft-tap-icon:active::after{
-  opacity: .12;
-  transition-duration: 40ms;
-}
-/* **中の押せるもの（チェック・固定・編集など）を押しているときは、
-   外側の札まで沈ませないこと。** :active は先祖にも伝わるので、
-   チェックを入れるたびに札ぜんたいが暗くなり、チカチカ点滅して見える。
-   沈むのは、いま指が乗っているものだけでよい */
-@supports selector(:has(*)) {
-  .ft-tap-card:active:has(.ft-tap:active)::after,
-  .ft-tap-card:active:has(.ft-tap-icon:active)::after{
-    opacity: 0;
-  }
-}
-@media (hover:hover) and (pointer:fine){
-  /* マウス操作の環境だけ、乗せる前の軽いホバーも付ける */
-  .ft-tap-card:hover::after{ opacity: .035; }
-}
-/* 一覧の行など、押している間の背景色をJS側の state で直接差し替えている箇所
-   （bg-neutral-200 + .ft-tap-pressed）は、色の切り替わりだけなめらかにする */
-.ft-tap-pressed{
-  transition: background-color var(--dur-fast) var(--ease-out);
-}
