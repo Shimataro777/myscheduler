@@ -22762,6 +22762,8 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
            1回め … いま見ている画面（日・週・月）のまま、上までなめらかに戻す
            2回め … 今日の「日」へ、向きのある動きで戻し、上まで戻す
        ・もう今日の日を見ているとき … 上までなめらかに戻すだけ
+       ・今日以外の画面で、もう上にいるとき … 1回めから今日へ戻す（上へ戻しても何も変わらないため）
+       下タブは TapOnceButton（useTapOnce）で受ける。click だと iOS で1回めが抜けることがある。
        「2回め」は、1回めを押したときと同じ画面（span と date）を見ているときだけ。
        あいだに日送り・日週月の切り替えをしたら、また1回めから数える（行って戻っても数え直す）。
        **押した回数そのもので数えないこと。** 別の日へ送ったあとの1回めで、
@@ -22785,7 +22787,10 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         const t = todayStr();
         const viewKey = span + "|" + date;
         const away = !mounting && (span !== "day" || date !== t);
-        if (away && topArmedRef.current !== viewKey) {
+        /* もう上にいるなら、1回めで上へ戻しても何も起きず「反応しない」に見える。
+           そのときは1回めから今日へ戻す */
+        const atTop = (window.scrollY || document.documentElement.scrollTop || 0) <= 2;
+        if (away && topArmedRef.current !== viewKey && !atTop) {
             /* 1回め：いま見ている画面のまま、上まで戻すだけ */
             topArmedRef.current = viewKey;
             requestAnimationFrame(() => smoothScrollToTop());
@@ -25356,11 +25361,16 @@ const TABS = [
     { key: "plan", label: "計画", icon: lucide_react_1.Target },
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
+/* **下タブを onClick だけで受けないこと**（2.11.1〜）。Today は「1回め＝上へ」「2回め＝今日へ」と続けて押す作り。
+   iOS では、①続けて素早く押した2回めを「ダブルタップ」とみなして click を配らない、
+   ②縦に送った慣性が残っているうちに押すと、慣性を止めるだけで click を配らない、
+   ことがあり、「1回押しても反応しない」ように見えた。
+   TapOnceButton（useTapOnce）で指を離した時点に受け止める（引継書 6-③ と同じ理由） */
 function BottomNav({ active, onChange }) {
     return (react_1.default.createElement("div", { className: "fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
-            return (react_1.default.createElement("button", { key: key, onClick: () => onChange(key), className: "flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[56px] relative ft-tap ft-tabbtn" },
+            return (react_1.default.createElement(TapOnceButton, { key: key, onTap: () => onChange(key), className: "flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[56px] relative ft-tap ft-tabbtn" },
                 isActive && react_1.default.createElement("span", { className: "absolute top-0 left-1/2 -translate-x-1/2 w-8 h-[3px] bg-th-800 rounded-full ft-tabbar" }),
                 react_1.default.createElement(Icon, { key: isActive ? "on" : "off", size: 21, className: isActive ? "text-th-800 ft-tabpop" : "text-neutral-500", strokeWidth: isActive ? 2.5 : 2 }),
                 react_1.default.createElement("span", { className: "fs-caption tracking-tight whitespace-nowrap " + (isActive ? "text-th-800 font-bold" : "text-neutral-500 font-medium") }, label)));
