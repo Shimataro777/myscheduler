@@ -19643,6 +19643,60 @@ function smoothScrollToTop() {
     raf = requestAnimationFrame(frame);
 }
 /* ============================================================
+   下タブを「いま開いているタブ」でもう一度押したときの戻り方（2.11.13〜）
+   **すべての下タブで、この二段階にそろえること。** 画面ごとに決めない。
+   ・1回め … いま見ている表示（タブ・検索の結果など）のまま、いちばん上へ戻すだけ
+   ・2回め … 1回めと同じ表示を見ていれば、その画面のデフォルトの表示へ戻して、いちばん上へ
+   ・もう上にいるときは、1回めからデフォルトへ戻す（上へ戻しても何も変わらず「反応しない」に見えるため）
+   ・もうデフォルトの表示なら、何回押しても上へ戻すだけ
+   ・あいだに表示が変わったら（タブを払った・検索し直した）、また1回めから数える
+   **押した回数（偶数・奇数）で決めないこと。** 表示を変えたあとの1回めで、いきなりデフォルトへ飛ぶ。
+   resetSig … AppMain の tabReset[タブ名]。**いま開いているタブを押したときだけ増やすこと。**
+     ほかのタブから移ってきたときは、画面ごと作り直されるのでもともとデフォルト（増やすと1回め扱いがずれる）。
+   viewKey  … いま見ている表示を表す文字列。変わったら数え直す。
+   atDefault … デフォルトの表示かどうか。
+   toDefault … デフォルトへ戻す（選択中なら止める、検索を消す、など）。
+   Today だけは今日へ戻す横揺れがあるので、TodayScreen の中に同じ決まりで別に書いてある
+   ============================================================ */
+function useTabReturn(resetSig, { viewKey, atDefault, toDefault }) {
+    /* 描きはじめたときに持っていた合図は、もう済んだものとして扱う */
+    const handledSigRef = (0, react_1.useRef)(resetSig);
+    const armedRef = (0, react_1.useRef)(null);
+    const latest = (0, react_1.useRef)(null);
+    latest.current = { viewKey, atDefault, toDefault };
+    (0, react_1.useEffect)(() => {
+        if (!resetSig || handledSigRef.current === resetSig)
+            return;
+        handledSigRef.current = resetSig;
+        const cur = latest.current;
+        const atTop = (window.scrollY || document.documentElement.scrollTop || 0) <= 2;
+        if (!cur.atDefault && armedRef.current !== cur.viewKey && !atTop) {
+            /* 1回め：いまの表示のまま、上へ戻すだけ */
+            armedRef.current = cur.viewKey;
+            requestAnimationFrame(() => smoothScrollToTop());
+            return;
+        }
+        armedRef.current = null;
+        if (!cur.atDefault) {
+            /* 入力欄に残ったキーボードも閉じる */
+            try {
+                const a = document.activeElement;
+                if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA"))
+                    a.blur();
+            }
+            catch (e) { /* noop */ }
+            cur.toDefault();
+        }
+        /* 新しい中身の高さが決まってから送る */
+        requestAnimationFrame(() => smoothScrollToTop());
+    }, [resetSig]); // eslint-disable-line
+    /* 表示が変わったら、次はまた1回めから（行って戻って同じ表示になっても数え直す） */
+    (0, react_1.useEffect)(() => {
+        if (armedRef.current && armedRef.current !== viewKey)
+            armedRef.current = null;
+    }, [viewKey]);
+}
+/* ============================================================
    左右に払って、日・週・月を送る
    ・押しているものの上でも効くよう、面全体で受ける
    ・縦に動かしたときは巻き物（スクロール）に譲る
@@ -23185,7 +23239,7 @@ function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDele
    ・種類は「どれか」、タグは「すべて含む」。目的が違うのであえて揃えていない
    ・**はじめの状態が1画面に収まること。** 絞り込みは開いた状態で始める
    ============================================================ */
-function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, onPin, onSelecting, order, onOrder }) {
+function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, onPin, onSelecting, order, onOrder, resetSig = 0 }) {
     const sel = useSelectMode(onDeleteMany);
     (0, react_1.useEffect)(() => { if (onSelecting)
         onSelecting(sel.on); }, [sel.on]); // eslint-disable-line
@@ -23289,6 +23343,14 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
             out.push(`${a.from ? shortDate(a.from) : "はじめ"}〜${a.to ? shortDate(a.to) : "いま"}`);
         return out.join("・");
     }, [applied, N]);
+    /* 下タブ「探す」をもう一度押したとき（useTabReturn）。
+       デフォルト＝条件なし・欄をひらいた、はじめて開いたときの表示 */
+    useTabReturn(resetSig, {
+        viewKey: JSON.stringify([applied, open, sel.on]),
+        atDefault: !applied && !hasDraft && open && !sel.on,
+        toDefault: () => { if (sel.on)
+            sel.stop(); clear(); },
+    });
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(TopChrome, null,
         react_1.default.createElement(ScreenHeader, { title: "\u63A2\u3059" }),
@@ -23625,7 +23687,7 @@ function PinButton({ on, onClick, color }) {
         react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") },
             react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: on ? "currentColor" : "none" }))));
 }
-function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onChangePlan, onDeletePlan }) {
+function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onChangePlan, onDeletePlan, resetSig = 0 }) {
     /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
     const [menu, setMenu] = (0, react_1.useState)(null); // { plan }
     const [edit, setEdit] = (0, react_1.useState)(null);
@@ -23699,6 +23761,14 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
         setTab(PLAN_TABS[i].key);
     };
     const { areaRef } = useSwipePages(() => stepTab(-1), () => stepTab(1));
+    /* 下タブ「計画」をもう一度押したとき（useTabReturn）。
+       1回め＝いまのタブ（完了済・すべて・検索中）の上へ、2回め＝「進行中」の上へ。
+       **並び順（sort）は戻さないこと。** 表示設定と同じく、選んだ人の好みとして残す */
+    useTabReturn(resetSig, {
+        viewKey: effectiveTab + "|" + q,
+        atDefault: tab === "live" && !q,
+        toDefault: () => { setQ(""); setTab("live"); },
+    });
     /* **カテゴリで分けないこと。** 入れ物をこしらえるより、
        いま進めているものが上にそろっているほうが探しやすい。
        名前だけでなく、中のイベントの名前もヒットする対象に含める */
@@ -24475,7 +24545,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
             renameOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", presets: false, initialName: folder.name, initialIcon: folder.icon, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setRenameOpen(false), onSave: (n, ic) => { onChange({ ...folder, name: n, icon: ic }); setRenameOpen(false); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(folder.id); } })))));
 }
-function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange, onDelete }) {
+function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange, onDelete, resetSig = 0 }) {
     /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
     const [menu, setMenu] = (0, react_1.useState)(null);
     const [edit, setEdit] = (0, react_1.useState)(null);
@@ -24528,6 +24598,12 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
     });
     /* 名前順か作成順。名前順のときは「01.」「02.」を数として見る */
     const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort), [folders, sort, q]);
+    /* 下タブ「フォルダ」をもう一度押したとき（useTabReturn）。デフォルト＝検索なし。並び順は戻さない */
+    useTabReturn(resetSig, {
+        viewKey: q,
+        atDefault: !q,
+        toDefault: () => setQ(""),
+    });
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(TopChrome, null,
             react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
@@ -25700,6 +25776,9 @@ function AppMain() {
     const [tab, setTab] = (0, react_1.useState)("today");
     /* 下のタブの「Today」を押した回数。TodayScreen はこれが変わったら今日の上へ戻る */
     const [todayReset, setTodayReset] = (0, react_1.useState)(0);
+    /* Today 以外の下タブを、いま開いているまま押した回数（useTabReturn）。
+       **ほかのタブから移ってきたときは増やさないこと。** */
+    const [tabReset, setTabReset] = (0, react_1.useState)({});
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
     const [menuInstant, setMenuInstant] = (0, react_1.useState)(false);
     const [typePick, setTypePick] = (0, react_1.useState)(false);
@@ -26266,13 +26345,16 @@ function AppMain() {
                                     react_1.default.createElement("div", { className: "ft-col" },
                                         tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
                                             react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped, resetSig: todayReset }))),
-                                        tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting })),
-                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })) })),
-                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder }))))),
+                                        tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, resetSig: tabReset.find || 0 })),
+                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), resetSig: tabReset.plan || 0 })),
+                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
                                 loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                                 loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => {
                                         if (k === "today")
                                             setTodayReset((n) => n + 1);
+                                        /* いま開いているタブをもう一度押した → その画面の上へ／デフォルトへ（useTabReturn） */
+                                        else if (k === tab)
+                                            setTabReset((m) => ({ ...m, [k]: (m[k] || 0) + 1 }));
                                         /* ほかのタブへ移るときは、戻りかけの動きを止める */
                                         else if (smoothTopCancel)
                                             smoothTopCancel();
