@@ -21659,6 +21659,10 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
             confirmLeave && (react_1.default.createElement(ConfirmDialog, { title: "\u4FDD\u5B58\u305B\u305A\u306B\u9589\u3058\u307E\u3059\u304B", body: "\u66F8\u3044\u305F\u5185\u5BB9\u306F\u6B8B\u308A\u307E\u305B\u3093\u3002", danger: false, confirmLabel: "\u9589\u3058\u308B", onCancel: () => setConfirmLeave(false), onConfirm: () => { setConfirmLeave(false); leave(); } })),
             confirmDel && (rec.repeat && rec.repeat.freq !== "none" ? (react_1.default.createElement(TypePickSheet, { title: "\u3069\u3053\u307E\u3067\u524A\u9664\u3057\u307E\u3059\u304B", types: ["__from", "__all"], labels: { __from: "この日より先を削除", __all: "すべて削除（過去のぶんも）" }, icons: { __from: react_1.default.createElement(lucide_react_1.CalendarClock, { size: 22 }), __all: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setConfirmDel(false), onPick: (k) => {
                     setConfirmDel(false);
+                    /* **消す・止める前に doneRef を立てること（2.11.11〜）。**
+                       立てないと、消したあとに自動下書きが書き戻され、
+                       次に開いたとき「書きかけの記録があります」に消した記録が出てくる */
+                    doneRef.current = true;
                     if (k === "__all") {
                         onDelete();
                         return;
@@ -21672,7 +21676,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                         return;
                     }
                     onSave({ ...rec, repeat: { ...rec.repeat, until: stop } });
-                } })) : (react_1.default.createElement(ConfirmDialog, { title: "\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u6D88\u3059\u3068\u5143\u306B\u623B\u305B\u307E\u305B\u3093\u3002", onCancel: () => setConfirmDel(false), onConfirm: () => { setConfirmDel(false); onDelete(); } }))))));
+                } })) : (react_1.default.createElement(ConfirmDialog, { title: "\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u6D88\u3059\u3068\u5143\u306B\u623B\u305B\u307E\u305B\u3093\u3002", onCancel: () => setConfirmDel(false), onConfirm: () => { setConfirmDel(false); doneRef.current = true; onDelete(); } }))))));
 }
 /* ============================================================
    ＋を押したあとの「記録の種類」
@@ -25717,6 +25721,21 @@ function AppMain() {
     const [backupOpen, setBackupOpen] = (0, react_1.useState)(false);
     const [helpOpen, setHelpOpen] = (0, react_1.useState)(false);
     const [draft, setDraft] = (0, react_1.useState)(null);
+    /* 端末に置いてある「書きかけ」が、どの記録のものか（2.11.11〜）。
+       **画面の draft（state）で判断しないこと。** 続きを開いた時点で state は null になるが、
+       端末にはまだ残っている。消す・閉じるときに、ここを見て一緒に消す */
+    const draftIdRef = (0, react_1.useRef)(null);
+    const clearDraft = () => {
+        draftIdRef.current = null;
+        storageSet(DRAFT_KEY, "");
+        setDraft(null);
+    };
+    /* 消した（閉じた）記録の書きかけだけを消す。ほかの記録の書きかけは残す */
+    const clearDraftOf = (ids) => {
+        const id = draftIdRef.current;
+        if (id && ids.has(id))
+            clearDraft();
+    };
     const [msg, tell] = useToast();
     /* --- 読み込み --- */
     (0, react_1.useEffect)(() => {
@@ -25768,8 +25787,18 @@ function AppMain() {
             setPrefsState(pf);
             try {
                 const d = dr ? migrateRecord(JSON.parse(dr)) : null;
-                if (d)
+                /* **消した記録の書きかけを出さないこと（2.11.11〜）。**
+                   保存ずみの記録を書き直していた下書き（__existed、または以前の版で残った
+                   updatedAt 付きのもの）なのに、その記録がもう無い＝消したあと。黙って捨てる。
+                   新しく書きはじめた下書き（まだ一度も保存していない）は、そのまま出す */
+                const gone = d && (d.__existed || d.updatedAt) && !loadedRecords.some((r) => r.id === d.id);
+                if (gone) {
+                    storageSet(DRAFT_KEY, "");
+                }
+                else if (d) {
+                    draftIdRef.current = d.id;
                     setDraft(d);
+                }
             }
             catch (e) { /* noop */ }
             /* 端末に「この記録を消さないで」とお願いしておく */
@@ -25929,7 +25958,11 @@ function AppMain() {
     };
     const saveRecord = async (rec0, opts = {}) => {
         /* 画面のための目印は、保存の前に外す */
-        const { __onDate, __repeat, ...clean } = rec0 || {};
+        const { __onDate, __repeat, __fromDraft, __existed, ...clean } = rec0 || {};
+        /* 「書き直し」か「新しく記録」かは、保存の前に決めておく。
+           **この変数を消さないこと。** 2.11.10 までは定義が無く、保存のたびに
+           ReferenceError で止まり、「記録しました」が出ていなかった */
+        const exists = recordsRef.current.some((r) => r.id === clean.id);
         /* 写真は記録の中に持たず、置き場へ移してから保存する。
            **この一手を飛ばさないこと。** すぐに保存できなくなる */
         const rec = await stashPhotos(clean);
@@ -25944,18 +25977,25 @@ function AppMain() {
             addTagToMaster(t); });
         if (!opts.keepOpen) {
             setEditing(null);
-            storageSet(DRAFT_KEY, "");
-            setDraft(null);
+            clearDraft();
             tell(exists ? "書き直しました" : "記録しました");
         }
     };
     const deleteRecord = (id) => {
-        const next = setRecords((prev) => prev.filter((r) => r.id !== id));
+        /* 書きかけから開いた、まだ一度も保存していない記録を消すときは、一覧に無い。
+           **変わらないときは一覧を書かないこと。** 触っていないのに
+           「まだ控えを取っていない」と数えられてしまう */
+        const had = recordsRef.current.some((r) => r.id === id);
+        const next = had ? setRecords((prev) => prev.filter((r) => r.id !== id)) : recordsRef.current;
         /* **記録だけを渡さないこと。** 計画やフォルダのアイコン、
            見出しの帯の写真まで「使われていない」と見なされて消えてしまう */
         /* **いま開いている記録を、そのまま数に入れないこと。**
            消した当の記録が「まだ使っている」ことになり、絵が置き場に残り続ける */
-        sweepPhotos({ records: next, plans: plansRef.current, kinds: kindsRef.current, folders: foldersRef.current, prefs: prefsRef.current, draft, editing: (editing && editing.id === id) ? null : editing });
+        /* **書きかけも一緒に消すこと（2.11.11〜）。** 消さないと、次に開いたとき
+           「書きかけの記録があります」に、いま消した記録が出てくる */
+        const draftGone = draftIdRef.current === id;
+        clearDraftOf(new Set([id]));
+        sweepPhotos({ records: next, plans: plansRef.current, kinds: kindsRef.current, folders: foldersRef.current, prefs: prefsRef.current, draft: draftGone ? null : draft, editing: (editing && editing.id === id) ? null : editing });
         setEditing(null);
         tell("削除しました");
     };
@@ -25965,7 +26005,10 @@ function AppMain() {
             return;
         const set = new Set(ids);
         const left = setRecords((prev) => prev.filter((r) => !set.has(r.id)));
-        sweepPhotos({ records: left, plans: plansRef.current, kinds: kindsRef.current, folders: foldersRef.current, prefs: prefsRef.current, draft, editing: (editing && set.has(editing.id)) ? null : editing });
+        /* 選んで消した中に、書きかけの記録があれば一緒に消す（2.11.11〜） */
+        const draftGone = !!draftIdRef.current && set.has(draftIdRef.current);
+        clearDraftOf(set);
+        sweepPhotos({ records: left, plans: plansRef.current, kinds: kindsRef.current, folders: foldersRef.current, prefs: prefsRef.current, draft: draftGone ? null : draft, editing: (editing && set.has(editing.id)) ? null : editing });
         /* **変わらないときは書かないこと。** 触っていないのに
            「まだ控えを取っていない」と数えられてしまう */
         if (foldersRef.current.some((f) => (f.picked || []).some((x) => set.has(x))))
@@ -26240,7 +26283,7 @@ function AppMain() {
                                     footer: react_1.default.createElement("p", { className: "fs-body-sm font-bold text-neutral-500 tabular-nums" },
                                         "My\u624B\u5E33 v",
                                         APP_VERSION) }),
-                                draft && !editing && (react_1.default.createElement(DraftCard, { draft: draft, onResume: () => { setEditing(draft); setDraft(null); }, onDiscard: () => { setDraft(null); storageSet(DRAFT_KEY, ""); } })),
+                                draft && !editing && (react_1.default.createElement(DraftCard, { draft: draft, onResume: () => { setEditing({ ...draft, __fromDraft: true }); setDraft(null); }, onDiscard: () => { draftIdRef.current = null; setDraft(null); storageSet(DRAFT_KEY, ""); } })),
                                 swapAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u7A2E\u985E\u3092\u5909\u3048\u307E\u3059\u304B", body: "\u3044\u307E\u5165\u3063\u3066\u3044\u308B\u4E2D\u8EAB\u306F\u6D88\u3048\u307E\u3059\u3002", danger: true, confirmLabel: "\u5909\u3048\u308B", onCancel: () => setSwapAsk(null), onConfirm: () => {
                                         const a = swapAsk;
                                         setSwapAsk(null);
@@ -26250,7 +26293,23 @@ function AppMain() {
                                 typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: scoped ? SCOPED_TYPES : TYPES })),
                                 addPlanOpen && (react_1.default.createElement(NameIconSheet, { title: "\u8A08\u753B\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: true, photo: false, placeholder: "\u82F1\u8A9E\uFF0F\u4F53\u3065\u304F\u308A \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), onCancel: () => setAddPlanOpen(false), onSave: (n, ic) => { addPlan(null, n, ic); setAddPlanOpen(false); } })),
                                 addFolderOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: false, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 28 }), onCancel: () => setAddFolderOpen(false), onSave: (n, ic) => { addFolder(n, ic); setAddFolderOpen(false); } })),
-                                editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => { setEditing(null); }, onDelete: records.some((r) => r.id === editingLive.id) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => { storageSet(DRAFT_KEY, JSON.stringify(d)); } })),
+                                editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => {
+                                        /* 「保存せずに閉じる」＝書いた内容は残さない。**端末の書きかけも消すこと（2.11.11〜）。**
+                                           消さないと、閉じたはずの記録が次に開いたとき書きかけとして出てくる */
+                                        clearDraftOf(new Set([editingLive.id]));
+                                        setEditing(null);
+                                    }, 
+                                    /* **書きかけから開いた記録にも「削除」を出すこと（2.11.11〜）。**
+                                       まだ一覧に無い（一度も保存していない）ときも、
+                                       ここで消せないと、書きかけを捨てる手だてが無くなる */
+                                    onDelete: (records.some((r) => r.id === editingLive.id) || editingLive.__fromDraft) ? () => deleteRecord(editingLive.id) : null, onAutoDraft: (d) => {
+                                        /* __existed ＝ 保存ずみの記録を書き直している下書き。
+                                           次に開いたとき、その記録が消えていたら下書きを捨てる目印 */
+                                        const { __fromDraft, ...rest } = d || {};
+                                        const existed = !!rest.__existed || recordsRef.current.some((r) => r.id === rest.id);
+                                        draftIdRef.current = rest.id;
+                                        storageSet(DRAFT_KEY, JSON.stringify({ ...rest, __existed: existed }));
+                                    } })),
                                 dayOpen && (react_1.default.createElement(DayScreen, { date: dayOpen, records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onClose: () => setDayOpen(null), onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
                                 planObj && (react_1.default.createElement(PlanDashboard, { plan: planObj, records: records, plans: plans, onMoveStep: moveStep, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onClose: () => setPlanOpen(null), onChange: changePlan, onDelete: deletePlan, onAddRecord: (pl, type) => {
                                         if (type) {
