@@ -19045,7 +19045,7 @@ function Photo({ src, className, style, alt = "" }) {
     const url = usePhotoSrc(src);
     if (!url)
         return react_1.default.createElement("span", { className: "block bg-neutral-100 " + (className || ""), style: style });
-    return react_1.default.createElement("img", { src: url, alt: alt, className: className, style: style });
+    return react_1.default.createElement("img", { src: url, alt: alt, draggable: false, className: className, style: style });
 }
 /* iPhoneの設定でおなじみの、入り切りのつまみ */
 function Switch({ on, onChange, label }) {
@@ -19323,6 +19323,51 @@ function markEntered(e) {
     const el = e.target;
     if (el && el.setAttribute)
         el.setAttribute("data-ft-entered", "");
+}
+/* リンク（.ft-link）の「押した」と「送った」を見分ける（2.11.4〜）。
+   **リンクの上から送りはじめた指で、リンクを開かないこと。**
+   ・指を置いてから 10px を超えて動いた
+   ・指を置いているあいだに、どこかの箱（または画面）が送られた
+   このどちらかなら、あとから来る click を捨てる。止まったまま離したときだけ開く。
+   ・touch で見ること。送りはじめるとブラウザが pointercancel を投げ、pointer では動きを追えない
+   ・ここでは preventDefault を touchstart / touchmove で呼ばないこと（呼ぶと画面が送れなくなる）。
+     見るだけ（passive）にして、判定は click の入り口だけで行う */
+const linkTouch = { x: 0, y: 0, at: 0, moved: false, scrolledAt: 0 };
+function linkTouchStart(e) {
+    const t = e.touches && e.touches[0];
+    if (!t)
+        return;
+    linkTouch.x = t.clientX;
+    linkTouch.y = t.clientY;
+    linkTouch.at = Date.now();
+    linkTouch.moved = e.touches.length > 1;
+}
+function linkTouchMove(e) {
+    const t = e.touches && e.touches[0];
+    if (!t || linkTouch.moved)
+        return;
+    if (e.touches.length > 1 || Math.abs(t.clientX - linkTouch.x) > 10 || Math.abs(t.clientY - linkTouch.y) > 10)
+        linkTouch.moved = true;
+}
+function linkScrolled() { linkTouch.scrolledAt = Date.now(); }
+function linkClickGuard(e) {
+    const a = e.target && e.target.closest ? e.target.closest("a.ft-link") : null;
+    if (!a)
+        return;
+    /* 指で触れてから 1.5 秒以内の click だけを見る（キーボードやマウスは素通し） */
+    const recent = linkTouch.at && Date.now() - linkTouch.at < 1500;
+    if (!recent)
+        return;
+    if (linkTouch.moved || linkTouch.scrolledAt >= linkTouch.at) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+}
+if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("touchstart", linkTouchStart, { capture: true, passive: true });
+    document.addEventListener("touchmove", linkTouchMove, { capture: true, passive: true });
+    document.addEventListener("scroll", linkScrolled, { capture: true, passive: true });
+    document.addEventListener("click", linkClickGuard, true);
 }
 if (typeof document !== "undefined" && document.addEventListener) {
     document.addEventListener("animationend", markEntered, true);
@@ -20817,13 +20862,13 @@ function LinkCard({ link }) {
     const [thumbNg, setThumbNg] = (0, react_1.useState)(false);
     const [iconNg, setIconNg] = (0, react_1.useState)(false);
     const showThumb = !!link.thumb && !thumbNg;
-    return (react_1.default.createElement("a", { href: link.url, target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation(), onPointerDown: (e) => e.stopPropagation(), className: "ft-link block rounded-xl border border-neutral-200 bg-white overflow-hidden ft-tap ft-tap-card" },
+    return (react_1.default.createElement("a", { href: link.url, target: "_blank", rel: "noopener noreferrer", draggable: false, onClick: (e) => e.stopPropagation(), onPointerDown: (e) => e.stopPropagation(), className: "ft-link block rounded-xl border border-neutral-200 bg-white overflow-hidden ft-tap ft-tap-card" },
         showThumb && (react_1.default.createElement("span", { className: "block bg-neutral-100" },
-            react_1.default.createElement("img", { src: link.thumb, alt: "", loading: "lazy", onError: () => setThumbNg(true), className: "block w-full", style: { aspectRatio: "16 / 9", objectFit: "cover" } }))),
+            react_1.default.createElement("img", { src: link.thumb, alt: "", loading: "lazy", draggable: false, onError: () => setThumbNg(true), className: "block w-full", style: { aspectRatio: "16 / 9", objectFit: "cover" } }))),
         react_1.default.createElement("span", { className: "flex items-center gap-2 px-2.5 py-2" },
             react_1.default.createElement("span", { className: "w-7 h-7 rounded-lg bg-neutral-100 text-neutral-500 flex items-center justify-center shrink-0 overflow-hidden" }, iconNg
                 ? react_1.default.createElement(lucide_react_1.Link, { size: 14 })
-                : react_1.default.createElement("img", { src: link.icon, alt: "", loading: "lazy", onError: () => setIconNg(true), className: "w-4 h-4", style: { objectFit: "contain" } })),
+                : react_1.default.createElement("img", { src: link.icon, alt: "", loading: "lazy", draggable: false, onError: () => setIconNg(true), className: "w-4 h-4", style: { objectFit: "contain" } })),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                 react_1.default.createElement("span", { className: "block fs-body-sm font-bold text-neutral-800 truncate" }, link.site),
                 react_1.default.createElement("span", { className: "block fs-caption text-neutral-400 truncate" }, link.detail || link.host)),
@@ -20907,7 +20952,7 @@ function LinkedText({ text, className }) {
     return (react_1.default.createElement("span", { className: "ft-text whitespace-pre-line break-words " + (className || "") }, parts.map((p, i) => p.url
         /* **住所だけ太字にしないこと。** そこだけ浮いて、本文が読みにくくなる。
            字体も大きさも太さも本文のまま、色だけで「押せる」と伝える */
-        ? react_1.default.createElement("a", { key: i, href: p.url, target: "_blank", rel: "noopener noreferrer", className: "ft-link text-sky-700" }, p.t)
+        ? react_1.default.createElement("a", { key: i, href: p.url, target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-sky-700" }, p.t)
         : react_1.default.createElement(react_1.default.Fragment, { key: i }, p.t))));
 }
 /* ============================================================
@@ -21909,8 +21954,8 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "fs-body-sm mb-1.5 flex items-center gap-1" },
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14, className: "text-neutral-400 shrink-0" }),
                 isPlaceUrl(r.placeUrl || r.place)
-                    ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", className: "ft-link text-sky-700 min-w-0 break-words" }, r.placeUrl || r.place)
-                    : react_1.default.createElement("a", { href: placeMapUrl(r.placeUrl || r.place), target: "_blank", rel: "noopener noreferrer", className: "ft-link text-neutral-800 min-w-0 break-words" }, r.placeUrl || r.place))),
+                    ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-sky-700 min-w-0 break-words" }, r.placeUrl || r.place)
+                    : react_1.default.createElement("a", { href: placeMapUrl(r.placeUrl || r.place), target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-neutral-800 min-w-0 break-words" }, r.placeUrl || r.place))),
             (r.images || []).length > 0 && (react_1.default.createElement("div", { className: "grid gap-[3px] mt-3 mb-2 rounded-2xl overflow-hidden bg-neutral-100", style: {
                     gridTemplateColumns: r.images.length === 1 ? "1fr" : "1fr 1fr",
                     gridTemplateRows: r.images.length > 2 ? "1fr 1fr" : "1fr",
@@ -25258,6 +25303,21 @@ button:active { transition-duration: 60ms; }
 /* 本文の中のリンク。**下線は引かない**（色だけで押せることを示す）。
    <a> はブラウザが既定で下線を引くため、こちらで打ち消しておくこと */
 .ft-link { text-decoration: none; }
+/* **リンクと絵を「つかめる」ままにしないこと。**（2.11.4〜）
+   iPhone は、リンクや絵に指を置いて少しでも止まると「つまんで運ぶ（ドラッグ）」や
+   「リンクのプレビュー」を始めてしまい、そのまま上下に動かしても画面が送られず、
+   固まったように見える。字の上から送るときは起きないので、URL のある記録だけで起きていた。
+   つかむ・長押しのプレビュー・字の選択をリンクでは止め、ただ「押す」だけのものにする。
+   **.ft-text（字を選べる本文）の中でも効くよう、両方の形で書いておくこと** */
+.ft-link, .ft-text .ft-link {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none; user-select: none;
+}
+/* 札の中の絵（サムネイル・サイトのしるし）は、指を受けない。受けるのは外側のリンク */
+.ft-link img { pointer-events: none; -webkit-user-drag: none; }
+/* 記録の写真なども、つまんで運べないようにしておく（送ろうとして固まるのを防ぐ） */
+.ft-root img { -webkit-user-drag: none; }
 
 /* --- 下からせり上がる小窓 ---
    高さは dvh（いま実際に見えている高さ）で決めること。
