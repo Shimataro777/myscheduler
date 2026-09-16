@@ -21269,8 +21269,11 @@ function ImagesField({ images, onChange, onError }) {
             react_1.default.createElement("span", { className: "fs-body-sm font-bold" }, busy ? "読み込み中" : "写真を選ぶ"))) : (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("div", { className: "grid gap-2 mb-2 " + (list.length === 1 ? "grid-cols-1" : "grid-cols-2") }, list.map((src, i) => (react_1.default.createElement("div", { key: i, className: "relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-100 ft-chip", style: { aspectRatio: list.length === 1 ? "4 / 3" : "1 / 1" } },
                 react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } }),
-                react_1.default.createElement("button", { type: "button", onClick: () => onChange(list.filter((_, k) => k !== i)), "aria-label": "\u524A\u9664", className: "absolute top-1.5 right-1.5 w-9 h-9 rounded-full bg-black/55 text-white flex items-center justify-center ft-tap ft-tap-icon" },
-                    react_1.default.createElement(lucide_react_1.X, { size: 17 })))))),
+                /* 右上の✕で、その1枚だけ外す。**TapOnceButton を通すこと**（値が変わるだけのボタン。
+                   続けて押したときに iPhone が click を配らないことがある）。
+                   **白いふちを付けること。** 白っぽい写真の上でも✕が見える */
+                react_1.default.createElement(TapOnceButton, { onTap: () => onChange(list.filter((_, k) => k !== i)), "aria-label": "\u3053\u306E\u5199\u771F\u3092\u5916\u3059", className: "absolute top-1.5 right-1.5 z-10 w-9 h-9 rounded-full bg-black/55 text-white border-2 flex items-center justify-center ft-tap ft-tap-icon", style: { borderColor: "rgba(255,255,255,.85)" } },
+                    react_1.default.createElement(lucide_react_1.X, { size: 17, strokeWidth: 2.5 })))))),
             react_1.default.createElement("button", { type: "button", onClick: open, disabled: busy || rest === 0, className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body" },
                 busy ? react_1.default.createElement(Spinner, { size: 15 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 15 }),
                 rest === 0 ? `写真は ${MAX_IMAGES} 枚まで` : `写真を追加（あと${rest}枚）`)))));
@@ -25242,16 +25245,22 @@ button:active { transition-duration: 60ms; }
    右上のボタン等のタップ判定がずれるのを防ぐため、動きの量を最小限にする。
    **通常時・選択モード時・長押し中で、沈む加減をひとつにそろえること。**
    （記録カードは、いつ／どのボタンで沈んでも同じ .ft-tap-card 系の値ひとつだけを使う） */
-.ft-tap.ft-tap-card:active { transform: scale(0.997); filter: brightness(0.99); }
+/* **札（.ft-tap-card）には transform も filter も当てないこと。**（2.11.5〜）
+   押した瞬間に札が別の層へ持ち上げられ、中に写真やサムネイルがあると、
+   フォルダ・計画・日の画面・入力画面など「箱の中で送る」画面で、
+   その札の上から画面が送れなくなる（Today のような画面ぜんたいの送りでは起きない）。
+   沈んだ手ごたえは ::after の薄い膜（app.css）だけで出す。
+   もともと 0.997 倍・0.99 の明るさで、目では分からない量だった */
+.ft-tap.ft-tap-card:active { transform: none; filter: none; }
 /* 長押しの最中・選択モードの操作中も、まったく同じ値で沈める */
-.ft-pressing { transform: scale(0.997); filter: brightness(0.99); }
+.ft-pressing { transform: none; filter: none; }
 .ft-tap.ft-tap-icon:active { transform: scale(0.88); }
 .ft-tap:disabled { transform: none; filter: none; }
 /* 押されてから画面が変わるまでの、ひと呼吸のあいだ沈めておく状態。
    ここは素早く暗くする。既定の0.24秒のままだと、
    暗くなりきる前に画面が切り替わってしまい、押した手ごたえが見えない */
 .ft-tap-pressed { transform: scale(0.96); filter: brightness(0.9); transition-duration: 45ms; }
-.ft-tap-card.ft-tap-pressed { transform: scale(0.997); }
+.ft-tap-card.ft-tap-pressed { transform: none; filter: none; }
 
 .ft-chip { }
 .ft-rise { }
@@ -25318,6 +25327,9 @@ button:active { transition-duration: 60ms; }
 .ft-link img { pointer-events: none; -webkit-user-drag: none; }
 /* 記録の写真なども、つまんで運べないようにしておく（送ろうとして固まるのを防ぐ） */
 .ft-root img { -webkit-user-drag: none; }
+/* 押せるもの（ボタン・リンク）の中の絵は、指を受けない。受けるのは外側のボタン。
+   絵そのものが指を受けると、iPhone は絵の層から送る箱を探しにいき、見失うことがある */
+.ft-root button img, .ft-root a img { pointer-events: none; }
 
 /* --- 下からせり上がる小窓 ---
    高さは dvh（いま実際に見えている高さ）で決めること。

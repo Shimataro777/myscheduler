@@ -447,8 +447,12 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
   -webkit-tap-highlight-color: transparent; /* 既定の青いフラッシュを消し、下のハイライトに差し替える */
   touch-action: manipulation; /* ダブルタップ拡大とタップ遅延を止める。縦スクロールはそのまま効く */
 }
-.ft-tap-card,
-.ft-tap-icon{
+/* **.absolute / .fixed / .sticky を上書きしないこと。**（2.11.5〜）
+   ここは Tailwind の .absolute より後ろにあるので、ただ relative と書くと、
+   「写真の右上に重ねる✕」のような重ねるボタンが、ふつうの並びに戻されて
+   写真の下へ押し出され、overflow:hidden で切られて見えなくなっていた */
+.ft-tap-card:not(.absolute):not(.fixed):not(.sticky),
+.ft-tap-icon:not(.absolute):not(.fixed):not(.sticky){
   position: relative;
 }
 .ft-tap-card::after,
@@ -459,7 +463,11 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
   border-radius: inherit;
   background: #18181B;
   opacity: 0;
-  mix-blend-mode: multiply;
+  /* **mix-blend-mode を付けないこと。**（2.11.5〜）
+     重ね合わせの計算のために、iPhone が札と中の写真を別の層に分ける。
+     フォルダなど「箱の中で送る」画面では、その層の上から指を動かしても
+     送る箱に届かず、写真のある記録の上だけ画面が送れなくなる。
+     白い札の上では、ふつうに重ねても見え方はほぼ同じ */
   pointer-events: none; /* 重ねの下にある編集・ピン留めボタン等のタップを妨げない */
   transition: opacity var(--dur-fast) var(--ease-out);
 }
