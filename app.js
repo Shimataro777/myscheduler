@@ -19399,27 +19399,60 @@ function useClosing(onClose) {
 }
 /* 重なる画面が開いているあいだ、うしろの画面を動かないようにする。
    何枚か重なることがあるので、枚数を数えて最後の1枚が閉じたときだけ元に戻す。
-   **戻し忘れると、以後どの画面も動かせなくなる。** */
+   **戻し忘れると、以後どの画面も動かせなくなる。**
+   **body の overflow:hidden だけに戻さないこと（2.11.11〜）。**
+   iPhone は overflow:hidden でも、入力欄に触れてキーボードが出るときに
+   ページ（Today などの一覧）を送ってしまう。すると重なる画面（fixed）ごと上へずれ、
+   「タグを選択」などの紙やキーボードのまわりに、いちばん下の一覧のカードが透けて見えた。
+   body を position:fixed で今の位置に留め、ページそのものを送れなくする。
+   閉じたら元の位置へ戻す。
+   ・useLayoutEffect で行うこと。useEffect だと、留める前・戻す前のひとこまが描かれ、
+     一覧が一瞬いちばん上へ跳んで見える
+   ・紙・小窓・メニューなど、重なって出るものは**すべて**これを通すこと
+     （部品の中で hook を呼べない場所は BackgroundLock を最初の子に置く） */
 let overlayCount = 0;
+let overlayLockY = 0;
+const OVERLAY_LOCK_PROPS = ["overflow", "position", "top", "left", "right", "width"];
 function useLockBackground() {
-    (0, react_1.useEffect)(() => {
+    (0, react_1.useLayoutEffect)(() => {
         if (typeof document === "undefined")
             return undefined;
         const body = document.body;
         if (overlayCount === 0) {
-            body.dataset.ftPrevOverflow = body.style.overflow || "";
+            overlayLockY = window.scrollY || document.documentElement.scrollTop || 0;
+            const prev = {};
+            OVERLAY_LOCK_PROPS.forEach((k) => { prev[k] = body.style[k] || ""; });
+            body.dataset.ftPrevStyle = JSON.stringify(prev);
             body.style.overflow = "hidden";
+            body.style.position = "fixed";
+            body.style.top = -overlayLockY + "px";
+            body.style.left = "0";
+            body.style.right = "0";
+            body.style.width = "100%";
         }
         overlayCount += 1;
         return () => {
             overlayCount -= 1;
             if (overlayCount <= 0) {
                 overlayCount = 0;
-                body.style.overflow = body.dataset.ftPrevOverflow || "";
-                delete body.dataset.ftPrevOverflow;
+                let prev = {};
+                try {
+                    prev = JSON.parse(body.dataset.ftPrevStyle || "{}");
+                }
+                catch (e) { /* noop */ }
+                OVERLAY_LOCK_PROPS.forEach((k) => { body.style[k] = prev[k] || ""; });
+                delete body.dataset.ftPrevStyle;
+                /* 留めていたあいだの位置へ戻す。**戻さないと一覧がいちばん上へ跳ぶ** */
+                window.scrollTo(0, overlayLockY);
             }
         };
     }, []);
+}
+/* hook を直接呼べない場所（open && (...) の中など）で、うしろを留めるための部品。
+   紙・小窓の外わく（ft-sheet-wrap）の**最初の子**に置く */
+function BackgroundLock() {
+    useLockBackground();
+    return null;
 }
 /* 重なる画面の外わく。**from は「どういう移り方か」で選ぶこと**（引継書「画面遷移の決まり」）。
    ・"right"  … 階層が深くなる画面（記録の一覧から詳細へ、メニューから設定へ など）。
@@ -19969,6 +20002,7 @@ function WheelColumn({ items, value, onChange, minWidth = 72 }) {
 /* plain ＝ ドラムではなく、ふつうの中身を入れるとき（帯を出さない） */
 function WheelSheet({ title, onClose, onConfirm, onClear, children, zIndex = 2147483000, plain }) {
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center", style: { zIndex }, onClick: onClose },
+        react_1.default.createElement(BackgroundLock, null),
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/40 anim-fade" }),
         react_1.default.createElement("div", { className: "relative w-full max-w-lg bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg anim-sheet", onClick: (e) => e.stopPropagation() },
             react_1.default.createElement("div", { className: "flex items-center justify-between px-4 py-3 border-b border-neutral-200" },
@@ -20243,6 +20277,7 @@ function DateInput({ className, value, onChange, placeholder = "日付を選択"
             react_1.default.createElement("span", { className: "fs-subhead truncate " + (p ? "text-neutral-900" : "text-neutral-400") }, p ? `${p.y}/${p.mo}/${p.d}` : placeholder),
             react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-500 shrink-0 ml-1" }))),
         open && (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex }, onClick: close },
+            react_1.default.createElement(BackgroundLock, null),
             react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
             react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
                     + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
@@ -20306,6 +20341,7 @@ function MultiDateSheet({ initial, onCancel, onConfirm }) {
         setPicked((p) => allOn ? p.filter((x) => !add.includes(x)) : [...new Set([...p, ...add])]);
     };
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close },
+        react_1.default.createElement(BackgroundLock, null),
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
         react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
                 + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
@@ -20358,6 +20394,7 @@ function TagPickDialog({ title, selected, known, onApply, onCancel, onCreate, no
         setDraft("");
     };
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex }, onClick: close },
+        react_1.default.createElement(BackgroundLock, null),
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
         react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
                 + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
@@ -20757,6 +20794,7 @@ function SideMenu({ open, onClose, items, footer, instant }) {
     if (!mounted)
         return null;
     return (react_1.default.createElement("div", { className: "fixed inset-0", style: { zIndex: 2147483200 } },
+        react_1.default.createElement(BackgroundLock, null),
         react_1.default.createElement("div", { onClick: onClose, className: "absolute inset-0 bg-black/35", style: {
                 opacity: shown ? (drag !== null ? Math.max(0, 1 - drag / 260) : 1) : 0,
                 transition: drag !== null ? "none" : "opacity 240ms cubic-bezier(0.16,1,0.3,1)",
@@ -20892,14 +20930,14 @@ function headOfText(t, maxChars = LONG_CHARS, maxLines = LONG_LINES) {
     /* 行が多いときは行で、字が多いときは字で切る。**どちらか短いほう** */
     const byLine = v.split("\n").slice(0, maxLines).join("\n");
     const cut = byLine.length > maxChars ? byLine.slice(0, maxChars) : byLine;
-    /* **ここで必ず「……」を足す（2.11.9〜）。**
+    /* **ここで必ず「…」を足す（2.11.9〜）。**
        この関数は呼び出し側（LongText）が isLongText で「隠れる中身がある」と
        判定したときだけ呼ばれるので、ここを通る＝必ず本当に切り詰められている。
        それでも末尾に記号を付けずに返していたため、「イベント 記」「現状として、「フォ」の
        ように文の途中でぶつ切りになって見えていた。
        **全文がそのまま収まるときはこの関数を呼ばない側で分岐している**（LongText の
        `open || !long`）ので、ここは常に付けてよい */
-    return cut.replace(/\s+$/, "") + "……";
+    return cut.replace(/\s+$/, "") + "…";
 }
 /* **見た目だけの箱にすること。** 開く/たたむの状態は、
    カード側（RecordRow）が持つ。カード本体をタップしても切り替わるようにするため、
@@ -21654,6 +21692,7 @@ function TypeRow({ t, onPick, label, icon, colorKey }) {
 function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons, colorKeys }) {
     const [closing, close] = useClosing(onCancel);
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center", style: { zIndex: 2147483000 }, onClick: close },
+        react_1.default.createElement(BackgroundLock, null),
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/40 " + (closing ? "anim-fade-out" : "anim-fade") }),
         react_1.default.createElement("div", { className: "relative w-full max-w-lg bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg "
                 + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation(), style: SAFE_BOTTOM(12) },
@@ -23061,6 +23100,7 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
     const targets = day ? all.filter((r) => (r.date || "") === day).sort(compareTimeline) : [];
     return (react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close },
+            react_1.default.createElement(BackgroundLock, null),
             react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
             react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
                     + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
@@ -23458,6 +23498,7 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
         setBusy(false);
     };
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center anim-fade", style: { zIndex: 2147483400 }, onClick: onCancel },
+        react_1.default.createElement(BackgroundLock, null),
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/60" }),
         react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col anim-sheet", onClick: (e) => e.stopPropagation() },
             react_1.default.createElement("div", { className: "flex items-center gap-1 px-4 py-3 border-b border-neutral-200 shrink-0" },
@@ -24116,6 +24157,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                         setDelOpen(true);
                 } })),
             celebrate && (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-center justify-center anim-fade", style: { zIndex: 2147483400 }, onClick: () => setCelebrate(false) },
+                react_1.default.createElement(BackgroundLock, null),
                 react_1.default.createElement("div", { className: "absolute inset-0", style: { background: "rgba(255,255,255,.92)" } }),
                 react_1.default.createElement("div", { className: "relative text-center px-8" },
                     react_1.default.createElement("span", { className: "ft-celebrate inline-flex w-28 h-28 rounded-full items-center justify-center mb-5", style: { background: color.soft, color: color.deep } },
@@ -24271,6 +24313,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
     const save = () => onSave({ ...cond, picked: Array.from(picked) });
     return (react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: tryClose },
+            react_1.default.createElement(BackgroundLock, null),
             react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
             react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-tall "
                     + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
@@ -25310,6 +25353,13 @@ button:active { transition-duration: 60ms; }
 .anim-pop       { }
 /* 入ってくる画面が、動いているあいだ横や下へはみ出して、うしろが送れないようにする */
 [data-ft-overlay] { overflow: hidden; }
+/* **重なる画面の外がわを白で埋めておくこと（2.11.11〜）。**
+   iPhone はキーボードを出すとき、fixed の層ごと少しずらすことがあり、
+   画面の端（とくにキーボードのきわ）に、いちばん下の一覧がのぞいて見えた。
+   外わくの「外」だけに影を広げて埋める。内がわには何も足さないので、
+   左端から払って戻るときに、うしろの画面が見えるのはこれまでどおり。
+   **overflow:hidden は影を切らないので、上の決まりと両立する** */
+[data-ft-overlay] { box-shadow: 0 0 0 100vmax #FFFFFF; }
 /* 読み込み中のくるくる（.spin）だけは、動きを止める対象から外している */
 @keyframes ft-spin { to { transform: rotate(360deg); } }
 .spin           { animation: ft-spin 0.75s linear infinite; }

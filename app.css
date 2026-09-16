@@ -81,7 +81,7 @@
 .icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
 
 *,::before,::after{box-sizing:border-box;border:0 solid #E5E5E5;margin:0;padding:0}
-html{scrollbar-gutter:stable}
+html{scrollbar-gutter:stable;background:#FFFFFF}
 html,body,#root{height:100%}
 body{background:#FFFFFF;-webkit-font-smoothing:antialiased;
   font-family:'Noto Sans JP',system-ui,sans-serif;color:#171717;line-height:1.5}
