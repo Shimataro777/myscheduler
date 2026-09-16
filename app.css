@@ -475,7 +475,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
    （JS側が付け外しする .ft-pressing）の、両方で同じ沈みにそろえる */
 .ft-tap-card:active::after,
 .ft-tap-card.ft-pressing::after{
-  opacity: .07;
+  opacity: .045; /* 2.11.6〜：.07 だと沈みが強すぎるという声を受けて少し明るく */
   transition-duration: 40ms; /* 押した瞬間はすぐ反応、離すときだけゆっくり戻す */
 }
 .ft-tap-icon:active::after{
@@ -487,8 +487,16 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
    チェックを入れるたびに札ぜんたいが暗くなり、チカチカ点滅して見える。
    沈むのは、いま指が乗っているものだけでよい */
 @supports selector(:has(*)) {
+  /* 2.11.6〜：中の押せるものが「札（.ft-tap-card）」自身のときも同じ扱いにする。
+     リンクの札（LinkCard）や写真のサムネイルは、それ自体が .ft-tap-card。
+     ここに .ft-tap-card:active を足す前は、リンクの札を押すと
+     ・その札じたいの沈み
+     ・くるんでいる記録カード（RecordRow の article）の沈み
+     の両方がいっしょに乗って、記録カードいっぱいが濃く沈んで見えていた
+     （画面の大半を占める大きな札では「画面全体が暗くなった」ように見える） */
   .ft-tap-card:active:has(.ft-tap:active)::after,
-  .ft-tap-card:active:has(.ft-tap-icon:active)::after{
+  .ft-tap-card:active:has(.ft-tap-icon:active)::after,
+  .ft-tap-card:active:has(.ft-tap-card:active)::after{
     opacity: 0;
   }
 }
