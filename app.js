@@ -23786,8 +23786,11 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
         },
     };
     return (react_1.default.createElement("div", { className: inset ? "relative flex gap-2 pb-1.5 px-2" : CARD_SLOT },
-        react_1.default.createElement("div", { ...pressProps, className: "flex-1 min-w-0 rounded-2xl bg-white border overflow-hidden ft-tap ft-tap-card " + (pressing ? "ft-pressing " : ""), style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5" } },
-            react_1.default.createElement("div", { className: "px-4 pt-3.5 pb-2", style: step.pinned && !allDone ? { boxShadow: `inset 3px 0 0 ${color.mid}` } : undefined },
+        /* 余白は RecordRow の <article> と同じ px-4 py-3.5（左右16px・上下14px）。
+           **中の段ごとに上下の余白を分けて持たせないこと。** 外の箱ひとつで持つ。
+           （前に pt-3.5 と書いたが app.css に無いクラスで、上辺の余白が0になった） */
+        react_1.default.createElement("div", { ...pressProps, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl bg-white border relative overflow-hidden ft-tap ft-tap-card " + (pressing ? "ft-pressing " : ""), style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5", boxShadow: step.pinned && !allDone ? `inset 3px 0 0 ${color.mid}` : undefined } },
+            react_1.default.createElement("div", null,
                 /* 見出しの段：しるし・期限の札 …… 固定・編集。
                    **リスト記録カード（RecordRow）の上段と同じ並びにそろえる。** */
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-0.5" },
@@ -23806,16 +23809,16 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
                 react_1.default.createElement("button", { type: "button", onClick: onEdit, className: "block w-full text-left ft-tap rounded-lg" },
                     react_1.default.createElement("span", { className: "block ft-input font-bold break-words "
                             + (allDone ? "line-through text-neutral-400" : "text-neutral-900") }, step.title || react_1.default.createElement("span", { className: "text-neutral-300" }, "（名前なし）"))),
-                items.length > 0 && (react_1.default.createElement("div", { className: "mt-1.5" },
+                items.length > 0 && (react_1.default.createElement("div", { className: "mt-1.5 mb-1" },
                     react_1.default.createElement(ProgressLine, { done: doneCount, total: items.length, items: items, color: color, strong: doneCount === items.length })))),
-            items.length > 0 && (react_1.default.createElement("div", { className: "px-2.5 pb-1.5 space-y-[2px]" }, items.map((it) => (react_1.default.createElement(TapOnceButton, { key: it.id, onTap: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
+            items.length > 0 && (react_1.default.createElement("div", { className: "-ml-1.5 space-y-[2px]" }, items.map((it) => (react_1.default.createElement(TapOnceButton, { key: it.id, onTap: () => toggleItem(it.id), className: "w-full flex items-start gap-2.5 text-left px-1.5 py-1 min-h-[36px] rounded-xl ft-tap" },
                 react_1.default.createElement("span", { className: "w-5 h-5 shrink-0 rounded-full border-2 flex items-center justify-center mt-0.5", style: it.done ? { background: color.mid, borderColor: color.mid } : { borderColor: "#C4C4C4" } }, it.done && react_1.default.createElement("span", { key: "on", className: "flex ft-check-in text-white" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
                 react_1.default.createElement("span", { className: "fs-body leading-snug flex-1 min-w-0 break-words " + (it.done ? "text-neutral-400 line-through" : "text-neutral-800") }, it.text),
                 it.min > 0 && (react_1.default.createElement("span", { className: "shrink-0 fs-caption tabular-nums mt-0.5 " + (it.done ? "text-neutral-300" : "text-neutral-400"), style: { minWidth: 38, textAlign: "right" } }, minLabel(it.min)))))))),
             /* イベントのメモ。**リスト画面のメモ欄と同じ見た目にそろえる。**
                イベントはたたまない（スケジュール／イベントは常にそのまま表示） */
-            (step.body || "").trim() && (react_1.default.createElement("div", { className: "mx-2.5 mb-2.5 mt-0.5 pl-1.5 border-l-2 border-neutral-200" },
+            (step.body || "").trim() && (react_1.default.createElement("div", { className: "mt-2 pl-1.5 border-l-2 border-neutral-200" },
                 react_1.default.createElement(LinkedText, { text: step.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
                 react_1.default.createElement(LinkCards, { text: step.body, small: true })))),
         /* 長押しで出す、完了の入り切りだけの小窓。**カード内に別のボタンを増やさないこと。** */
