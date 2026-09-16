@@ -17683,17 +17683,34 @@ function matchName(list, q) {
         return list;
     return list.filter((x) => String(x.name || "").toLowerCase().includes(w));
 }
-/* 計画を探す。**計画の名前だけにしないこと。** 計画の中のイベントの名前も
-   ヒットするようにする（計画名は覚えていなくても、イベント名なら覚えていることがある） */
+/* 計画を探す。**計画の名前だけにしないこと。** 計画の中のイベントの
+   タイトル・チェックリストの項目・メモもヒットするようにする
+   （計画名は覚えていなくても、イベントの中身なら覚えていることがある）。
+   **どこに当たったかは planHits が返す。探す側と見せる側で別々に判定しないこと。**
+   判定が食い違うと「出てきたのに、どこにも印が無い」札ができる */
+function planHits(p, q) {
+    const w = String(q || "").trim().toLowerCase();
+    if (!w || !p)
+        return null;
+    const has = (v) => String(v || "").toLowerCase().includes(w);
+    const out = { name: has(p.name), steps: [] };
+    (p.steps || []).forEach((st) => {
+        if (!st)
+            return;
+        const title = has(st.title);
+        const items = (st.items || []).filter((i) => i && has(i.text));
+        const body = has(st.body);
+        if (title || items.length || body)
+            out.steps.push({ step: st, title, items, body });
+    });
+    out.any = out.name || out.steps.length > 0;
+    return out;
+}
 function matchPlan(list, q) {
     const w = String(q || "").trim().toLowerCase();
     if (!w)
         return list;
-    return list.filter((p) => {
-        if (String(p.name || "").toLowerCase().includes(w))
-            return true;
-        return (p.steps || []).some((s) => String((s && s.title) || "").toLowerCase().includes(w));
-    });
+    return list.filter((p) => { const h = planHits(p, w); return !!(h && h.any); });
 }
 function compareName(a, b) {
     const x = String((a && a.name) || ""), y = String((b && b.name) || "");
@@ -17955,6 +17972,49 @@ function recordAllText(r) {
         r.items.forEach((i) => parts.push(i.text));
     return parts.filter(Boolean).join("\n");
 }
+/* 検索語を語に分ける（全角・半角の空白で区切る）。「探す」の判定と同じ分け方 */
+function searchWords(q) {
+    return String(q || "").trim().toLowerCase().split(/[\s　]+/).filter(Boolean);
+}
+/* 記録のどこに検索語が当たったか。**recordAllText に足した項目は、ここにも足すこと。**
+   足し忘れると、検索には出るのに「見つかった場所」が空の札になる */
+function recordHits(r, q) {
+    const words = Array.isArray(q) ? q : searchWords(q);
+    if (!r || !words.length)
+        return [];
+    const out = [];
+    const add = (key, label, v) => {
+        const text = String(v || "");
+        const low = text.toLowerCase();
+        if (text && words.some((w) => low.includes(w)))
+            out.push({ key: key + out.length, label, text });
+    };
+    add("title", "タイトル", r.title);
+    add("text", "本文", r.text);
+    (Array.isArray(r.items) ? r.items : []).forEach((i) => i && add("item", "チェック", i.text));
+    add("body", "メモ", r.body);
+    add("place", "場所", r.place);
+    if (r.placeUrl !== r.place)
+        add("placeUrl", "場所", r.placeUrl);
+    add("comment", "コメント", r.comment);
+    add("url", "URL", r.url);
+    (r.tags || []).forEach((t) => add("tag", "タグ", "#" + t));
+    return out;
+}
+/* 当たった語のまわりだけを切り出す。**長いメモをまるごと出さないこと。**
+   当たった所が後ろのほうにあると、見つかった場所が画面の外に隠れる */
+function hitSnippet(text, words, max = 60) {
+    const flat = String(text || "").replace(/\s*\n\s*/g, " ").trim();
+    if (flat.length <= max)
+        return flat;
+    const low = flat.toLowerCase();
+    let at = -1;
+    (words || []).forEach((w) => { const i = low.indexOf(w); if (i >= 0 && (at < 0 || i < at))
+        at = i; });
+    const start = at > 16 ? at - 12 : 0;
+    const end = Math.min(flat.length, start + max);
+    return (start > 0 ? "…" : "") + flat.slice(start, end) + (end < flat.length ? "…" : "");
+}
 /* 一覧に出す見出し */
 function recordTitle(r, names) {
     const N = names || TYPE_LABELS;
@@ -18151,6 +18211,9 @@ function migratePlan(p) {
             onCal: !!g.onCal,
             /* 期日を入れていないものの並びが、開くたびに変わらないようにする */
             createdAt: typeof g.createdAt === "string" && g.createdAt ? g.createdAt : "1970-01-01T00:00:00.000Z",
+            /* イベントのメモ。**ここに書き足すのを忘れないこと。**
+               2.11.13 までここに無く、開き直すたびにメモが消えていた（検索にも出なかった） */
+            body: typeof g.body === "string" ? g.body : "",
             items: Array.isArray(g.items) ? g.items.filter((i) => i && typeof i === "object")
                 .map((i) => ({ id: i.id || uid(), text: String(i.text || ""), done: !!i.done,
                 /* かかる見積もり（分）。**ここに書き足すのを忘れないこと。**
@@ -21918,7 +21981,69 @@ function restOfLines(r) {
    ・左は丸いしるしの列。時刻のある記録は、この列を縦線が串のように貫く
    ・枠で囲わず、うすい横線で区切るだけにする
    ============================================================ */
-function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable = true, selected, onSelect, onLongSelect, lineUp, lineDown, onPin, showDate }) {
+/* ============================================================
+   検索で「どこに当たったか」を見せる部品（計画・探す で共通）
+   ・当たった語は ft-hit（基調の色の薄い地）で塗る。**記録の色を使わないこと。**
+     検索はどの記録にも共通の操作なので、アプリの基調カラー（--th-*）にそろえる
+   ・札の中の本文そのものは書き換えず、札の下に「見つかった場所」の箱を足す
+   ============================================================ */
+function escapeHitWord(w) {
+    return String(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function HitText({ text, words, snippet }) {
+    const ws = (words || []).filter(Boolean).slice().sort((a, b) => b.length - a.length);
+    const s = snippet ? hitSnippet(text, ws, snippet) : String(text || "");
+    if (!ws.length)
+        return s;
+    const parts = s.split(new RegExp("(" + ws.map(escapeHitWord).join("|") + ")", "gi"));
+    return react_1.default.createElement(react_1.default.Fragment, null, parts.map((part, i) => (i % 2 === 1
+        ? react_1.default.createElement("mark", { key: i, className: "ft-hit" }, part)
+        : part)));
+}
+function HitRow({ label, children }) {
+    return (react_1.default.createElement("div", { className: "flex items-start gap-2" },
+        react_1.default.createElement("span", { className: "shrink-0 fs-caption font-bold rounded-md px-1.5 py-[1px] bg-white text-neutral-500" }, label),
+        react_1.default.createElement("span", { className: "flex-1 min-w-0 fs-body-sm leading-snug text-neutral-700 break-words", style: { overflowWrap: "anywhere" } }, children)));
+}
+function HitBox({ children }) {
+    return (react_1.default.createElement("div", { className: "mt-2.5 rounded-xl bg-th-50 px-3 py-2" },
+        react_1.default.createElement("p", { className: "flex items-center gap-1 fs-caption font-bold text-th-800 mb-1" },
+            react_1.default.createElement(lucide_react_1.Search, { size: 12, className: "shrink-0" }),
+            "\u898B\u3064\u304B\u3063\u305F\u5834\u6240"),
+        react_1.default.createElement("div", { className: "space-y-1.5" }, children)));
+}
+/* 記録の「見つかった場所」。**多いときは全部並べないこと。** 札が縦に伸びすぎて一覧が読めなくなる */
+const HIT_ROWS_MAX = 5;
+function RecordHitBox({ hits, words }) {
+    if (!hits || !hits.length)
+        return null;
+    const shown = hits.slice(0, HIT_ROWS_MAX);
+    return (react_1.default.createElement(HitBox, null,
+        shown.map((h) => (react_1.default.createElement(HitRow, { key: h.key, label: h.label },
+            react_1.default.createElement(HitText, { text: h.text, words: words, snippet: 60 })))),
+        hits.length > shown.length && (react_1.default.createElement("p", { className: "fs-caption text-neutral-500" }, `ほか ${hits.length - shown.length} か所`))));
+}
+/* 計画の「見つかった場所」。イベントごとにまとめ、チェック・メモはそのイベントの下に寄せる。
+   **イベント名を省かないこと。** どのイベントのチェック・メモなのかが分からなくなる */
+const HIT_ITEMS_MAX = 3;
+function PlanHitBox({ plan, hits, words }) {
+    if (!hits || !hits.any)
+        return null;
+    return (react_1.default.createElement(HitBox, null,
+        hits.name && (react_1.default.createElement(HitRow, { label: "\u8A08\u753B\u540D" },
+            react_1.default.createElement(HitText, { text: plan.name, words: words }))),
+        hits.steps.map((h) => (react_1.default.createElement("div", { key: h.step.id || h.step.title, className: "space-y-1.5" },
+            react_1.default.createElement(HitRow, { label: "\u30A4\u30D9\u30F3\u30C8" }, h.title
+                ? react_1.default.createElement(HitText, { text: h.step.title, words: words })
+                : react_1.default.createElement("span", { className: "text-neutral-500" }, h.step.title || "（名前なし）")),
+            (h.items.length > 0 || h.body) && (react_1.default.createElement("div", { className: "ml-1 pl-1.5 border-l-2 border-th-200 space-y-1.5" },
+                h.items.slice(0, HIT_ITEMS_MAX).map((it, i) => (react_1.default.createElement(HitRow, { key: it.id || i, label: "\u30C1\u30A7\u30C3\u30AF" },
+                    react_1.default.createElement(HitText, { text: it.text, words: words })))),
+                h.items.length > HIT_ITEMS_MAX && (react_1.default.createElement("p", { className: "fs-caption text-neutral-500" }, `ほか ${h.items.length - HIT_ITEMS_MAX} 件のチェック`)),
+                h.body && (react_1.default.createElement(HitRow, { label: "\u30E1\u30E2" },
+                    react_1.default.createElement(HitText, { text: h.step.body, words: words, snippet: 60 }))))))))));
+}
+function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable = true, selected, onSelect, onLongSelect, lineUp, lineDown, onPin, showDate, hits, hitWords }) {
     const N = useTypeNames();
     /* 予定は、えらんだ「わく」の色を使う（無ければ表示設定の色）。
        あとで表示設定の色を変えると、そのわくの予定がまとめて変わる */
@@ -22087,7 +22212,9 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     repeatLabel(r.repeat))))),
             /* カード下部の「すべて表示／折りたたむ」。**折りたためる中身があるときだけ出す** */
             hasFold && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")),
-            normalizeTags(r.tags).length > 0 && react_1.default.createElement(TagChips, { tags: r.tags, className: "mt-2" })),
+            normalizeTags(r.tags).length > 0 && react_1.default.createElement(TagChips, { tags: r.tags, className: "mt-2" }),
+            /* 「探す」でキーワードを入れたときだけ出る。どこに当たったか */
+            hits && hits.length > 0 && react_1.default.createElement(RecordHitBox, { hits: hits, words: hitWords })),
         photo !== null && (react_1.default.createElement(PhotoViewer, { images: r.images || [], index: photo, onClose: () => setPhoto(null) })),
         moving && acts && (react_1.default.createElement(MoveItemSheet, { item: moving, from: r, records: acts.records || [], onCancel: () => setMoving(null), onMove: (toId) => { acts.onMoveItem(r, moving, toId); setMoving(null); }, onCreate: (name, date) => { acts.onCreateAndMove(r, moving, name, date); setMoving(null); } }))));
 }
@@ -23323,6 +23450,8 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
         });
     }, [records, applied]);
     const results = (0, react_1.useMemo)(() => sortRecords(found, order), [found, order]);
+    /* キーワードで探したときだけ、札ごとに「見つかった場所」を出す */
+    const hitWords = (0, react_1.useMemo)(() => (applied ? searchWords(applied.q) : []), [applied]);
     const toggleType = (t) => setTypes((p) => p.includes(t) ? p.filter((x) => x !== t) : [...p, t]);
     const clear = () => { setQ(""); setTypes([]); setTags([]); setMarkOnly(false); setFrom(""); setTo(""); setApplied(null); setOpen(true); };
     /* いまの条件を、ひと目で読める短い文にする（たたんだ帯に出す） */
@@ -23374,7 +23503,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
         react_1.default.createElement("div", { className: "px-5 ft-col" }, !hasCriteria ? null : results.length === 0 ? (react_1.default.createElement("div", { className: "ft-noresult py-10 text-center" },
             react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement(ListHeadRow, { sel: sel, list: results, right: `${results.length}件`, sort: react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }) }),
-            react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, showDate: true, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle, onLongSelect: sel.can ? (r2) => sel.startWith(r2) : null }))))))),
+            react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, hits: hitWords.length ? recordHits(r, hitWords) : null, hitWords: hitWords, selectMode: sel.on, selected: sel.ids.has(r.id), onSelect: sel.toggle, onLongSelect: sel.can ? (r2) => sel.startWith(r2) : null }))))))),
         react_1.default.createElement(SelectBar, { sel: sel, list: results }),
         tagOpen && (react_1.default.createElement(TagPickDialog, { title: "\u30BF\u30B0\u3092\u9078\u3076", selected: tags, known: knownTags, onApply: (v) => { setTags(v); setTagOpen(false); }, onCancel: () => setTagOpen(false) }))));
 }
@@ -23643,8 +23772,11 @@ function PlanSettingsSheet({ plan, onCancel, onSave }) {
             react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(lucide_react_1.Target, { size: 24 }), color: c, baseColor: planC, photo: false }))));
 }
 /* 計画の札 */
-function PlanCard({ plan, records, onOpen, onPin, pressProps }) {
+function PlanCard({ plan, records, onOpen, onPin, pressProps, hitQ }) {
     const p = plan;
+    /* 検索中だけ。どこ（計画名・イベントのタイトル・チェック・メモ）に当たったか */
+    const hits = (0, react_1.useMemo)(() => planHits(p, hitQ), [p, hitQ]);
+    const hitWords = hits ? [String(hitQ).trim().toLowerCase()] : null;
     /* 計画ごとの色。決めていなければ基調の色 */
     const c = planColorOf(p, useTypeColor(PLAN_TYPE));
     const stepColor = useTypeColor(STEP_TYPE);
@@ -23667,10 +23799,11 @@ function PlanCard({ plan, records, onOpen, onPin, pressProps }) {
                 done && (react_1.default.createElement("span", { className: "absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full text-white flex items-center justify-center border-2 border-white", style: { background: c.deep } },
                     react_1.default.createElement(lucide_react_1.Check, { size: 13, strokeWidth: 3.5, className: "thick" })))),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                react_1.default.createElement("span", { className: "block font-display fs-title leading-snug break-words text-neutral-900" }, p.name || "（名前なし）"),
+                react_1.default.createElement("span", { className: "block font-display fs-title leading-snug break-words text-neutral-900" }, p.name ? (hits && hits.name ? react_1.default.createElement(HitText, { text: p.name, words: hitWords }) : p.name) : "（名前なし）"),
                 react_1.default.createElement("span", { className: "block fs-body-sm mt-1", style: done ? { color: c.deep, fontWeight: 700 } : { color: "#737373" } }, done ? `${fmtDate(p.doneAt)} にやり遂げた` : (steps.length ? `${doneSteps}/${steps.length} 達成・` : "") + `記録 ${recs}件`)),
             onPin && react_1.default.createElement(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } }),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })),
+        hits && react_1.default.createElement(PlanHitBox, { plan: p, hits: hits, words: hitWords }),
         !done && dues.length > 0 && (react_1.default.createElement("div", { className: "mt-2.5 space-y-1.5" }, dues.map((g) => {
             const l = daysBetween(todayStr(), g.dueDate);
             return (react_1.default.createElement("div", { key: g.id, className: "flex items-center gap-2" },
@@ -23771,12 +23904,13 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
     });
     /* **カテゴリで分けないこと。** 入れ物をこしらえるより、
        いま進めているものが上にそろっているほうが探しやすい。
-       名前だけでなく、中のイベントの名前もヒットする対象に含める */
+       名前だけでなく、中のイベントのタイトル・チェック・メモもヒットする対象に含める。
+       当たった場所は、札の下の「見つかった場所」に出す（PlanHitBox） */
     const shown = (0, react_1.useMemo)(() => matchPlan(plans, q), [plans, q]);
     const pinFirst = (a, b) => (!!a.pinned === !!b.pinned ? 0 : (a.pinned ? -1 : 1));
     const live = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => !p.doneAt), sort).sort(pinFirst), [shown, sort]);
     const done = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => !!p.doneAt), sort).sort(pinFirst), [shown, sort]);
-    const renderPlan = (p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: longPressProps({ plan: p }) }));
+    const renderPlan = (p) => (react_1.default.createElement(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: longPressProps({ plan: p }), hitQ: searching ? q : "" }));
     const emptyText = effectiveTab === "live" ? "\u9032\u884C\u4E2D\u306E\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"
         : effectiveTab === "done" ? "\u3084\u308A\u9042\u3052\u305F\u8A08\u753B\u306F\u307E\u3060\u3042\u308A\u307E\u305B\u3093"
             : "\u898B\u3064\u304B\u308A\u307E\u305B\u3093";
@@ -25150,6 +25284,8 @@ const GLOBAL_CSS = `
 .font-medium { font-weight: 500; }
 .font-semibold { font-weight: 600; }
 .font-sans, body { font-family: 'Noto Sans JP', sans-serif; }
+/* 検索で当たった語の塗り（HitText）。基調の色の薄い地。**記録の色にしないこと** */
+mark.ft-hit { background: var(--th-300, #A5D3EC); color: #262626; font-weight: 600; border-radius: 3px; padding: 0 1px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 /* **縦の巻き取り棒（スクロールバー）で幅を変えないこと。**
    記録が増えて転がるようになった瞬間に、見出しの帯だけ細くなって見える */
 html { scrollbar-gutter: stable; }
