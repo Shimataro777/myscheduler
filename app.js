@@ -19094,7 +19094,7 @@ function GroupCard({ children, className }) {
    フォルダ・計画・カテゴリで同じものを使う。
    並べかえは同じ行の右はしに置き、下に送っても上に残す */
 function ListSearchBar({ value, onChange, placeholder, right }) {
-    return (react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 sticky bg-app ft-col", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 76px))", zIndex: 20 } },
+    return (react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 bg-app ft-col" },
         react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
             react_1.default.createElement("div", { className: "flex-1 min-w-0 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
                 react_1.default.createElement(lucide_react_1.Search, { size: 17, className: value ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
@@ -20501,6 +20501,43 @@ function MenuButton() {
         react_1.default.createElement(lucide_react_1.Menu, { size: 24, strokeWidth: 2 }),
         react_1.default.createElement(NeedBackupDot, null)));
 }
+/* ============================================================
+   画面の上に留める見出しと帯（2.11.3〜）
+   **下タブの画面の見出しと帯を、position: sticky に戻さないこと。**
+   iPhone（WebKit）は、sticky の部品を「本来の場所」で見える・見えないを判断していて、
+   下へ送って本来の場所が画面から大きく離れると、絵を捨ててしまう。
+   貼りついている場所は画面の上なのに、見出し → 帯の順に透けて消え、
+   うしろの記録が見える（2.11.2 まで。実機の画面写しで確認）。
+   下タブや右下の＋（fixed）は消えないので、見出しと帯も fixed で画面に留める。
+   ・同じ高さの「場所取り」を流れの中に置くので、中身の位置は sticky のときと同じ
+   ・高さは見張り（ResizeObserver）で追う。文字の大きさ・写真・探すの欄の開け閉めで変わる
+   ・**場所取りの高さを決め打ちにしないこと。** 中身が見出しの下にもぐる
+   ・この中の帯に sticky や top を付けないこと（二重に下がる）
+   ============================================================ */
+function TopChrome({ children }) {
+    const boxRef = (0, react_1.useRef)(null);
+    const [h, setH] = (0, react_1.useState)(0);
+    /* 描く前に測る。**useEffect にしないこと。** 一瞬、中身が見出しの下にもぐって見える */
+    (0, react_1.useLayoutEffect)(() => {
+        const el = boxRef.current;
+        if (!el)
+            return undefined;
+        const put = () => {
+            const v = el.getBoundingClientRect().height;
+            setH((p) => (Math.abs(p - v) < 0.1 ? p : v));
+        };
+        put();
+        if (typeof ResizeObserver === "undefined")
+            return undefined;
+        const ro = new ResizeObserver(put);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+    return (react_1.default.createElement(react_1.default.Fragment, null,
+        react_1.default.createElement("div", { "aria-hidden": "true", style: { height: h } }),
+        react_1.default.createElement("div", { ref: boxRef, className: "ft-topchrome" },
+            react_1.default.createElement("div", { className: "ft-col" }, children))));
+}
 function ScreenHeader({ title, right, sub }) {
     const openMenu = react_1.default.useContext(MenuContext);
     const prefs = react_1.default.useContext(PrefsContext) || DEFAULT_PREFS;
@@ -20538,7 +20575,7 @@ function ScreenHeader({ title, right, sub }) {
             window.removeEventListener("orientationchange", later);
         };
     }, [photo]);
-    return (react_1.default.createElement("div", { ref: headRef, className: "px-2 pb-2 relative overflow-hidden sticky top-0 ft-bleed " + (photo ? "" : "bg-head"), style: { ...SAFE_TOP(18), zIndex: 25 } },
+    return (react_1.default.createElement("div", { ref: headRef, className: "px-2 pb-2 relative overflow-hidden ft-bleed " + (photo ? "" : "bg-head"), style: { ...SAFE_TOP(18), zIndex: 25 } },
         photo && (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("span", { className: "absolute inset-0", style: {
                     backgroundImage: `url(${photo})`, backgroundSize: "cover", backgroundPosition: "center",
@@ -22865,11 +22902,12 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         }).slice(0, 3);
     }, [plans]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
+        react_1.default.createElement(TopChrome, null,
         react_1.default.createElement(ScreenHeader, { title: "Today" }),
-        react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 sticky bg-app", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 76px))", zIndex: 20 } },
+        react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 bg-app" },
             react_1.default.createElement("div", { className: "flex gap-1 p-[3px] rounded-full bg-th-50" }, SPANS.map((s) => (react_1.default.createElement("button", { key: s.key, type: "button", onClick: () => { setDir(0); setSpan(s.key); }, "aria-pressed": span === s.key, style: { minHeight: 44 }, className: "flex-1 rounded-full fs-body font-bold flex items-center justify-center ft-tap "
                     + (span === s.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") },
-                react_1.default.createElement("span", { className: "inline-block" }, s.label)))))),
+                react_1.default.createElement("span", { className: "inline-block" }, s.label))))))),
         react_1.default.createElement("div", { className: "px-5" },
             react_1.default.createElement(MonthNavHeader, { className: "mb-1 mt-1", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
             span === "day" && (sel.on ? (react_1.default.createElement("div", { className: "flex items-center gap-2 mt-1 mb-3" },
@@ -23146,8 +23184,9 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
         return out.join("・");
     }, [applied, N]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
+        react_1.default.createElement(TopChrome, null,
         react_1.default.createElement(ScreenHeader, { title: "\u63A2\u3059" }),
-        react_1.default.createElement("div", { ref: barRef, className: "px-4 pt-3 pb-2 sticky bg-app ft-col", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 76px))", zIndex: 20 } },
+        react_1.default.createElement("div", { ref: barRef, className: "px-4 pt-3 pb-2 bg-app ft-col" },
             react_1.default.createElement("button", { type: "button", onPointerDown: onBarDown, onClick: onBarClick, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
                     + (hasCriteria ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
                 react_1.default.createElement(lucide_react_1.Search, { size: 17, className: hasCriteria ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
@@ -23155,7 +23194,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
                     ? react_1.default.createElement("span", { className: "block fs-body font-bold text-th-900 truncate" }, summary || "条件で検索中")
                     : react_1.default.createElement("span", { className: "block fs-body text-neutral-400 truncate" }, open ? "条件をえらんで検索" : "検索する")),
                 react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (open ? "rotate-180" : "") },
-                    react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
+                    react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 }))))),
         react_1.default.createElement("div", { className: "px-4 ft-col" },
             react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (open ? "" : "hidden") },
                 react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: search, types: types, onToggleType: toggleType, tags: tags, onOpenTags: () => setTagOpen(true), mark: markOnly, onMark: () => setMarkOnly((v) => !v), from: from, to: to, onFrom: setFrom, onTo: setTo }),
@@ -23565,11 +23604,12 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
         : effectiveTab === "done" ? "\u3084\u308A\u9042\u3052\u305F\u8A08\u753B\u306F\u307E\u3060\u3042\u308A\u307E\u305B\u3093"
             : "\u898B\u3064\u304B\u308A\u307E\u305B\u3093";
     return (react_1.default.createElement("div", { className: "pad-fab" },
+        react_1.default.createElement(TopChrome, null,
         react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
         /* **検索バーとタブを、ふたつの帯にしないこと。** 別々に sticky を付けると、
            重なりの計算がずれて隙間や被りが出る。ひとつの帯にまとめて、
            Today 画面の見出しと同じ決まり（top は帯の高さの変数、bg-appで下地を隠す）で貼り付ける */
-        react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 sticky bg-app ft-col", style: { top: "var(--ft-head-h, calc(env(safe-area-inset-top) + 76px))", zIndex: 20 } },
+        react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 bg-app ft-col" },
             react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
                 react_1.default.createElement("div", { className: "flex-1 min-w-0 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
                     react_1.default.createElement(lucide_react_1.Search, { size: 17, className: q ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
@@ -23578,7 +23618,7 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
                         react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
                 react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })),
             react_1.default.createElement("div", { className: "flex rounded-full bg-th-50 p-1 mt-2" }, PLAN_TABS.map((t) => (react_1.default.createElement("button", { key: t.key, type: "button", onClick: () => goTab(t.key), "aria-pressed": effectiveTab === t.key, style: { minHeight: 42 }, className: "flex-1 rounded-full fs-body font-bold flex items-center justify-center ft-tap "
-                    + (effectiveTab === t.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") }, t.label))))),
+                    + (effectiveTab === t.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") }, t.label)))))),
         /* **キーで作り直して動きを付けないこと。** フォルダのタブと同じ、ただの出し分けにする。
            作り直しをやめることで、繰り返し払っても止まらず、軽いままにする */
         react_1.default.createElement("div", { ref: areaRef, className: "px-4 pt-1 ft-col space-y-2.5", style: { minHeight: "60vh" } },
@@ -24120,7 +24160,17 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                         t.label,
                         t.key === "auto" && condOn && react_1.default.createElement("span", { className: "w-1.5 h-1.5 rounded-full bg-th-800", "aria-hidden": "true" }),
                         t.key === "manual" && picked.size > 0 && react_1.default.createElement("span", { className: "fs-caption tabular-nums" }, picked.size)))))),
-                react_1.default.createElement("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto overflow-x-hidden px-4 py-3", style: { touchAction: "pan-y" }, onPointerDown: onDown, onPointerUp: onUp }, tab === "auto" ? (react_1.default.createElement(react_1.default.Fragment, null,
+                /* 手動のときの「検索する」札。**この札を、下の送る箱の中で sticky にしないこと。**
+                   iPhone で、下まで送ると消えることがある（TopChrome の説明と同じ）。送る箱の外に置く */
+                    tab === "manual" && (react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 shrink-0 bg-white" },
+                        react_1.default.createElement("button", { type: "button", onPointerDown: barDown, onClick: barClick, "aria-expanded": fOpen, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
+                                + (hasCriteria ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
+                            react_1.default.createElement(lucide_react_1.Search, { size: 17, className: hasCriteria ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
+                            react_1.default.createElement("span", { className: "flex-1 min-w-0 truncate fs-body" }, hasCriteria ? react_1.default.createElement("span", { className: "font-bold text-th-900" }, summary || "条件で検索中")
+                                : react_1.default.createElement("span", { className: "text-neutral-400" }, fOpen ? "条件をえらんで検索" : "検索する")),
+                            react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (fOpen ? "rotate-180" : "") },
+                                react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 }))))),
+                react_1.default.createElement("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto overflow-x-hidden px-4 " + (tab === "manual" ? "pt-2 pb-3" : "py-3"), style: { touchAction: "pan-y" }, onPointerDown: onDown, onPointerUp: onUp }, tab === "auto" ? (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4" },
                         react_1.default.createElement(FilterFields, { types: cond.types, onToggleType: toggleCondType, tags: cond.tags, onOpenTags: () => setCondTagOpen(true), mark: cond.marked, onMark: () => setC({ marked: !cond.marked }), from: cond.from, to: cond.to, onFrom: (v) => setC({ from: v }), onTo: (v) => setC({ to: v }) }),
                         condOn && (react_1.default.createElement("button", { type: "button", onClick: () => setCond({ tags: [], types: [], from: "", to: "", marked: false }), className: BTN_SECONDARY + " w-full btn-h-lg fs-body" }, "\u6761\u4EF6\u3092\u3059\u3079\u3066\u5916\u3059"))),
@@ -24129,14 +24179,6 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                         react_1.default.createElement("span", { className: "fs-subhead font-bold tabular-nums text-neutral-900" },
                             autoSet.size,
                             "\u4EF6")))) : (react_1.default.createElement(react_1.default.Fragment, null,
-                    react_1.default.createElement("div", { className: "sticky bg-white pb-2 mb-2", style: { top: -12, zIndex: 10 } },
-                        react_1.default.createElement("button", { type: "button", onPointerDown: barDown, onClick: barClick, "aria-expanded": fOpen, className: "w-full flex items-center gap-2 rounded-2xl border px-3 min-h-[48px] text-left ft-tap ft-tap-card "
-                                + (hasCriteria ? "bg-th-50 border-th-200" : "bg-white border-neutral-200") },
-                            react_1.default.createElement(lucide_react_1.Search, { size: 17, className: hasCriteria ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
-                            react_1.default.createElement("span", { className: "flex-1 min-w-0 truncate fs-body" }, hasCriteria ? react_1.default.createElement("span", { className: "font-bold text-th-900" }, summary || "条件で検索中")
-                                : react_1.default.createElement("span", { className: "text-neutral-400" }, fOpen ? "条件をえらんで検索" : "検索する")),
-                            react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (fOpen ? "rotate-180" : "") },
-                                react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
                     react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (fOpen ? "" : "hidden") },
                         react_1.default.createElement(FilterFields, { q: draft.q, onQ: (v) => setD({ q: v }), onEnter: search, types: draft.types, onToggleType: toggleDType, tags: draft.tags, onOpenTags: () => setFTagOpen(true), mark: draft.mark, onMark: () => setD({ mark: !draft.mark }), from: draft.from, to: draft.to, onFrom: (v) => setD({ from: v }), onTo: (v) => setD({ to: v }), extra: (react_1.default.createElement(FilterPill, { on: draft.mine, onClick: () => setD({ mine: !draft.mine }) },
                                 react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3, className: "thick" }),
@@ -24314,8 +24356,9 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
     /* 名前順か作成順。名前順のときは「01.」「02.」を数として見る */
     const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort), [folders, sort, q]);
     return (react_1.default.createElement("div", { className: "pad-fab" },
-        react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
-        react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) }),
+        react_1.default.createElement(TopChrome, null,
+            react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
+            react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) })),
         react_1.default.createElement("div", { className: "px-4 pt-1 ft-col space-y-2.5 ft-seq" },
             sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
@@ -25055,23 +25098,10 @@ html { scrollbar-gutter: stable; }
 /* 下タブは、もう送る箱の外（ふつうに置いてある）ので、そのぶんの逃げは要らない。
    ここで空けるのは、右下の＋にかぶらないぶんだけ */
 /* 下タブ（fixed）と、その上にある＋のぶんを空ける */
-/* **padding-bottom で空けないこと。**（2.11.2〜）
-   見出し（ScreenHeader）と、その下に貼りつく帯（日・週・月、さがす欄、計画のタブ）は、
-   この箱の「中身の範囲」の中でしか貼りついていられない（sticky の決まり）。
-   padding は中身の範囲の外なので、下まで送ると、貼りつける範囲が
-   画面のいちばん下より 152px＋ホームバーぶん手前で尽き、
-   iPhone の下の跳ね返りや画面の高さの測りちがいでその残りが削られると、
-   見出しと帯が箱の終わりに引っぱられて、いっしょに上へ流れて消える。
-   逃げは ::after の「中身」として置き、貼りつける範囲をページのいちばん下まで届かせる */
-/* padding-bottom: 0 は、いっしょに付いている py-4 などの下の余白を今までどおり打ち消すため
-   （以前は .pad-fab の padding-bottom がそれを上書きしていた。消すと、そのぶん下が伸びる） */
-.pad-fab { padding-bottom: 0; }
-.pad-fab::after { content: ""; display: block; height: calc(env(safe-area-inset-bottom) + 152px); }
-/* 下タブの画面では、中身が短いときも箱を画面の高さまで伸ばしておく。
-   **外の .ft-page（100vh）より短いままにしないこと。** 送れる高さがこの箱より長くなり、
-   そのぶん貼りつける範囲が早く尽きる。高さは .ft-page と同じ 100vh にそろえる
-   （送れる高さは増えない） */
-.ft-page > .ft-col > .pad-fab { min-height: 100vh; }
+.pad-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 152px); }
+/* 下タブの画面の見出しと帯（TopChrome）。**sticky に戻さないこと**（TopChrome の説明）。
+   z-index は、もとの見出し（25）と同じ。右下の＋（40）・下タブ（30）・重なる画面より下 */
+.ft-topchrome { position: fixed; top: 0; left: 0; right: 0; z-index: 25; }
 
 /* 線は細く。しるしの線が太いと、それだけで画面が固く見える */
 .ft-root svg:not(.thick) { stroke-width: 1.75; }
