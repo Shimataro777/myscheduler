@@ -24030,7 +24030,7 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
                 : { background: "#F3F3F5", color: "#63636A" };
     /* 完了の入り切りは、リスト記録カード（RecordRow）と同じ操作感にそろえる。
        **札にチェックの丸を置かないこと。** 長押しで小窓（TypePickSheet）を出し、
-       そこにある「完了にする（完了済みの場合は未完了に戻す）」を選んで切り替える。
+       そこにある「完了にする」（完了済みなら「未完了に戻す」）を選んで切り替える。
        タップ（鉛筆・タイトル）は、これまで通り編集をひらく。
        長押しの作り方は RecordRow / PlanScreen の長押しと同じにそろえてある。
        ・押しはじめ（pointerdown）から480msで発火。指が10pxを超えて動いたら取り消す
@@ -24122,7 +24122,7 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
                 react_1.default.createElement(LinkedText, { text: step.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
                 react_1.default.createElement(LinkCards, { text: step.body, small: true })))),
         /* 長押しで出す、完了の入り切りだけの小窓。**カード内に別のボタンを増やさないこと。** */
-        menuOpen && (react_1.default.createElement(TypePickSheet, { title: step.title || "イベント", types: ["__toggle"], labels: { __toggle: "完了にする（完了済みの場合は未完了に戻す）" }, icons: { __toggle: react_1.default.createElement(lucide_react_1.Check, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: () => { setMenuOpen(false); patch((st) => ({ ...st, done: !st.done })); } }))));
+        menuOpen && (react_1.default.createElement(TypePickSheet, { title: step.title || "イベント", types: allDone ? ["__undone"] : ["__done"], labels: { __done: "完了にする", __undone: "未完了に戻す" }, icons: { __done: react_1.default.createElement(lucide_react_1.Check, { size: 22 }), __undone: react_1.default.createElement(lucide_react_1.RotateCcw, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: () => { setMenuOpen(false); patch((st) => ({ ...st, done: !st.done })); } }))));
 }
 /* イベントを書く画面。
    **記録を書く画面と別の作りにしないこと。** 同じ「書くこと」なのに
