@@ -19490,15 +19490,25 @@ function useClosing(onClose) {
    iPhone は overflow:hidden でも、入力欄に触れてキーボードが出るときに
    ページ（Today などの一覧）を送ってしまう。すると重なる画面（fixed）ごと上へずれ、
    「タグを選択」などの紙やキーボードのまわりに、いちばん下の一覧のカードが透けて見えた。
-   body を position:fixed で今の位置に留め、ページそのものを送れなくする。
-   閉じたら元の位置へ戻す。
+   そこで body の overflow を止めたうえで、**送られたらすぐ元の位置へ引き戻す**。
+   閉じたら留めていた位置へ戻す。
+   **body を position:fixed にして留めないこと（2.11.16〜）。** 下の説明のとおり、
+   画面が測り直されて下タブごと上へずれる。
    ・useLayoutEffect で行うこと。useEffect だと、留める前・戻す前のひとこまが描かれ、
      一覧が一瞬いちばん上へ跳んで見える
    ・紙・小窓・メニューなど、重なって出るものは**すべて**これを通すこと
      （部品の中で hook を呼べない場所は BackgroundLock を最初の子に置く） */
 let overlayCount = 0;
 let overlayLockY = 0;
-const OVERLAY_LOCK_PROPS = ["overflow", "position", "top", "left", "right", "width"];
+let overlayPrevOverflow = "";
+let overlayPin = null;
+/* **body を position: fixed にしないこと（2.11.16〜）。**
+   body を流れから外すと、ページが「送れない状態」になり、iPhone は
+   viewport-fit=cover で広げていた画面を測り直す。下端が 62px ほど切り上がり、
+   fixed で置いたもの（下タブ・暗がり・重なる画面・右下の＋）が**まとめて上へ**
+   持ち上がって、「画面によって下タブの位置が違う」ように見えた。
+   代わりに、送られたら留めた位置へ引き戻す。ページは流れの中に居たままなので
+   画面の大きさが変わらず、2.11.11 のキーボードの件も同じだけ防げる */
 function useLockBackground() {
     (0, react_1.useLayoutEffect)(() => {
         if (typeof document === "undefined")
@@ -19506,28 +19516,32 @@ function useLockBackground() {
         const body = document.body;
         if (overlayCount === 0) {
             overlayLockY = window.scrollY || document.documentElement.scrollTop || 0;
-            const prev = {};
-            OVERLAY_LOCK_PROPS.forEach((k) => { prev[k] = body.style[k] || ""; });
-            body.dataset.ftPrevStyle = JSON.stringify(prev);
+            overlayPrevOverflow = body.style.overflow || "";
             body.style.overflow = "hidden";
-            body.style.position = "fixed";
-            body.style.top = -overlayLockY + "px";
-            body.style.left = "0";
-            body.style.right = "0";
-            body.style.width = "100%";
+            /* **1px の遊びを持たせること。** ぴったり比べると、慣性の最後のひとこまでも
+               引き戻しが走り、指を離した瞬間に画面が小さく震える */
+            overlayPin = () => {
+                const y = window.scrollY || document.documentElement.scrollTop || 0;
+                if (Math.abs(y - overlayLockY) > 1)
+                    window.scrollTo(0, overlayLockY);
+            };
+            window.addEventListener("scroll", overlayPin, { passive: true });
+            /* キーボードの開け閉めでも測り直す（入力欄へ寄せようとしてページが送られる） */
+            if (window.visualViewport)
+                window.visualViewport.addEventListener("resize", overlayPin);
         }
         overlayCount += 1;
         return () => {
             overlayCount -= 1;
             if (overlayCount <= 0) {
                 overlayCount = 0;
-                let prev = {};
-                try {
-                    prev = JSON.parse(body.dataset.ftPrevStyle || "{}");
+                body.style.overflow = overlayPrevOverflow;
+                if (overlayPin) {
+                    window.removeEventListener("scroll", overlayPin);
+                    if (window.visualViewport)
+                        window.visualViewport.removeEventListener("resize", overlayPin);
+                    overlayPin = null;
                 }
-                catch (e) { /* noop */ }
-                OVERLAY_LOCK_PROPS.forEach((k) => { body.style[k] = prev[k] || ""; });
-                delete body.dataset.ftPrevStyle;
                 /* 留めていたあいだの位置へ戻す。**戻さないと一覧がいちばん上へ跳ぶ** */
                 window.scrollTo(0, overlayLockY);
             }
@@ -20973,7 +20987,7 @@ function Toast({ msg }) {
        同じ箱にある -translate-x-1/2 が動いているあいだ消えてしまい、
        現れた瞬間はずれた位置に出て、動き終わったところで中央へ「動いてしまう」。
        中央寄せは外の箱、pop の動きは中の箱、と役目を分けておく */
-    return (react_1.default.createElement("div", { className: "fixed left-1/2 -translate-x-1/2 pointer-events-none", style: { bottom: "calc(env(safe-area-inset-bottom) + 112px)", zIndex: 2147483250 } },
+    return (react_1.default.createElement("div", { className: "fixed left-1/2 -translate-x-1/2 pointer-events-none", style: { bottom: "calc(var(--ft-nav-h) + 56px)", zIndex: 2147483250 } },
         react_1.default.createElement("div", { className: "anim-pop" },
             react_1.default.createElement("div", { className: "bg-neutral-900 text-white fs-body-sm font-bold px-4 py-2.5 rounded-full shadow-xl max-w-[86vw] text-center" }, msg))));
 }
@@ -23248,7 +23262,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 " ",
                 TYPE_LABELS[t])))),
             hidden.length > 0 && (react_1.default.createElement("button", { type: "button", onClick: () => setHidden([]), className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body mt-3" }, "\u3059\u3079\u3066\u8868\u793A")))),
-        !sel.on && (react_1.default.createElement("button", { type: "button", onClick: cycleSpan, "aria-label": `${nextSpanLabel}の画面に切り替える`, className: "fixed rounded-2xl bg-white text-th-900 border border-th-200 card-soft flex items-center justify-center ft-tap ft-fab-side z-40", style: { width: 46, height: 46, bottom: "calc(env(safe-area-inset-bottom) + 101px)" } },
+        !sel.on && (react_1.default.createElement("button", { type: "button", onClick: cycleSpan, "aria-label": `${nextSpanLabel}の画面に切り替える`, className: "fixed rounded-2xl bg-white text-th-900 border border-th-200 card-soft flex items-center justify-center ft-tap ft-fab-side z-40", style: { width: 46, height: 46, bottom: "calc(var(--ft-nav-h) + 45px)" } },
             react_1.default.createElement("span", { key: span, className: "ft-tabpop inline-flex" },
                 react_1.default.createElement(SpanCycleIcon, { size: 21 })))),
         jumpOpen && (react_1.default.createElement(TodayPeriodSheet, { year: y, month: mo, day: Number(date.slice(8, 10)), years: jumpYears(y), onClose: () => setJumpOpen(false), onConfirm: (yy, mm, dd) => {
@@ -25354,8 +25368,11 @@ html { scrollbar-gutter: stable; }
 /* **下の帯の厚みは、ここで決め打ちにすること。**
    中身や設定でふくらませない。ホームバーのぶんは、字がかからない程度だけ足す
    （まるごと足すと、字の下に指1本ぶんの白があいて、とても厚く見える） */
-/* 引き継ぎ元のアプリと同じ。逃げはそのまま足す */
-.ft-tabbar-wrap { padding-bottom: env(safe-area-inset-bottom); }
+/* **下の帯は、位置も厚みもここだけで決めること（2.11.16〜）。**
+   画面ごと・部品ごとに fixed や bottom を書くと、直したとき片方が置いていかれる。
+   逃げ（ホームバーのぶん）を足すのもここ1回だけ。**二重に足さないこと** */
+.ft-tabbar-wrap { position: fixed; left: 0; right: 0; bottom: 0;
+  padding-bottom: env(safe-area-inset-bottom); }
 /* 下の帯の厚み。**右下のボタンや逃げは、必ずこれを見て決めること。**
    数字を書き写すと、帯の厚みを変えたときに置いていかれて、
    ボタンだけ高い場所に浮いたままになる */
@@ -25511,7 +25528,7 @@ html { scrollbar-gutter: stable; }
 /* 下タブは、もう送る箱の外（ふつうに置いてある）ので、そのぶんの逃げは要らない。
    ここで空けるのは、右下の＋にかぶらないぶんだけ */
 /* 下タブ（fixed）と、その上にある＋のぶんを空ける */
-.pad-fab { padding-bottom: calc(env(safe-area-inset-bottom) + 152px); }
+.pad-fab { padding-bottom: calc(var(--ft-nav-h) + 96px); }
 /* 下タブの画面の見出しと帯（TopChrome）。**sticky に戻さないこと**（TopChrome の説明）。
    z-index は、もとの見出し（25）と同じ。右下の＋（40）・下タブ（30）・重なる画面より下 */
 .ft-topchrome { position: fixed; top: 0; left: 0; right: 0; z-index: 25; }
@@ -25857,7 +25874,7 @@ const TABS = [
    ことがあり、「1回押しても反応しない」ように見えた。
    TapOnceButton（useTapOnce）で指を離した時点に受け止める（引継書 6-③ と同じ理由） */
 function BottomNav({ active, onChange }) {
-    return (react_1.default.createElement("div", { className: "fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
+    return (react_1.default.createElement("div", { className: "z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
             const isActive = active === key;
             return (react_1.default.createElement(TapOnceButton, { key: key, onTap: () => onChange(key), className: "flex-1 flex flex-col items-center gap-1 py-2.5 min-h-[56px] relative ft-tap ft-tabbtn" },
@@ -26515,7 +26532,7 @@ function AppMain() {
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, resetSig: tabReset.find || 0 })),
                                         tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), resetSig: tabReset.plan || 0 })),
                                         tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
-                                loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(env(safe-area-inset-bottom) + 96px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
+                                loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                                 loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => {
                                         if (k === "today")
                                             setTodayReset((n) => n + 1);

@@ -509,3 +509,15 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .ft-tap-pressed{
   transition: background-color var(--dur-fast) var(--ease-out);
 }
+
+/* ============================================================
+   下タブが画面ごとに上下する不具合よけ（2.11.16〜）
+   **body を position: fixed にしないこと。**
+   重なる画面を開いているあいだ body を流れから外すと、iPhone は
+   viewport-fit=cover で広げていた画面を測り直し、下端が 60px 前後
+   切り上がる。すると fixed で置いたもの（下タブ・暗がり・重なる画面・
+   右下の＋）がまとめて上へ持ち上がり、下タブだけがズレたように見える。
+   うしろを留めるのは useLockBackground（overflow + 引き戻し）の役目。
+   ここは、戻し忘れや古い本体が残ったときの用心として置いてある
+   ============================================================ */
+body { position: static !important; top: auto !important; }
