@@ -17717,10 +17717,23 @@ function compareName(a, b) {
     return x.localeCompare(y, "ja", { numeric: true, sensitivity: "base" })
         || x.localeCompare(y, "ja");
 }
-/* 作成順。**新しく作ったものを上にすること。**
-   作ったばかりのものを探しにいかせない */
-function compareCreated(a, b) {
-    return String((b && b.createdAt) || "").localeCompare(String((a && a.createdAt) || ""));
+/* 更新順。**直したばかりのものを上にすること。**
+   計画は、計画そのものの更新日時と、中のイベントの更新日時のうち
+   いちばん新しいほうを見る（イベントを直しただけでも計画が上がる）。
+   フォルダなど steps を持たないものは、自分の更新日時（無ければ作成日時）だけを見る */
+function latestUpdatedAt(item) {
+    let t = String((item && (item.updatedAt || item.createdAt)) || "");
+    if (item && Array.isArray(item.steps)) {
+        item.steps.forEach((st) => {
+            const u = String((st && (st.updatedAt || st.createdAt)) || "");
+            if (u > t)
+                t = u;
+        });
+    }
+    return t;
+}
+function compareUpdated(a, b) {
+    return latestUpdatedAt(b).localeCompare(latestUpdatedAt(a));
 }
 /* 記録の並べかえ。日付が同じときは、いつもの並び（compareTimeline）にする */
 function sortRecords(list, order) {
@@ -17762,7 +17775,7 @@ function OrderToggle({ value, onChange }) {
 const sortItems = (list, mode) => list.slice().sort((a, b) => {
     if (!!a.pinned !== !!b.pinned)
         return a.pinned ? -1 : 1;
-    return mode === "created" ? compareCreated(a, b) : compareName(a, b);
+    return mode === "updated" ? compareUpdated(a, b) : compareName(a, b);
 });
 /* 大事な記録に付ける印。淡い色でそろえる */
 const MARKS = [
@@ -17785,7 +17798,7 @@ const DEFAULT_PREFS = {
     schedColor: { ...DEFAULT_SCHEDULE_COLORS },
     typeName: {}, // 記録の種類の呼び名を変えたいとき
     /* 並び順。**画面ごとに別々に覚えないこと。** 表示設定でひとつだけ決める
-       （"name" ＝ 名前順／"created" ＝ 作成順） */
+       （"name" ＝ 名前順／"updated" ＝ 更新順） */
     sortOrder: "name",
     /* 記録の並び（"old" ＝ 時間順／"recent" ＝ 更新順）。
        Today・探す・フォルダの中で共通 */
@@ -18192,6 +18205,9 @@ function emptyPlan() {
         pinned: false, // 上に固定（いちばん上に出す）
         doneAt: "", // やり遂げた日（空なら、まだ進行中）
         createdAt: new Date().toISOString(),
+        /* 名前・アイコンなど、計画そのものを直した時刻。**並び順（更新順）の基準。**
+           印の入り切りでは書きかえないこと（3.でも同じ考え方）*/
+        updatedAt: null,
     };
 }
 function migratePlan(p) {
@@ -18211,6 +18227,9 @@ function migratePlan(p) {
             onCal: !!g.onCal,
             /* 期日を入れていないものの並びが、開くたびに変わらないようにする */
             createdAt: typeof g.createdAt === "string" && g.createdAt ? g.createdAt : "1970-01-01T00:00:00.000Z",
+            /* このイベントを直した時刻。**計画の更新順は、これも見て決める。**
+               ここに書き足すのを忘れないこと */
+            updatedAt: typeof g.updatedAt === "string" && g.updatedAt ? g.updatedAt : null,
             /* イベントのメモ。**ここに書き足すのを忘れないこと。**
                2.11.13 までここに無く、開き直すたびにメモが消えていた（検索にも出なかった） */
             body: typeof g.body === "string" ? g.body : "",
@@ -18226,6 +18245,7 @@ function migratePlan(p) {
         /* 計画ごとの色と絵。決めていなければ空 */
         color: typeof p.color === "string" ? p.color : "",
         icon: typeof p.icon === "string" ? p.icon : "",
+        updatedAt: typeof p.updatedAt === "string" && p.updatedAt ? p.updatedAt : null,
     };
 }
 /* 週・月ぜんたいに付けた記録の繰り返し。
@@ -18297,7 +18317,9 @@ function emptyFolder(name) {
        外すのは手動で入れたぶんだけ（picked から抜く）。条件のぶんは条件を変えて外す */
     /* from / to ＝ 集める期間（空なら、いつのものでも集める） */
     return { id: uid(), name: name || "", tags: [], types: [], from: "", to: "", marked: false,
-        picked: [], pinned: false, createdAt: new Date().toISOString() };
+        picked: [], pinned: false, createdAt: new Date().toISOString(),
+        /* フォルダそのものを直した時刻（並び順「更新順」の基準）。changeFolder が書く */
+        updatedAt: null };
 }
 /* **はじめから入っているフォルダは、もう作らないこと。**
    「印つき」を消せない形で置いていたが、要らない人には邪魔なだけだった。
@@ -18328,6 +18350,7 @@ function migrateFolder(f) {
         picked: Array.isArray(f.picked) ? f.picked.filter((x) => typeof x === "string") : [],
         excluded: undefined,
         id: f.id || uid(),
+        updatedAt: typeof f.updatedAt === "string" && f.updatedAt ? f.updatedAt : null,
     };
 }
 /* フォルダに入る記録を集める。自動で集めたものと、手動で選んだものを合わせる */
@@ -19151,10 +19174,10 @@ function GroupCard({ children, className }) {
    ============================================================ */
 /* 並べかえの切り替え。**大きな部品にしないこと。**
    ふだんは目に入らず、探したいときにだけ気づけばよい。
-   名前順と作成順のふたつだけなので、押すたびに入れ替わる */
+   名前順と更新順のふたつだけなので、押すたびに入れ替わる */
 /* 一覧の上に貼りつく「さがす」欄。
    **一覧が増えたときに、目で探させないこと。**
-   フォルダ・計画・カテゴリで同じものを使う。
+   フォルダ・計画で同じものを使う。
    並べかえは同じ行の右はしに置き、下に送っても上に残す */
 function ListSearchBar({ value, onChange, placeholder, right }) {
     return (react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 bg-app ft-col" },
@@ -19167,11 +19190,11 @@ function ListSearchBar({ value, onChange, placeholder, right }) {
             right)));
 }
 function SortToggle({ value, onChange, onDark }) {
-    const name = value !== "created";
-    return (react_1.default.createElement("button", { type: "button", onClick: () => onChange(name ? "created" : "name"), "aria-label": `並べかえ：いま${name ? "名前順" : "作成順"}`, className: "h-9 pl-2 pr-2.5 flex items-center gap-1 rounded-full fs-label font-bold ft-tap ft-tap-icon "
+    const name = value !== "updated";
+    return (react_1.default.createElement("button", { type: "button", onClick: () => onChange(name ? "updated" : "name"), "aria-label": `並べかえ：いま${name ? "名前順" : "更新順"}`, className: "h-9 pl-2 pr-2.5 flex items-center gap-1 rounded-full fs-label font-bold ft-tap ft-tap-icon "
             + (onDark ? "text-white/80" : "text-neutral-500 hover:bg-neutral-100") },
         react_1.default.createElement(lucide_react_1.ArrowRightLeft, { size: 14, style: { transform: "rotate(90deg)" } }),
-        name ? "名前順" : "作成順"));
+        name ? "名前順" : "更新順"));
 }
 function HelpTip({ text, label }) {
     const btnRef = (0, react_1.useRef)(null);
@@ -22990,7 +23013,7 @@ function SelectBar({ sel, list, extraLabel, onExtra }) {
    左右に払っても送れる
    ============================================================ */
 /* 並び順のえらびもの。**画面ごとに字を変えないこと** */
-const SORT_NAME_OPTIONS = [{ value: "name", label: "名前順" }, { value: "created", label: "作成順" }];
+const SORT_NAME_OPTIONS = [{ value: "name", label: "名前順" }, { value: "updated", label: "更新順" }];
 const SORT_RECORD_OPTIONS = [{ value: "old", label: "時間順" }, { value: "recent", label: "更新順" }];
 const SPANS = [{ key: "day", label: "日" }, { key: "week", label: "週" }, { key: "month", label: "月" }];
 /* Today の上に出す、期日が近いイベントの札。
@@ -23951,13 +23974,13 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
                 if (k === "__rename")
                     setEdit(m);
                 else if (k === "__done")
-                    onChangePlan(m.plan.id, (p) => ({ ...p, doneAt: todayStr() }));
+                    onChangePlan(m.plan.id, (p) => ({ ...p, doneAt: todayStr(), updatedAt: new Date().toISOString() }));
                 else if (k === "__undone")
-                    onChangePlan(m.plan.id, (p) => ({ ...p, doneAt: "" }));
+                    onChangePlan(m.plan.id, (p) => ({ ...p, doneAt: "", updatedAt: new Date().toISOString() }));
                 else
                     setDel(m);
             } })),
-        edit && (react_1.default.createElement(PlanSettingsSheet, { plan: edit.plan, onCancel: () => setEdit(null), onSave: (v) => { onChangePlan(v); setEdit(null); } })),
+        edit && (react_1.default.createElement(PlanSettingsSheet, { plan: edit.plan, onCancel: () => setEdit(null), onSave: (v) => { onChangePlan({ ...v, updatedAt: new Date().toISOString() }); setEdit(null); } })),
         del && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u8A08\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u3053\u306E\u8A08\u753B\u306B\u7D50\u3073\u3064\u3044\u305F\u8A18\u9332\u306F\u6D88\u3048\u307E\u305B\u3093\u3002\u8A08\u753B\u3060\u3051\u304C\u306A\u304F\u306A\u308A\u307E\u3059\u3002", confirmLabel: "\u524A\u9664", onCancel: () => setDel(null), onConfirm: () => { const m = del; setDel(null); onDeletePlan(m.plan.id); } }))));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
@@ -24243,19 +24266,24 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
         isNew: true,
     });
     const editStep = (s) => setStepEdit({ step: s, isNew: false });
-    const delStep = (id) => onChange(plan.id, (p) => ({ ...p, steps: (p.steps || []).filter((x) => x.id !== id) }));
+    /* 削除で計画の中身が変わるので、計画の更新日時も進める。
+       **step 自身には触らないこと。**（消えるだけなので不要） */
+    const delStep = (id) => onChange(plan.id, (p) => ({ ...p, steps: (p.steps || []).filter((x) => x.id !== id), updatedAt: new Date().toISOString() }));
     const saveStep = (s, toPlanId) => {
         const isNew = stepEdit && stepEdit.isNew;
+        /* **イベントを直した時刻はここで刻む。**
+           計画の更新順は、これ（イベントの updatedAt）も見て決まる */
+        const stamped = { ...s, updatedAt: new Date().toISOString() };
         /* **別の計画へ移すときは、元から外してから入れること。**
            両方に残ると、同じイベントが2か所に出る */
         if (toPlanId && toPlanId !== plan.id && onMoveStep) {
-            onMoveStep(s, plan.id, toPlanId, !!isNew);
+            onMoveStep(stamped, plan.id, toPlanId, !!isNew);
             setStepEdit(null);
             return;
         }
         onChange(plan.id, (p) => ({
             ...p,
-            steps: isNew ? [...(p.steps || []), s] : (p.steps || []).map((x) => (x.id === s.id ? s : x)),
+            steps: isNew ? [...(p.steps || []), stamped] : (p.steps || []).map((x) => (x.id === stamped.id ? stamped : x)),
         }));
         setStepEdit(null);
     };
@@ -24347,7 +24375,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                 } })),
             menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", types: plan.doneAt ? ["__undone", "__edit", "__delete"] : ["__done", "__edit", "__delete"], labels: {
                     __done: "この計画をやり遂げた", __undone: "やり遂げたのを取り消す",
-                    __edit: "名前・カテゴリ・色・絵", __delete: "この計画を削除",
+                    __edit: "名前・色・絵", __delete: "この計画を削除",
                 }, icons: {
                     __done: react_1.default.createElement(lucide_react_1.Check, { size: 22 }), __undone: react_1.default.createElement(lucide_react_1.RotateCcw, { size: 22 }),
                     __edit: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }),
@@ -24358,7 +24386,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                     if (k === "__done")
                         setDoneAsk(true);
                     else if (k === "__undone")
-                        onChange({ ...plan, doneAt: "" });
+                        onChange({ ...plan, doneAt: "", updatedAt: new Date().toISOString() });
                     else if (k === "__edit")
                         setSettingsOpen(true);
                     else
@@ -24379,8 +24407,8 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                         "\u304A\u3064\u304B\u308C\u3055\u307E\u3067\u3057\u305F\u3002"),
                     react_1.default.createElement("div", { className: "flex justify-center" },
                         react_1.default.createElement("button", { type: "button", onClick: () => setCelebrate(false), className: BTN_PRIMARY + " btn-h-lg px-8 fs-subhead" }, "\u3068\u3058\u308B"))))),
-            settingsOpen && (react_1.default.createElement(PlanSettingsSheet, { plan: plan, onCancel: () => setSettingsOpen(false), onSave: (v) => { onChange(v); setSettingsOpen(false); } })),
-            doneAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u3084\u308A\u9042\u3052\u307E\u3057\u305F\u304B", body: "\u8A08\u753B\u306F\u4E00\u89A7\u306E\u4E0B\u306E\u307B\u3046\u3078\u79FB\u308A\u3001\u3044\u3064\u3067\u3082\u898B\u8FD4\u305B\u307E\u3059\u3002", confirmLabel: "\u3084\u308A\u9042\u3052\u305F", onCancel: () => setDoneAsk(false), onConfirm: () => { setDoneAsk(false); onChange({ ...plan, doneAt: todayStr() }); setCelebrate(true); } })),
+            settingsOpen && (react_1.default.createElement(PlanSettingsSheet, { plan: plan, onCancel: () => setSettingsOpen(false), onSave: (v) => { onChange({ ...v, updatedAt: new Date().toISOString() }); setSettingsOpen(false); } })),
+            doneAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u3084\u308A\u9042\u3052\u307E\u3057\u305F\u304B", body: "\u8A08\u753B\u306F\u4E00\u89A7\u306E\u4E0B\u306E\u307B\u3046\u3078\u79FB\u308A\u3001\u3044\u3064\u3067\u3082\u898B\u8FD4\u305B\u307E\u3059\u3002", confirmLabel: "\u3084\u308A\u9042\u3052\u305F", onCancel: () => setDoneAsk(false), onConfirm: () => { setDoneAsk(false); onChange({ ...plan, doneAt: todayStr(), updatedAt: new Date().toISOString() }); setCelebrate(true); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u8A08\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(plan.id); } })))));
 }
 /* ============================================================
@@ -24730,7 +24758,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
             }
         },
     });
-    /* 名前順か作成順。名前順のときは「01.」「02.」を数として見る */
+    /* 名前順か更新順。名前順のときは「01.」「02.」を数として見る */
     const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort), [folders, sort, q]);
     /* 下タブ「フォルダ」をもう一度押したとき（useTabReturn）。デフォルト＝検索なし。並び順は戻さない */
     useTabReturn(resetSig, {
@@ -24894,8 +24922,8 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                 react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u4E26\u3073\u9806"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
                     react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-200" },
-                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA"),
-                        react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B\u30FB\u30AB\u30C6\u30B4\u30EA", noEmpty: true })),
+                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B"),
+                        react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B", noEmpty: true })),
                     react_1.default.createElement("div", { className: "px-4 py-3" },
                         react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB"),
                         react_1.default.createElement(DrumSelect, { value: draft.recordOrder || "old", onChange: (v) => set({ recordOrder: v || "old" }), options: SORT_RECORD_OPTIONS, title: "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB", noEmpty: true })))),
@@ -25241,7 +25269,7 @@ const HELP_SECTIONS = [
     },
     {
         title: "計画",
-        body: "右下の的から、計画とカテゴリを作れます。\nイベントには、そのためにやることを足せます。\nやり遂げたかどうかは、歯車から登録します。",
+        body: "右下の的から、計画を作れます。\nイベントには、そのためにやることを足せます。\nやり遂げたかどうかは、歯車から登録します。",
     },
     {
         title: "フォルダ",
@@ -26337,7 +26365,10 @@ function AppMain() {
     /* 複数の日付に、同じチェックリストをまとめて作る */
     /* --- フォルダ --- */
     const addFolder = (name, icon) => { const f = { ...emptyFolder(name), icon: icon || "" }; setFolders((prev) => [...prev, f]); setFolderOpen(f.id); };
-    const changeFolder = (f) => setFolders((prev) => prev.map((x) => (x.id === f.id ? f : x)));
+    /* 名前・条件・手動で入れた記録など、フォルダの中身を直すのはすべてここを通る
+       （リネーム・設定の保存・フォルダから外す）。**更新日時（並び順の基準）をここで刻む。**
+       上への固定（pinned）は togglePinFolder が別に持つので、ここでは触らない */
+    const changeFolder = (f) => setFolders((prev) => prev.map((x) => (x.id === f.id ? { ...f, updatedAt: new Date().toISOString() } : x)));
     const deleteFolder = (id) => { setFolders((prev) => prev.filter((x) => x.id !== id)); setFolderOpen(null); tell("フォルダを削除しました"); };
     /* --- タグの整理。一覧と記録の両方に同じことをすること --- */
     const renameTag = (from, to) => {
