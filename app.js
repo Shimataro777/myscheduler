@@ -19548,6 +19548,58 @@ function useLockBackground() {
         };
     }, []);
 }
+/* キーボードに隠れる高さを --ft-kb に入れておく（2.11.17〜）。
+   **重なる画面の中の送り場（.flex-1.overflow-y-auto）は、この高さぶん下に余白を足す**（GLOBAL_CSS）。
+   iPhone はキーボードを出しても fixed の画面の高さを変えないので、送り場の下のほうが
+   キーボードの裏に入ったまま、いちばん下まで送っても出てこなかった。
+   そこで指がページまで届き、useLockBackground が引き戻すので「送っても戻ってくる」ように見えた。
+   **useLockBackground の引き戻しをやめて直さないこと。** 一覧が透ける件（2.11.11）が戻る。
+   ・レイアウトの高さ − 見えている高さ − 見えている上端 ＝ キーボード（と上の ^ v ✓ の帯）の高さ
+   ・60px 未満は 0 とみなす（下のバーの出入りなどの小さなずれで余白を揺らさない） */
+(function installKeyboardInset() {
+    if (typeof window === "undefined" || typeof document === "undefined")
+        return;
+    const vv = window.visualViewport;
+    if (!vv)
+        return;
+    let raf = 0;
+    let last = -1;
+    const put = () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => {
+            const layoutH = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+            let kb = Math.round(layoutH - vv.height - vv.offsetTop);
+            if (!(kb >= 60))
+                kb = 0;
+            if (kb === last)
+                return;
+            last = kb;
+            document.documentElement.style.setProperty("--ft-kb", kb + "px");
+            /* キーボードが出たら、いま書いている欄がキーボードの上に来るよう送り場を送る。
+               **ページ（window）を送らないこと。** useLockBackground が引き戻してしまう */
+            if (kb > 0) {
+                const el = document.activeElement;
+                if (!el || !el.closest || !el.closest("[data-ft-overlay]"))
+                    return;
+                const box = el.closest(".overflow-y-auto");
+                if (!box)
+                    return;
+                const visibleBottom = vv.offsetTop + vv.height - 24;
+                let targetBottom = el.getBoundingClientRect().bottom;
+                /* 背の高い本文欄は、欄の下端ではなく「欄の上から見えるところ」までにとどめる */
+                const top = el.getBoundingClientRect().top;
+                if (targetBottom - top > vv.height * 0.5)
+                    targetBottom = top + 120;
+                if (targetBottom > visibleBottom)
+                    box.scrollTop += targetBottom - visibleBottom;
+            }
+        });
+    };
+    vv.addEventListener("resize", put);
+    vv.addEventListener("scroll", put);
+    window.addEventListener("orientationchange", put);
+    put();
+})();
 /* hook を直接呼べない場所（open && (...) の中など）で、うしろを留めるための部品。
    紙・小窓の外わく（ft-sheet-wrap）の**最初の子**に置く */
 function BackgroundLock() {
@@ -25621,6 +25673,11 @@ button:active { transition-duration: 60ms; }
    左端から払って戻るときに、うしろの画面が見えるのはこれまでどおり。
    **overflow:hidden は影を切らないので、上の決まりと両立する** */
 [data-ft-overlay] { box-shadow: 0 0 0 100vmax #FFFFFF; }
+/* **キーボードの裏になる高さぶん、重なる画面の送り場の下に余白を足すこと（2.11.17〜）。**
+   これが無いと、キーボードを出したまま下のほうへ送れず、指を離すと戻ってくる。
+   --ft-kb は installKeyboardInset が入れる（キーボードが無いときは 0）。
+   ::after で足すのは、送り場ごとに違う pb-28 / py-5 などの余白を上書きしないため */
+[data-ft-overlay] .flex-1.overflow-y-auto::after { content: ""; display: block; flex-shrink: 0; height: var(--ft-kb, 0px); pointer-events: none; }
 /* 読み込み中のくるくる（.spin）だけは、動きを止める対象から外している */
 @keyframes ft-spin { to { transform: rotate(360deg); } }
 .spin           { animation: ft-spin 0.75s linear infinite; }
