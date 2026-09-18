@@ -19555,7 +19555,19 @@ function useLockBackground() {
    そこで指がページまで届き、useLockBackground が引き戻すので「送っても戻ってくる」ように見えた。
    **useLockBackground の引き戻しをやめて直さないこと。** 一覧が透ける件（2.11.11）が戻る。
    ・レイアウトの高さ − 見えている高さ − 見えている上端 ＝ キーボード（と上の ^ v ✓ の帯）の高さ
-   ・60px 未満は 0 とみなす（下のバーの出入りなどの小さなずれで余白を揺らさない） */
+   ・60px 未満は 0 とみなす（下のバーの出入りなどの小さなずれで余白を揺らさない）
+
+   **余白は、キーボードが出る「前」に足しておくこと（2.11.18〜）。**
+   2.11.17 では、キーボードが出たあとで余白を足していた。すると iPhone が入力欄を見せようとした
+   瞬間には送り場にまだ送る余地がなく、代わりにページごと送ってしまい、それを
+   useLockBackground が引き戻すので「画面が下がって、また戻る」動きが出た。さらにそのあと
+   こちらで送り場を送っていたので、動きが二度重なっていた。
+   いまは入力欄に指が触れた時点（touchstart / pointerdown）と focusin で、前回のキーボードの高さ
+   （はじめは画面の高さの 45%）を**すぐに**（requestAnimationFrame を待たずに）足しておく。
+   余白は送り場のいちばん下に足すだけなので、足した瞬間に見た目は動かない。
+   iPhone は送り場の中を送って入力欄を見せるので、ページは送られず、動きは一度だけになる。
+   ・❌ **こちらから送り場を送る処理を戻さないこと。** iPhone の動きと二重になる
+   ・❌ **余白を rAF や setTimeout のあとで足さないこと。** iPhone の送りに間に合わない */
 (function installKeyboardInset() {
     if (typeof window === "undefined" || typeof document === "undefined")
         return;
@@ -19563,42 +19575,64 @@ function useLockBackground() {
     if (!vv)
         return;
     let raf = 0;
-    let last = -1;
-    const put = () => {
+    let shown = -1;
+    /* 前回のキーボードの高さ。まだ出たことがなければ画面の高さの 45% を見込む */
+    let lastKb = 0;
+    const guessKb = () => lastKb || Math.round(Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0) * 0.45);
+    const setKb = (kb) => {
+        if (kb === shown)
+            return;
+        shown = kb;
+        document.documentElement.style.setProperty("--ft-kb", kb + "px");
+    };
+    const NO_KB_TYPES = { checkbox: 1, radio: 1, button: 1, submit: 1, reset: 1, range: 1, file: 1, color: 1, image: 1, hidden: 1 };
+    const isTyping = (el) => {
+        if (!el || !el.closest || !el.closest("[data-ft-overlay]"))
+            return false;
+        if (el.isContentEditable)
+            return true;
+        const tag = el.tagName;
+        if (tag === "TEXTAREA")
+            return !el.readOnly && !el.disabled;
+        if (tag === "INPUT")
+            return !el.readOnly && !el.disabled && !NO_KB_TYPES[(el.type || "text").toLowerCase()];
+        return false;
+    };
+    /* 入力欄に触れた・入った時点で、キーボードぶんの余白を先に足す */
+    const reserve = (e) => {
+        const t = e.target;
+        const el = t && t.closest ? t.closest("input, textarea, [contenteditable]") : null;
+        if (!isTyping(el))
+            return;
+        if (shown < guessKb())
+            setKb(guessKb());
+    };
+    const measure = () => {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
             const layoutH = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
             let kb = Math.round(layoutH - vv.height - vv.offsetTop);
             if (!(kb >= 60))
                 kb = 0;
-            if (kb === last)
-                return;
-            last = kb;
-            document.documentElement.style.setProperty("--ft-kb", kb + "px");
-            /* キーボードが出たら、いま書いている欄がキーボードの上に来るよう送り場を送る。
-               **ページ（window）を送らないこと。** useLockBackground が引き戻してしまう */
             if (kb > 0) {
-                const el = document.activeElement;
-                if (!el || !el.closest || !el.closest("[data-ft-overlay]"))
-                    return;
-                const box = el.closest(".overflow-y-auto");
-                if (!box)
-                    return;
-                const visibleBottom = vv.offsetTop + vv.height - 24;
-                let targetBottom = el.getBoundingClientRect().bottom;
-                /* 背の高い本文欄は、欄の下端ではなく「欄の上から見えるところ」までにとどめる */
-                const top = el.getBoundingClientRect().top;
-                if (targetBottom - top > vv.height * 0.5)
-                    targetBottom = top + 120;
-                if (targetBottom > visibleBottom)
-                    box.scrollTop += targetBottom - visibleBottom;
+                lastKb = kb;
+                setKb(kb);
+                return;
             }
+            /* キーボードが出てくる途中（まだ測れない）あいだは、先に足した余白を消さない。
+               消すと送り場が縮んで、見ている位置がずれる */
+            if (isTyping(document.activeElement))
+                return;
+            setKb(0);
         });
     };
-    vv.addEventListener("resize", put);
-    vv.addEventListener("scroll", put);
-    window.addEventListener("orientationchange", put);
-    put();
+    document.addEventListener("touchstart", reserve, { passive: true, capture: true });
+    document.addEventListener("pointerdown", reserve, { passive: true, capture: true });
+    document.addEventListener("focusin", reserve, true);
+    document.addEventListener("focusout", measure, true);
+    vv.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    measure();
 })();
 /* hook を直接呼べない場所（open && (...) の中など）で、うしろを留めるための部品。
    紙・小窓の外わく（ft-sheet-wrap）の**最初の子**に置く */
