@@ -19713,21 +19713,32 @@ function useLockBackground() {
             return m;
         return Math.round(layoutHeight() * 0.5);
     };
-    /* いま打っている入力欄が、紙（ft-sheet-wrap）の中か、全画面（data-ft-overlay）の中か */
-    let ctx = "";
-    let shownTop = -1;
-    /* 紙の上がり下がりを、キーボードに合わせて滑らかに見せる（2.15.0〜）。
-       **位置（padding）はその場で変え、見た目だけを transform で元の位置から寄せること（FLIP）。**
-       padding に transition を付けると、iPhone が入力欄を見せようとする時点で入力欄がまだ下にあり、
-       ページごと送って useLockBackground の引き戻しと二重に動く（2.11.18・2.11.26）。
-       FLIP なら、レイアウトは最初から持ち上がった位置にある。
-       ・focusin からのときは、動きを次のひとこま（rAF）で始める。iPhone は focus の中で
-         入力欄の位置を読むので、そこへ transform を混ぜない。rAF は描く前に走るので、ちらつかない
-       ・中にさらに紙を重ねている箱は動かさない（transform の箱の中では fixed がずれる）
-       ・「画面の動き」オフ／視差効果を減らす、では動かさない */
-    /* キーボードが出入りする速さ・曲がり方に近づける（2.16.0〜） */
+    /* ================================================================
+       キーボードと入力欄（2.16.4〜 作り直し）
+       ----------------------------------------------------------------
+       **iOS は、フォーカスが入った時点（とキーボードが出るあいだ）の「本物のカーソルの位置」で、
+       画面ぜんたいを押し上げるかどうかを決める。** キーボードに隠れる位置の入力欄に本物のカーソルを
+       出した瞬間に、ヘッダーごと押し上げられる（2.16.1 までの症状）。
+       そこで、キーボードに隠れる入力欄をタップしたときは、
+         1. touchend で preventDefault（iOS の「タップで入れる」を止める）
+         2. 持ち上がった先の位置に置いた、見えない入力欄（data-ft-kb-proxy）にフォーカス
+            → キーボードはすぐ出はじめる。iOS から見るとカーソルはキーボードより上なので押し上げない
+         3. 押した入力欄には、その場でフォーカス枠だけを出す（.ft-kb-pending-ring）。
+            **カーソルは描かない（2.16.5〜）。** 本物のカーソルは持ち上がりきってから出る
+         4. 入力エリアを CSS の transition（transform）で KB_ANIM_MS かけて持ち上げる
+         5. 上がりきったら、本物の入力欄へフォーカスを移す（キーボードは出たまま）
+       ・紙：紙の箱ごと transform で持ち上げる。下ろすときも transition
+       ・全画面：送り場の中身（子）を transform で持ち上げ、上がりきったら scrollTop へ置きかえる。
+         **見出しと下のボタンの帯は動かさない**（ボタンはキーボードの裏に残る）
+       ・キーボードに隠れない入力欄は、ふつうのタップのまま（カーソルは押した場所）
+       ・❌ 本物の入力欄に、キーボードの裏の位置でフォーカスを入れないこと（押し上げが戻る）
+       ・❌ 押し上げに window.scrollTo のくり返しで対抗しないこと（揺れる）
+       ================================================================ */
     const KB_ANIM_MS = 280;
     const KB_EASE = "cubic-bezier(.2,.85,.25,1)";
+    const GAP = 12;
+    const root = document.documentElement;
+    let ctx = "";
     const motionOn = () => {
         if (document.querySelector(".ft-still"))
             return false;
@@ -19738,148 +19749,57 @@ function useLockBackground() {
             return true;
         }
     };
-    const sheetBoxes = () => {
-        const out = [];
-        document.querySelectorAll(".ft-sheet-wrap.items-end, .ft-sheet-wrap.items-center").forEach((w) => {
-            let box = null;
-            for (let i = w.children.length - 1; i >= 0; i--) {
-                if (w.children[i].classList.contains("relative")) {
-                    box = w.children[i];
-                    break;
-                }
-            }
-            if (box && box.animate && !box.querySelector(".ft-sheet-wrap"))
-                out.push(box);
-        });
-        return out;
-    };
-    const setKb = (kb, top = 0, defer = false) => {
-        const root = document.documentElement;
-        /* どちらの層で打っているか。全画面の中身を縮めるのは "overlay" のときだけ（GLOBAL_CSS） */
-        if (kb > 0 && ctx) {
-            if (root.getAttribute("data-ft-kbctx") !== ctx)
-                root.setAttribute("data-ft-kbctx", ctx);
-        }
-        else if (kb === 0)
-            root.removeAttribute("data-ft-kbctx");
-        /* 見えている上端（iPhone が見える窓を下へずらしたぶん）。紙の外わくの上をここにそろえる */
-        const t = kb > 0 ? Math.max(0, Math.round(top)) : 0;
-        /* 何も変わらないときは、動いている最中の紙に触らない */
-        if (t === shownTop && kb === shown)
-            return;
-        /* 動かす前の「見えている位置」を測る（動いている最中なら、その途中の位置）。
-           そのあと動きを止めてから位置を変え、変えたあとの位置を測る。
-           **FLIP は「下ろすとき」（kb が 0 に戻るとき）だけ（2.17.0〜）。**
-           持ち上げるときに transform を当てると、iPhone がキーボードを出しながら読む
-           入力欄・カーソルの位置（transform 込みの見た目の位置）が、まだキーボードの裏にあることになる。
-           iPhone はそれを見せようとして画面ぜんたい（ヘッダーごと）をずらし、揺れの元になっていた。
-           持ち上げはその場で一度だけ。キーボードがあとから下からせり上がってきて、紙の下にぴたりと付く */
-        const lowering = kb === 0 && shown > 0;
-        const boxes = (lowering && motionOn()) ? sheetBoxes() : [];
-        const before = boxes.map((b) => b.getBoundingClientRect().top);
-        if (boxes.length)
-            endLiftFx();
-        boxes.forEach((b) => { if (b.__ftKbAnim) {
-            b.__ftKbAnim.cancel();
-            b.__ftKbAnim = null;
-        } });
-        if (t !== shownTop) {
-            shownTop = t;
-            root.style.setProperty("--ft-vv-top", t + "px");
-        }
-        if (kb !== shown) {
-            shown = kb;
-            root.style.setProperty("--ft-kb", kb + "px");
-            /* キーボードが出ているあいだの印。紙の高さの上限をゆるめるのに使う（GLOBAL_CSS） */
-            if (kb > 0)
-                root.setAttribute("data-ft-kb", "");
-            else
-                root.removeAttribute("data-ft-kb");
-        }
-        if (!boxes.length)
-            return;
-        const after = boxes.map((b) => b.getBoundingClientRect().top);
-        const run = () => boxes.forEach((b, i) => {
-            const d = before[i] - after[i];
-            if (Math.abs(d) < 2 || !b.isConnected)
-                return;
-            try {
-                const an = b.animate([{ transform: `translateY(${d}px)` }, { transform: "translateY(0)" }], { duration: KB_ANIM_MS, easing: KB_EASE });
-                b.__ftKbAnim = an;
-                an.onfinish = () => { if (b.__ftKbAnim === an)
-                    b.__ftKbAnim = null; };
-            }
-            catch (e) { }
-        });
-        if (defer)
-            requestAnimationFrame(run);
-        else
-            run();
-    };
-    /* 指で触れない端末（マウス・外付けキーボード）では、画面のキーボードは出ない。
-       **紙の中の入力欄で先に余白を足さないこと。** 紙だけ持ち上がったまま戻らない */
     const coarse = () => { try {
         return window.matchMedia("(pointer: coarse)").matches;
     }
     catch (e) {
         return true;
     } };
-    /* 先に足した余白の後始末。しばらく待ってもキーボードが出なければ 0 に戻す */
-    let settle = 0;
-    const realKb = () => {
-        const layoutH = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
-        const kb = Math.round(layoutH - vv.height - vv.offsetTop);
-        return kb >= 60 ? kb : 0;
-    };
     const NO_KB_TYPES = FT_NO_KB_TYPES;
-    /* 紙・小窓（ft-sheet-wrap）の中の入力欄も数えること（2.11.26〜）。
-       数えないと、紙がキーボードの裏に入ったまま持ち上がらない */
     const isTyping = ftIsTypingEl;
-    /* 入力欄に触れた・入った時点で、キーボードぶんの余白を先に足す。
-       **ただし紙（ft-sheet-wrap）の中の入力欄では、触れた時点（touchstart / pointerdown）で持ち上げないこと（2.13.1〜）。**
-       全画面の送り場は「いちばん下に余白を足すだけ」なので見た目が動かないが、紙は外わくの余白で
-       **紙ごと上へ動く**。指が触れたまま紙が持ち上がると、指を離した場所には入力欄がなくなり、
-       iPhone はそのタップを入力欄ではなく暗がり（または下の一覧の位置）へ配る。
-       入力欄に入れないのでキーボードは出ず、暗がりの click で紙が閉じてしまった
-       （フォルダの設定で名前に触れると、紙が上へ跳んで、キーボードが出ないまま閉じた）。
-       紙では focusin（＝入力欄に入れたあと）で、その場で持ち上げる */
-    /* **2.17.0 から、全画面も紙も focusin で（その場で）場所を空ける。**
-       全画面は、送り場のいちばん下に余白を足す（::after）のをやめ、中身の箱の下に
-       padding を足して**送り場の箱そのものをキーボードの上端で終わらせる**形にした。
-       余白を足すだけでは送り場の箱はキーボードの裏まで伸びたままなので、iPhone から見ると
-       入力欄は「送り場の中では見えている」。送り場の中は送られず、代わりに画面ぜんたい
-       （ヘッダーごと）がずらされていた。箱が縮んでいれば、iPhone は送り場の中だけを送って入力欄を見せ、
-       画面ぜんたいは動かない。
-       ・箱を縮めると、キーボードの位置にある入力欄は箱の外（下）へ隠れる。**指が触れた時点で縮めると
-         指の下から入力欄が消えて、キーボードが出ない**（2.13.1 の紙と同じ）。だから focusin で縮める */
-    const reserve = (e) => {
-        if (e.type !== "focusin")
+    const isProxy = (el) => !!(el && el.hasAttribute && el.hasAttribute("data-ft-kb-proxy"));
+    const rawKb = () => Math.round(layoutHeight() - vv.height);
+    /* 全画面の送り場の下に足す「送れる余地」（--ft-kb、::after）。足しても見た目は動かない */
+    const setReserve = (kb) => {
+        kb = Math.max(0, Math.round(kb || 0));
+        if (kb < 60)
+            kb = 0;
+        if (kb === shown)
             return;
-        const t = e.target;
-        const el = t && t.closest ? t.closest("input, textarea, [contenteditable]") : null;
-        if (!isTyping(el))
-            return;
-        if (!coarse())
-            return;
-        ctx = el.closest(".ft-sheet-wrap") ? "sheet" : "overlay";
-        /* キーボードが出たまま別の入力欄へ移ったときも、見えるところまで送る */
-        revealSoon();
-        if (shown < guessKb())
-            setKb(guessKb(), 0);
-        else if (shown > 0 && document.documentElement.getAttribute("data-ft-kbctx") !== ctx)
-            document.documentElement.setAttribute("data-ft-kbctx", ctx);
-        clearTimeout(settle);
-        settle = setTimeout(() => { if (realKb() === 0)
-            setKb(0); }, 1200);
+        shown = kb;
+        root.style.setProperty("--ft-kb", kb + "px");
+        if (kb > 0)
+            root.setAttribute("data-ft-kb", "");
+        else
+            root.removeAttribute("data-ft-kb");
     };
-    /* 紙の中の入力欄を、キーボードの上に見えるところまで送る（2.15.0〜）。
-       紙を持ち上げても、背の高い紙（記録を入れる など）では、入力欄が紙の中の送り場の下のほうに残る。
-       紙が上がりきってから（KB_ANIM_MS のあと）、入力欄が送り場の見えている範囲に
-       入っていなければ、送り場だけを送る。**入っていれば何もしない**（iPhone が先に送っていても二重にならない）。
-       ・送るのは紙の中の送り場（overflow-y が auto / scroll の箱）。❌ ページ（window）は送らない
-       ・2.17.0 から全画面（[data-ft-overlay]）の送り場にも使う。送り場の箱がキーボードの上端で終わるようになったので、
-         送り場だけを送れば入力欄が見える（ページは送らない） */
-    let revealT = 0;
+    /* キーボードが出きったあと、全画面の送り場をキーボードの上端で終わらせる（data-ft-kbfix）。
+       打っているうちにカーソルが下へ進んでも、iOS が送り場の中だけを送るようにするため。
+       下のボタンの帯は外わくの下に置いたまま（キーボードの裏）。出きる前には付けない
+       （付けた瞬間に、キーボードがまだ来ていない下のほうが白くなる） */
+    const FOOT_SEL = "[data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col > .flex-1.overflow-y-auto ~ .shrink-0";
+    const setFix = (on) => {
+        if (on === root.hasAttribute("data-ft-kbfix"))
+            return;
+        if (on) {
+            /* 下のボタンの帯を流れから外すぶん、送り場の最後に同じ高さを残す（送っている位置がずれないように） */
+            let fh = 0;
+            document.querySelectorAll(FOOT_SEL).forEach((f) => { fh = Math.max(fh, Math.round(f.getBoundingClientRect().height)); });
+            root.style.setProperty("--ft-kbfoot", fh + "px");
+            root.setAttribute("data-ft-kbfix", "");
+        }
+        else
+            root.removeAttribute("data-ft-kbfix");
+    };
+    let satProbe = null;
+    const safeTop = () => {
+        if (!satProbe) {
+            satProbe = document.createElement("div");
+            satProbe.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top)";
+            document.body.appendChild(satProbe);
+        }
+        return parseFloat(getComputedStyle(satProbe).paddingTop) || 0;
+    };
     const scrollerOf = (el, stop) => {
         for (let n = el.parentElement; n && n !== stop; n = n.parentElement) {
             const oy = getComputedStyle(n).overflowY;
@@ -19888,57 +19808,136 @@ function useLockBackground() {
         }
         return null;
     };
-    const reveal = (target, instant) => {
-        const el = target || document.activeElement;
-        if (!isTyping(el))
-            return;
-        /* 2.17.0 から全画面の送り場も対象。送るのは入力欄を含む送り場だけ（ページは送らない） */
-        const wrap = el.closest(".ft-sheet-wrap") || el.closest("[data-ft-overlay]");
-        if (!wrap)
-            return;
-        const sc = scrollerOf(el, wrap);
-        if (!sc)
-            return;
-        const M = 12;
+    const sheetBoxOf = (el) => {
+        const w = el.closest(".ft-sheet-wrap");
+        if (!w)
+            return null;
+        let n = el;
+        while (n && n.parentElement !== w)
+            n = n.parentElement;
+        return n && n !== w ? n : null;
+    };
+    /* 本物のフォーカスが入るまで、押した入力欄にフォーカス枠だけを出す（枠のある入力欄だけ） */
+    const showRing = (el) => {
+        if (/(^|\s)focus:ring-4(\s|$)/.test(el.className))
+            el.classList.add("ft-kb-pending-ring");
+    };
+    const hideRing = (el) => { el.classList.remove("ft-kb-pending-ring"); };
+    /* 見えない入力欄。キーボードを呼ぶためだけに使う。**持ち上がった先の位置**に置く（iOS が読む位置） */
+    const makeProxy = (el, layer, top) => {
+        const isTA = el.tagName === "TEXTAREA";
+        const p = document.createElement(isTA ? "textarea" : "input");
+        if (!isTA) {
+            const ty = (el.type || "text").toLowerCase();
+            try {
+                p.type = NO_KB_TYPES[ty] ? "text" : ty;
+            }
+            catch (e) { }
+        }
+        ["inputmode", "enterkeyhint", "autocapitalize", "autocorrect", "autocomplete", "spellcheck", "lang", "dir"].forEach((a) => {
+            const v = el.getAttribute(a);
+            if (v != null)
+                p.setAttribute(a, v);
+        });
+        p.setAttribute("aria-hidden", "true");
+        p.setAttribute("data-ft-kb-proxy", "");
+        p.tabIndex = -1;
         const r = el.getBoundingClientRect();
-        const c = sc.getBoundingClientRect();
-        let d = 0;
-        if (r.top < c.top + M || r.height > c.height - M * 2)
-            d = r.top - c.top - M;
-        else if (r.bottom > c.bottom - M)
-            d = r.bottom - c.bottom + M;
-        if (Math.abs(d) < 2)
-            return;
-        if (instant) {
-            sc.scrollTop += d;
-            return;
-        }
+        const lr = layer.getBoundingClientRect();
+        Object.assign(p.style, { position: "absolute", left: Math.round(r.left - lr.left) + "px", top: Math.round(top - lr.top) + "px",
+            width: Math.round(r.width) + "px", height: Math.round(r.height) + "px", margin: "0", padding: "0", border: "0",
+            fontSize: "16px", background: "transparent", color: "transparent", caretColor: "transparent",
+            outline: "none", boxShadow: "none", pointerEvents: "none", resize: "none", zIndex: "-1" });
+        layer.appendChild(p);
+        return p;
+    };
+    const insertText = (el, v) => {
         try {
-            sc.scrollBy({ top: d, behavior: motionOn() ? "smooth" : "auto" });
+            const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+            const set = Object.getOwnPropertyDescriptor(proto, "value").set;
+            set.call(el, (el.value || "") + v);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
         }
-        catch (e) {
-            sc.scrollTop += d;
+        catch (e) { }
+    };
+    /* ---- 紙の持ち上げ（CSS transition だけ） ---- */
+    const liftedBoxes = new Set();
+    const setSheetY = (box, y, animate) => {
+        y = Math.max(0, Math.round(y || 0));
+        const was = box.__ftLiftY || 0;
+        if (y === was)
+            return;
+        box.__ftLiftY = y;
+        clearTimeout(box.__ftLiftT);
+        box.style.transition = (animate && motionOn()) ? `transform ${KB_ANIM_MS}ms ${KB_EASE}` : "none";
+        box.style.transform = y ? `translateY(${-y}px)` : "";
+        if (y)
+            liftedBoxes.add(box);
+        else
+            liftedBoxes.delete(box);
+        box.__ftLiftT = setTimeout(() => { box.style.transition = ""; }, KB_ANIM_MS + 40);
+    };
+    const lowerSheets = () => { [...liftedBoxes].forEach((b) => { if (b.isConnected)
+        setSheetY(b, 0, true);
+    else
+        liftedBoxes.delete(b); }); };
+    /* ---- 全画面の送り場の持ち上げ：中身（子）を transform で上げ、上がりきったら scrollTop へ置きかえる ---- */
+    const startScrollerLift = (sc, y) => {
+        const max = sc.scrollHeight - sc.clientHeight - sc.scrollTop;
+        y = Math.max(0, Math.min(Math.round(y), max));
+        if (y < 1)
+            return 0;
+        if (!motionOn()) {
+            sc.scrollTop += y;
+            return 0;
         }
+        const kids = [...sc.children];
+        sc.__ftLift = { y, kids: kids.map((k) => [k, k.style.transform, k.style.transition]) };
+        kids.forEach((k) => { k.style.transition = "none"; k.style.transform = "translateY(0px)"; });
+        void sc.offsetHeight;
+        kids.forEach((k) => { k.style.transition = `transform ${KB_ANIM_MS}ms ${KB_EASE}`; k.style.transform = `translateY(${-y}px)`; });
+        return y;
     };
-    const revealSoon = () => {
-        clearTimeout(revealT);
-        revealT = setTimeout(() => reveal(), KB_ANIM_MS + 40);
+    const endScrollerLift = (sc) => {
+        const L = sc && sc.__ftLift;
+        if (!L)
+            return;
+        sc.__ftLift = null;
+        L.kids.forEach(([k, t]) => { k.style.transition = "none"; k.style.transform = t; });
+        sc.scrollTop += L.y;
+        void sc.offsetHeight;
+        L.kids.forEach(([k, , tr]) => { k.style.transition = tr; });
     };
-    /* ---- 入力欄に「こちらで」フォーカスを入れる（2.16.2〜） ----
-       **iOS は、タップした時点の入力欄の位置を基準に、画面ぜんたいの押し上げ量を決める。**
-       2.16.1 の実機の画面写しで、focusin で紙を持ち上げたぶんと、iOS の押し上げ（約230px）が
-       両方かかって、紙の見出しがダイナミックアイランドの裏へ入っていた。focusin では遅い。
-       かといって touchstart で持ち上げると、指の下から入力欄が逃げる（2.13.1）。
-       そこで、キーボードに隠れる位置の入力欄をタップしたときは、
-         1. touchend で preventDefault（iOS の「タップで入れる」＝押し上げの基準取りをさせない）
-         2. その場で場所を空ける（紙を持ち上げる／全画面の送り場を縮めて中を送る）
-         3. 入力欄がキーボードより上に来てから、こちらで focus({ preventScroll: true })
-       iOS から見ると「最初からキーボードの上にある入力欄にフォーカスが来た」ので、押し上げる理由がない。
-       ・touchend は同じ指の操作の中なので、iOS は focus() でもキーボードを出す
-       ・❌ touchstart / touchmove は passive のまま（画面を送れなくなる）。止めるのは touchend だけ
-       ・すでに打っている入力欄をタップしたとき（カーソルを動かす）は、iOS にまかせる
-       ・textarea は、キーボードに隠れない位置ならタップのまま（押した場所にカーソルが入る）。
-         隠れる位置のときだけこちらで入れ、カーソルは最後へ置く */
+    /* ---- こちらでフォーカスを入れる ---- */
+    let pending = null;
+    const finishPending = (focusReal) => {
+        const p = pending;
+        pending = null;
+        if (!p)
+            return;
+        clearTimeout(p.timer);
+        endScrollerLift(p.sc);
+        const ours = document.activeElement === p.proxy;
+        const v = p.proxy.value;
+        if (focusReal && ours && p.el.isConnected) {
+            try {
+                p.el.focus({ preventScroll: true });
+            }
+            catch (e) {
+                p.el.focus();
+            }
+            if (v)
+                insertText(p.el, v);
+            try {
+                const n = (p.el.value || "").length;
+                p.el.setSelectionRange(n, n);
+            }
+            catch (e) { }
+        }
+        hideRing(p.el);
+        if (p.proxy.parentNode)
+            p.proxy.parentNode.removeChild(p.proxy);
+    };
     let fa = null;
     const faStart = (e) => {
         const p = e.touches && e.touches[0];
@@ -19955,157 +19954,144 @@ function useLockBackground() {
         if (fa && p && Math.hypot(p.clientX - fa.x, p.clientY - fa.y) > 10)
             fa.moved = true;
     };
-    /* ---- 持ち上げを滑らかに見せる（2.16.3〜）：「iOS が読む位置」と「見た目の位置」を分ける ----
-       ・紙の箱は、レイアウトではその場で最終位置へ上げる（2.16.2 のまま）。そのうえで Web Animations の
-         transform で「元の位置 → 最終位置」へ KB_ANIM_MS かけて滑らせる（FLIP）
-       ・**本物の入力欄には、紙と逆向きの同じ動きを同じ時間・同じ曲線で当てる。** 紙＋入力欄で差し引き 0 になり、
-         iOS が読む入力欄（とカーソル）の位置は、動いているあいだもずっと最終位置（キーボードより上）のまま。
-         押し上げの理由は生まれない
-       ・その本物の入力欄は、動いているあいだだけ透明にし（.ft-kb-ghost。文字・カーソル・枠・背景だけ透明。
-         opacity / visibility は使わない＝iOS が「見えていない欄」として扱い、カーソルを出さなくなることがある）、
-         見た目は紙といっしょに動く複製（data-ft-kb-clone）で見せる。動き終わったら複製を外し、本物を見せる。
-         位置は同じなので、入れ替わりは見えない
-       ・❌ 入力欄の逆向きの動きを外さないこと。外すと、動いているあいだ入力欄がキーボードの裏にあることになり、
-         iOS が画面ぜんたいを押し上げる（2.16.1 までの症状）
-       ・❌ fill（forwards / both）を付けないこと（終わったあとも transform が残り、中の fixed がずれる）
-       ・「画面の動き」オフ／視差効果を減らす、では動かさない（その場で上がる） */
-    let liftFx = null;
-    const endLiftFx = () => {
-        const fx = liftFx;
-        liftFx = null;
-        if (!fx)
-            return;
-        fx.anims.forEach((a) => { try {
-            a.cancel();
-        }
-        catch (e) { } });
-        if (fx.clone && fx.clone.parentNode)
-            fx.clone.parentNode.removeChild(fx.clone);
-        if (fx.el)
-            fx.el.classList.remove("ft-kb-ghost");
-    };
-    const makeClone = (el, box) => {
-        const r = el.getBoundingClientRect();
-        const br = box.getBoundingClientRect();
-        const c = el.cloneNode(true);
-        ["id", "name", "autofocus", "required"].forEach((a) => c.removeAttribute(a));
-        try {
-            c.value = el.value;
-        }
-        catch (e) { }
-        c.readOnly = true;
-        c.tabIndex = -1;
-        c.setAttribute("aria-hidden", "true");
-        c.setAttribute("data-ft-kb-clone", "");
-        Object.assign(c.style, {
-            position: "absolute", margin: "0", boxSizing: "border-box", pointerEvents: "none", zIndex: "5",
-            left: (r.left - br.left - box.clientLeft) + "px", top: (r.top - br.top - box.clientTop) + "px",
-            width: r.width + "px", height: r.height + "px",
-        });
-        box.appendChild(c);
-        if (el.tagName === "TEXTAREA")
-            c.scrollTop = el.scrollTop;
-        return c;
-    };
-    /* 持ち上げる前に呼ぶ。動かす前の位置を測り、持ち上げたあとに動きを始める関数を返す */
-    const prepLift = (el) => {
-        endLiftFx();
-        if (!motionOn())
-            return null;
-        const box = sheetBoxes().find((b) => b.contains(el));
-        if (!box)
-            return null;
-        if (box.__ftKbAnim) {
-            box.__ftKbAnim.cancel();
-            box.__ftKbAnim = null;
-        }
-        const before = box.getBoundingClientRect().top;
-        return () => {
-            const d = before - box.getBoundingClientRect().top;
-            if (Math.abs(d) < 2 || !box.isConnected)
-                return;
-            const opt = { duration: KB_ANIM_MS, easing: KB_EASE };
-            let clone = null;
-            try {
-                clone = makeClone(el, box);
-            }
-            catch (e) {
-                clone = null;
-            }
-            try {
-                const a1 = box.animate([{ transform: `translateY(${d}px)` }, { transform: "translateY(0)" }], opt);
-                /* 逆向き。紙と同じ時間・同じ曲線・同じ瞬間に始めるので、毎コマ差し引き 0 */
-                const a2 = el.animate([{ transform: `translateY(${-d}px)` }, { transform: "translateY(0)" }], opt);
-                if (clone)
-                    el.classList.add("ft-kb-ghost");
-                box.__ftKbAnim = a1;
-                const fx = { anims: [a1, a2], clone, el };
-                liftFx = fx;
-                a1.onfinish = () => {
-                    if (box.__ftKbAnim === a1)
-                        box.__ftKbAnim = null;
-                    if (liftFx === fx)
-                        endLiftFx();
-                };
-            }
-            catch (e) {
-                if (clone && clone.parentNode)
-                    clone.parentNode.removeChild(clone);
-                el.classList.remove("ft-kb-ghost");
-            }
-        };
-    };
     const faEnd = (e) => {
         const s0 = fa;
         fa = null;
         if (!s0 || s0.moved || Date.now() - s0.at > 600 || (e.touches && e.touches.length))
             return;
         const el = s0.el;
-        if (!el.isConnected || !isTyping(el) || document.activeElement === el || !coarse())
+        if (!el.isConnected || !isTyping(el) || document.activeElement === el || !coarse() || pending)
             return;
-        const G = guessKb();
-        const inSheet = !!el.closest(".ft-sheet-wrap");
-        const r = el.getBoundingClientRect();
-        const covered = r.bottom > layoutHeight() - G - 12;
-        /* textarea は、隠れないならタップのまま（カーソルを押した場所に入れたい） */
-        if (el.tagName === "TEXTAREA" && !covered && !inSheet)
+        const layer = el.closest(".ft-sheet-wrap") || el.closest("[data-ft-overlay]");
+        if (!layer)
             return;
-        if (!inSheet && !covered)
+        const inSheet = layer.classList.contains("ft-sheet-wrap");
+        /* キーボードがもう出ているとき（別の入力欄から移ってきた）は、その高さで見る */
+        const up = rawKb() >= 60;
+        const G = up ? rawKb() : Math.max(shown > 0 ? shown : 0, guessKb());
+        const kbTop = up ? vv.height + (vv.offsetTop || 0) : layoutHeight() - G;
+        const isTA = el.tagName === "TEXTAREA";
+        /* textarea は、押した場所がキーボードより上なら、ふつうのタップ（カーソルは押した場所） */
+        if (isTA && s0.y + 28 + GAP < kbTop)
+            return;
+        /* 持ち上げる量は、入力欄の下の端で決める（カーソルは文字の最後に入る。textarea は中身に合わせて
+           伸びるので、下の端がほぼ最後の行） */
+        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - kbTop);
+        if (need <= 0)
             return;
         e.preventDefault();
         ctx = inSheet ? "sheet" : "overlay";
-        /* 紙：動かす前の位置を測っておく（2.16.3〜） */
-        const play = inSheet ? prepLift(el) : null;
-        setKb(Math.max(shown > 0 ? shown : 0, G), 0);
-        /* 全画面：送り場が縮んだので、入力欄を送り場の中へ（アニメーションなしで）送る */
-        reveal(el, true);
-        /* 見た目の動きは、レイアウトを上げたあと・focus の前に始める。
-           本物の入力欄は差し引き 0 なので、focus の時点で iOS が読む位置は最終位置のまま */
-        if (play)
-            play();
+        if (ctx === "overlay") {
+            setReserve(G);
+            root.setAttribute("data-ft-kbctx", "overlay");
+        }
+        else {
+            root.setAttribute("data-ft-kbctx", "sheet");
+        }
+        /* どれだけ、どこを動かすか */
+        let box = null, dBox = 0, sc = null, ySc = 0;
+        if (inSheet) {
+            box = sheetBoxOf(el);
+            if (box) {
+                const cur = box.__ftLiftY || 0;
+                const natTop = box.getBoundingClientRect().top + cur;
+                const cap = Math.max(0, natTop - safeTop() - 8);
+                const target = Math.min(cap, cur + need);
+                dBox = target - cur;
+                const rem = need - dBox;
+                if (rem > 0) {
+                    /* 背の高い紙で上がりきらないぶんは、紙の中の送り場を（その場で）送る */
+                    const isc = scrollerOf(el, box);
+                    if (isc) {
+                        const can = Math.min(rem, isc.scrollHeight - isc.clientHeight - isc.scrollTop);
+                        if (can > 0) {
+                            isc.scrollTop += can;
+                        }
+                    }
+                }
+                setSheetY(box, target, true);
+            }
+        }
+        else {
+            sc = scrollerOf(el, layer);
+            if (sc)
+                ySc = startScrollerLift(sc, need) || 0;
+        }
+        /* 見えない入力欄を「持ち上がった先」に置いて、キーボードを呼ぶ（同じ指の操作の中なので、キーボードが出る）。
+           送り場が motion オフで即座に送られた場合は、もう最終位置にいる */
+        const r2 = el.getBoundingClientRect();
+        const finalTop = r2.top - (box ? dBox : 0) - ySc;
+        const proxy = makeProxy(el, layer, finalTop);
+        showRing(el);
         try {
-            el.focus({ preventScroll: true });
+            proxy.focus({ preventScroll: true });
         }
         catch (err) {
-            el.focus();
+            proxy.focus();
         }
-        if (el.tagName === "INPUT") {
-            try {
-                const n = (el.value || "").length;
-                el.setSelectionRange(n, n);
-            }
-            catch (err) { }
+        pending = { el, proxy, sc: ySc ? sc : null, timer: 0 };
+        pending.timer = setTimeout(() => finishPending(true), motionOn() ? KB_ANIM_MS + 10 : 0);
+    };
+    /* ---- ふつうのフォーカス（キーボードに隠れない入力欄・キーボードの ^ v で移ったとき） ---- */
+    /* キーボードが出ている・高さが分かっているとき、入力欄（textarea はカーソル）がキーボードに隠れていれば、
+       紙なら紙を、全画面なら送り場を、足りないぶんだけ動かす */
+    const adjustFor = (el, animate) => {
+        if (!el || !isTyping(el) || isProxy(el) || pending)
+            return;
+        const up = rawKb() >= 60;
+        if (!up && !layoutShrunk())
+            return;
+        const kbTop = vv.height + (vv.offsetTop || 0);
+        /* 全画面の textarea は iOS にまかせる（キーボードが出きれば送り場がキーボードの上端で終わるので、
+           iOS は送り場の中だけを送ってカーソルを見せる） */
+        if (el.tagName === "TEXTAREA" && !el.closest(".ft-sheet-wrap"))
+            return;
+        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - kbTop);
+        if (el.closest(".ft-sheet-wrap")) {
+            const box = sheetBoxOf(el);
+            if (!box)
+                return;
+            const cur = box.__ftLiftY || 0;
+            if (Math.abs(need) < 2)
+                return;
+            const natTop = box.getBoundingClientRect().top + cur;
+            const cap = Math.max(0, natTop - safeTop() - 8);
+            setSheetY(box, Math.max(0, Math.min(cap, cur + need)), animate);
+            return;
+        }
+        if (need > 1) {
+            const sc = scrollerOf(el, el.closest("[data-ft-overlay]"));
+            if (sc)
+                sc.scrollTop += need;
         }
     };
-    /* ---- それでも iOS が押し上げたときの相殺（2.16.2〜。保険） ----
-       見込みより大きいキーボード（絵文字・ほかのキーボード・はじめて開いた）などで押し上げが起きたら、
-       visualViewport.offsetTop のぶんだけ、いちばん外の層（全画面・紙の外わく）を CSS の translate で
-       下へずらし、見た目の位置を元に戻す。紙の下の余白は、ずらしたぶんを引かない本当の高さ（raw）にする。
-       ・transform ではなく translate プロパティを使う（入場の anim-* や FLIP の transform と混ざらない）
-       ・入れ子の紙（全画面の中の紙など）はずらさない（外の層ごと動くので二重になる）
-       ・❌ window.scrollTo で押し上げを戻さないこと。iOS の動きと取り合って揺れる（2.16.0 まで）
-       ・visualViewport のイベントは iOS の描画より遅れて届くので、押し上げが起きたときは一瞬見える。
-         だから本命は上の「こちらでフォーカス」で、こちらは保険 */
+    let baseH = 0;
+    const layoutShrunk = () => baseH > 0 && layoutHeight() < baseH - 60;
+    let settle = 0;
+    const onFocusIn = (e) => {
+        const t = e.target;
+        if (isProxy(t) || !isTyping(t) || !coarse())
+            return;
+        ctx = t.closest(".ft-sheet-wrap") ? "sheet" : "overlay";
+        root.setAttribute("data-ft-kbctx", ctx);
+        if (pending && t === pending.el)
+            return;
+        if (pending)
+            finishPending(false);
+        /* 全画面：送れる余地だけ先に足す（見た目は動かない） */
+        if (ctx === "overlay" && shown <= 0)
+            setReserve(guessKb());
+        adjustFor(t, false);
+        clearTimeout(settle);
+        settle = setTimeout(() => {
+            if (rawKb() < 60 && !layoutShrunk() && !pending) {
+                setReserve(0);
+                setFix(false);
+                lowerSheets();
+            }
+        }, 1500);
+    };
+    /* ---- それでも iOS が押し上げたときの相殺（2.16.2〜。保険） ---- */
     let compLayers = [];
     const outerLayers = () => [...document.querySelectorAll("[data-ft-overlay], .ft-sheet-wrap")]
         .filter((el) => !(el.parentElement && el.parentElement.closest("[data-ft-overlay], .ft-sheet-wrap")));
@@ -20116,73 +20102,60 @@ function useLockBackground() {
             el.style.removeProperty("translate"); });
         layers.forEach((el) => el.style.setProperty("translate", "0 " + y + "px"));
         compLayers = layers;
-        document.documentElement.toggleAttribute("data-ft-comp", layers.length > 0);
+        root.toggleAttribute("data-ft-comp", layers.length > 0);
     };
-    /* キーボードが出ていないときのレイアウトの高さ。キーボードでレイアウトごと縮む iOS
-       （見える高さと同じだけ縮み、offsetTop もずれない）では、紙を持ち上げる必要がない */
-    let baseH = 0;
     const measure = () => {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
-            /* raw ＝ キーボードそのものの高さ（レイアウトの高さ − 見えている高さ）。
-               押し上げは translate で相殺するので、紙の下の余白も raw をそのまま使う（2.16.2〜） */
             const lh = layoutHeight();
             const raw = Math.round(lh - vv.height);
             const off = vv.offsetTop || 0;
-            const typing = isTyping(document.activeElement);
+            const a = document.activeElement;
+            const typing = isTyping(a);
             if (!typing && raw < 60 && off < 1)
                 baseH = lh;
-            /* レイアウトごと縮んだ（キーボードのぶん、見える高さといっしょに小さくなった）なら、
-               こちらで持ち上げない。二重に上がる */
-            const layoutShrunk = typing && baseH > 0 && lh < baseH - 60;
             if (typing && raw >= 60) {
                 rememberKb(raw);
-                setKb(raw, 0);
                 applyComp(off);
-                revealSoon();
-                return;
-            }
-            if (typing && layoutShrunk) {
-                applyComp(0);
-                setKb(0);
-                return;
-            }
-            if (!typing) {
-                applyComp(0);
-                if (raw >= 60 && ctx !== "sheet") {
-                    /* 全画面：キーボードが引っ込みきるまで縮めたまま（早く戻すと送っていた位置がずれる） */
-                    setKb(raw, 0);
-                    return;
+                if (ctx === "overlay") {
+                    setReserve(raw);
+                    setFix(true);
                 }
-                setKb(0);
-                /* うしろを留めているなら、入力のあいだに iOS が送ったページを、キーボードが消えてから一度だけ戻す */
-                if (raw < 60 && overlayCount > 0) {
-                    const y = window.scrollY || document.documentElement.scrollTop || 0;
-                    if (Math.abs(y - overlayLockY) > 1)
-                        window.scrollTo(0, overlayLockY);
-                }
+                adjustFor(a, true);
                 return;
             }
-            /* キーボードが出てくる途中（まだ測れない）は、先に空けた場所を消さない */
+            if (typing) {
+                applyComp(0);
+                /* キーボードでレイアウトごと縮む iOS：縮んだ高さで合わせ直す */
+                if (layoutShrunk())
+                    adjustFor(a, true);
+                return;
+            }
+            applyComp(0);
+            lowerSheets();
+            if (raw >= 60)
+                return; /* キーボードが引っ込む途中。全画面は引っ込みきるまで今のまま */
+            setFix(false);
+            setReserve(0);
+            root.removeAttribute("data-ft-kbctx");
+            if (overlayCount > 0) {
+                const y = window.scrollY || document.documentElement.scrollTop || 0;
+                if (Math.abs(y - overlayLockY) > 1)
+                    window.scrollTo(0, overlayLockY);
+            }
         });
     };
-    /* 紙の入力欄から外れたら、キーボードが引っ込むのを待たずに紙を下げはじめる（2.16.0〜）。
-       待つと、キーボードが下がったあとに紙だけが遅れて下りてくる。
-       別の入力欄へ移っただけ（すぐ次の focusin が来る）なら何もしない */
-    const onFocusOut = (e) => {
-        const t = e.target;
-        const inSheet = !!(t && t.closest && t.closest(".ft-sheet-wrap"));
-        measure();
-        if (!inSheet || !coarse())
-            return;
+    /* 入力欄から外れたら（ほかの入力欄へ移ったのでなければ）、紙はキーボードといっしょに下ろしはじめる */
+    const onFocusOut = () => {
         setTimeout(() => {
-            if (isTyping(document.activeElement))
+            const a = document.activeElement;
+            if (isTyping(a))
                 return;
+            if (pending)
+                finishPending(false);
             clearTimeout(settle);
-            clearTimeout(revealT);
-            endLiftFx();
-            applyComp(0);
-            setKb(0);
+            lowerSheets();
+            measure();
         }, 0);
     };
     /* 紙の入力欄から始まったタップの click を、入力欄の外へ流さない（2.13.1〜）。
@@ -20351,7 +20324,7 @@ function useLockBackground() {
     document.addEventListener("touchmove", faMove, { passive: true, capture: true });
     document.addEventListener("touchend", faEnd, { passive: false, capture: true });
     document.addEventListener("touchcancel", () => { fa = null; }, { passive: true, capture: true });
-    document.addEventListener("focusin", reserve, true);
+    document.addEventListener("focusin", onFocusIn, true);
     document.addEventListener("focusout", onFocusOut, true);
     vv.addEventListener("resize", measure);
     /* 見える窓が下へずれただけ（高さは同じ）のときも、紙の上端を合わせ直す */
@@ -26557,17 +26530,18 @@ button:active { transition-duration: 60ms; }
    左端から払って戻るときに、うしろの画面が見えるのはこれまでどおり。
    **overflow:hidden は影を切らないので、上の決まりと両立する** */
 [data-ft-overlay] { box-shadow: 0 0 0 100vmax #FFFFFF; }
-/* **キーボードのあいだ、全画面の中身の箱を「キーボードの上端まで」に縮めること（2.17.0〜）。**
-   iOS（Safari もホーム画面のアプリも）はキーボードを出してもレイアウトの高さを変えない。
-   interactive-widget=resizes-content も WebKit では効かず、100dvh / 100svh もキーボードでは変わらない。
-   そこで、ブラウザがやってくれない「中身を縮める」をアプリ側で行う。
-   ・縮めるのは中身の箱（absolute inset-0 … flex-col）の padding-bottom。見出し（shrink-0）は上に留まり、
-     flex-1 の送り場だけがキーボードの上端で終わる。padding の部分は箱の背景（bg-white / bg-app）で塗られる
-   ・2.16.0 までは送り場の中に ::after で余白を足していた。これだと送り場の箱はキーボードの裏まで伸びたままで、
-     iPhone は送り場を送らず、画面ぜんたい（ヘッダーごと）をずらして入力欄を見せていた。**::after に戻さないこと**
-   ・紙（.ft-sheet-wrap）の中で打っているときは縮めない（data-ft-kbctx="sheet"）。うしろの全画面の送り位置を動かさない
-   ・--ft-kb は installKeyboardInset が focusin で入れる。❌ transition を付けないこと */
-html[data-ft-kb][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col { padding-bottom: var(--ft-kb, 0px); }
+/* ---- 全画面とキーボード（2.16.4〜） ----
+   ・送れる余地：打ちはじめる前から、送り場の最後にキーボードの高さぶんの空きを足す（見た目は動かない）。
+     入力欄を持ち上げる（送る）のに使う
+   ・キーボードが出きったら（data-ft-kbfix）、送り場の箱をキーボードの上端で終わらせる。打っているうちに
+     カーソルが下へ進んでも、iOS が送り場の中だけを送り、画面ぜんたい（ヘッダーごと）を押し上げない
+   ・**下のボタンの帯（送り場のあとの .shrink-0）は持ち上げない。** 外わくの下に置いたまま、キーボードの裏に残す。
+     抜けた高さぶんは送り場の最後に残す（--ft-kbfoot）ので、送っている位置はずれない
+   ・❌ padding / 位置に transition を付けないこと。動きは installKeyboardInset の transform だけ */
+html[data-ft-kb] [data-ft-overlay] .flex-1.overflow-y-auto::after { content: ""; display: block; flex-shrink: 0; height: var(--ft-kb, 0px); pointer-events: none; }
+html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col { padding-bottom: var(--ft-kb, 0px); }
+html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col > .flex-1.overflow-y-auto ~ .shrink-0 { position: absolute; left: 0; right: 0; bottom: 0; }
+html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col > .flex-1.overflow-y-auto::after { height: var(--ft-kbfoot, 0px); }
 /* 重なる層の外わくも「切り取るだけで、送れない」形にする（2.17.0〜。.ft-sheet-wrap の 2.16.0 と同じ理由）。
    overflow: hidden の箱は、入力欄を見せるためにブラウザが送ることがあり、送られると見出しごとずれる */
 @supports (overflow: clip) { [data-ft-overlay] { overflow: clip; } }
@@ -26689,10 +26663,9 @@ html[data-ft-kb][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .
    入力欄に触れた瞬間に紙と暗がりがまとめて上へずれたまま戻らなかった。
    overflow: clip は送る余地を作らない。使えない古い iPhone では installKeyboardInset が送られた外わくを 0 へ戻す */
 @supports (overflow: clip) { .ft-sheet-wrap { overflow: clip; } }
-/* 紙が持ち上がるあいだだけ、本物の入力欄を透明にする（2.16.3〜。installKeyboardInset の prepLift）。
-   見た目は紙といっしょに動く複製が受け持つ。**opacity / visibility で隠さないこと**（iOS がカーソルを出さなくなることがある） */
-.ft-kb-ghost, .ft-kb-ghost::placeholder { color: transparent !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; }
-.ft-kb-ghost { background: transparent !important; border-color: transparent !important; box-shadow: none !important; outline: none !important; }
+/* 入力欄に本物のフォーカスが入るまでのフォーカス枠（2.16.5〜。installKeyboardInset の showRing）。
+   入力欄が持ち上がるあいだ（KB_ANIM_MS）だけ付く。**カーソルの絵は描かないこと**（仕様を複雑にしないため、2.16.5 でやめた） */
+.ft-kb-pending-ring { border-color: var(--th-800) !important; box-shadow: 0 0 0 4px color-mix(in srgb, var(--th-800) 20%, transparent) !important; }
 /* 紙の外わくの外がわも白で埋める（2.16.2〜。[data-ft-overlay] と同じ）。
    キーボードでレイアウトごと縮む iOS では、外わくの下の端がキーボードの上の帯より上に来て、
    そのすき間（帯のまわりは半透明）から、暗くなっていない一覧がのぞいていた。影は外がわだけなので、中の見た目は変わらない */
@@ -26717,7 +26690,6 @@ html[data-ft-kb][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .
      余白そのものは、いまのままその場で変えること
    ・❌ **紙は、入力欄に指が触れた時点で持ち上げないこと（2.13.1〜）。** 指の下から入力欄が逃げて、
      キーボードが出ないまま暗がりの click で紙が閉じる。持ち上げるのは focusin から（installKeyboardInset） */
-html[data-ft-kb] .ft-sheet-wrap.items-end { padding-top: var(--ft-vv-top, 0px); padding-bottom: var(--ft-kb, 0px); }
 /* 紙の下に白を伸ばしておく（2.16.0〜）。**消さないこと。**
    紙がキーボードより先に上がりきったとき・キーボードより遅れて下りるとき・見込みの高さが
    本当のキーボードより大きかったときに、紙の下とキーボードのあいだから暗がりと一覧がのぞいていた。
@@ -26726,14 +26698,9 @@ html[data-ft-kb] .ft-sheet-wrap.items-end { padding-top: var(--ft-vv-top, 0px); 
    ・FLIP の transform といっしょに動くので、動いている最中もすき間が出ない
    ・押しても何も起きない（pointer-events: none）。紙の下は暗がりの扱いのまま */
 .ft-sheet-wrap.items-end > .relative.rounded-t-2xl::after { content: ""; position: absolute; left: 0; right: 0; top: calc(100% - 1px); height: 100vh; background: #FFFFFF; pointer-events: none; }
-html[data-ft-kb] .ft-sheet-wrap.items-center { padding-bottom: calc(var(--ft-kb, 0px) + 24px); }
 /* キーボードが出ているあいだは、見える高さが半分ほどになる。
    上の暗がりを残す 82% / 92% のままだと、入力欄と保存ボタンしか入らないので、上限をゆるめる */
-html[data-ft-kb] .ft-sheet-box,
-html[data-ft-kb] .ft-sheet-tall { max-height: calc(100% - env(safe-area-inset-top) - 12px); }
-html[data-ft-kb] .ft-sheet-tall { height: calc(100% - env(safe-area-inset-top) - 12px); }
 /* ホームバーはキーボードの裏なので、紙の足もとの安全域を空けない（SAFE_BOTTOM が読む） */
-html[data-ft-kb] .ft-sheet-wrap { --ft-sab: 0px; }
 /* 中の「一覧」の場所。**flex-1 を使わないこと。**
    flex-1 は基準の高さが0なので、まわりに余りが無いと高さ0までつぶれる */
 .ft-sheet-body { flex: 1 1 auto; min-height: 0; }
