@@ -23766,6 +23766,17 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
     const clamp = (v, lim) => Math.max(-lim, Math.min(lim, v));
     /* 指で引いているあいだは、少しだけ外へ出られる（そのあと戻る） */
     const rubber = (v, lim) => (Math.abs(v) <= lim ? v : (v > 0 ? lim : -lim) + (v - (v > 0 ? lim : -lim)) * 0.22);
+    /* 大きさも同じにする（2.11.21〜）。**つまむ手をぴたりと止めないこと。**
+       止まると「これ以上は無理」が壊れたように感じる。少しだけ外へ出て、
+       指を離すと戻ってくる（動かすときと同じ手ざわり） */
+    const SC_MIN = 1, SC_MAX = 4;
+    const rubberScale = (v) => {
+        if (v < SC_MIN)
+            return Math.max(0.82, SC_MIN - (SC_MIN - v) * 0.35);
+        if (v > SC_MAX)
+            return Math.min(4.7, SC_MAX + (v - SC_MAX) * 0.25);
+        return v;
+    };
     const dist = () => {
         const a = [...pts.current.values()];
         if (a.length < 2)
@@ -23791,10 +23802,8 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
         if (pts.current.size >= 2) {
             /* つまんで大きさを変える */
             const d = dist();
-            if (st.d > 0 && d > 0) {
-                const next = Math.max(1, Math.min(4, st.scale * (d / st.d)));
-                setScale(next);
-            }
+            if (st.d > 0 && d > 0)
+                setScale(rubberScale(st.scale * (d / st.d)));
             return;
         }
         setPos({
@@ -23806,7 +23815,8 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
         pts.current.delete(e.pointerId);
         if (pts.current.size === 0) {
             start.current = null;
-            /* はみ出したぶんは、するっと戻す */
+            /* はみ出したぶんは、するっと戻す（位置も大きさも） */
+            setScale((v) => Math.max(SC_MIN, Math.min(SC_MAX, v)));
             setPos((v) => ({ x: clamp(v.x, limX), y: clamp(v.y, limY) }));
         }
         else {
@@ -23850,7 +23860,9 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
                             width: dispW, height: dispH,
                             left: (box.w - dispW) / 2 + pos.x,
                             top: (box.h - dispH) / 2 + pos.y,
-                            transition: start.current ? "none" : "left .18s ease-out, top .18s ease-out",
+                            /* **戻るときだけ動かすこと。** 指で引いている間に動きを付けると、
+                               絵が指から遅れてついてきて、酔ったような感じになる */
+                            transition: start.current ? "none" : "left .22s cubic-bezier(.22,1,.36,1), top .22s cubic-bezier(.22,1,.36,1), width .22s cubic-bezier(.22,1,.36,1), height .22s cubic-bezier(.22,1,.36,1)",
                             maxWidth: "none",
                         } })))),
             react_1.default.createElement("p", { className: "fs-caption text-neutral-400 pb-3 text-center" }, "\u6307\u3067\u52D5\u304B\u3059\uFF0F\u3064\u307E\u3093\u3067\u5927\u304D\u3055\u3092\u5909\u3048\u308B"),
@@ -24948,10 +24960,40 @@ function ColorSelect({ value, options, onChange, title }) {
                     react_1.default.createElement("span", { className: "fs-caption text-neutral-600 truncate w-full text-center" }, c.label)));
             }))))));
 }
+/* 見出しの帯の形（よこ÷たて）。**切り抜きの窓と、帯の形をそろえること（2.11.21〜）。**
+   そろっていないと、決めた範囲がそのまま出ない。帯の高さは文字の大きさや
+   端末の上の余白で変わるので、決め打ちせず --ft-head-h を読む（ScreenHeader が書いている） */
+function headerBandAspect() {
+    try {
+        const w = (typeof window !== "undefined" && window.innerWidth) || 0;
+        const raw = getComputedStyle(document.documentElement).getPropertyValue("--ft-head-h");
+        const h = parseFloat(raw);
+        if (w > 0 && h > 20)
+            return Math.max(2, Math.min(8, w / h));
+    }
+    catch (e) { /* 測れない端末は、おおよその形で */ }
+    return 16 / 5;
+}
+function useHeaderAspect() {
+    const [a, setA] = (0, react_1.useState)(headerBandAspect);
+    (0, react_1.useEffect)(() => {
+        const put = () => setA((p) => { const v = headerBandAspect(); return Math.abs(p - v) < 0.01 ? p : v; });
+        put();
+        /* 画面を回すと帯の形も変わる。**そのとき測り直すこと** */
+        window.addEventListener("resize", put);
+        window.addEventListener("orientationchange", put);
+        return () => {
+            window.removeEventListener("resize", put);
+            window.removeEventListener("orientationchange", put);
+        };
+    }, []);
+    return a;
+}
 function SettingsScreen({ prefs, onSave, onClose }) {
     const headRef = (0, react_1.useRef)(null);
     const [headBusy, setHeadBusy] = (0, react_1.useState)(false);
     const [headFile, setHeadFile] = (0, react_1.useState)(null); // 切り抜きを待っている写真
+    const headAspect = useHeaderAspect(); // 見出しの帯と同じ形で切り抜く
     const [closing, close] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(close);
     /* **触ったそばから変えないこと。**
@@ -25013,7 +25055,7 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                                 setHeadFile(f);
                             } }),
                         draft.headerPhoto ? (react_1.default.createElement(react_1.default.Fragment, null,
-                            react_1.default.createElement("div", { className: "rounded-xl overflow-hidden mb-2.5", style: { aspectRatio: "16 / 6" } },
+                            react_1.default.createElement("div", { className: "rounded-xl overflow-hidden mb-2.5", style: { aspectRatio: `${headAspect}` } },
                                 react_1.default.createElement(Photo, { src: draft.headerPhoto, className: "block w-full h-full", style: { objectFit: "cover" } })),
                             react_1.default.createElement("div", { className: "flex gap-2" },
                                 react_1.default.createElement("button", { type: "button", onClick: () => headRef.current && headRef.current.click(), disabled: headBusy, className: BTN_SECONDARY + " flex-1 btn-h-lg fs-body" },
@@ -25024,7 +25066,7 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                                     className: BTN_SECONDARY + " flex-1 btn-h-lg fs-body" }, "\u5143\u306B\u3082\u3069\u3059")))) : (react_1.default.createElement("button", { type: "button", onClick: () => headRef.current && headRef.current.click(), disabled: headBusy, className: BTN_SECONDARY + " w-full flex-col gap-3 border-dashed fs-body py-7", style: { minHeight: 132 } },
                             headBusy ? react_1.default.createElement(Spinner, { size: 22 }) : react_1.default.createElement(lucide_react_1.Image, { size: 26, className: "text-neutral-400" }),
                             "\u5199\u771F\u3092\u9078\u3076")))),
-                headFile && (react_1.default.createElement(CropSheet, { file: headFile, aspect: 16 / 9, title: "\u5E2F\u306B\u3059\u308B\u5834\u6240\u3092\u6C7A\u3081\u308B", onCancel: () => setHeadFile(null), onDone: async (src) => {
+                headFile && (react_1.default.createElement(CropSheet, { file: headFile, aspect: headAspect, title: "\u5E2F\u306B\u3059\u308B\u5834\u6240\u3092\u6C7A\u3081\u308B", onCancel: () => setHeadFile(null), onDone: async (src) => {
                         setHeadBusy(true);
                         try {
                             const id = "ph_" + uid();
