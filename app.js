@@ -20451,7 +20451,7 @@ function DrumSelect({ value, onChange, options, placeholder = "選択", title, c
    ============================================================ */
 /* 紙の中身（さがす欄＋縦の一覧）。
    **余白を詰めないこと。** 窮屈だと、押しまちがえる */
-function PlanPickList({ plans, value, onPick }) {
+function PlanPickList({ plans, value, onPick, fill }) {
     const planC = useTypeColor(PLAN_TYPE);
     const [q, setQ] = (0, react_1.useState)("");
     /* 「計画」タブと同じさがし方（計画の名前だけでなく、中のイベントの名前も拾う） */
@@ -20473,7 +20473,9 @@ function PlanPickList({ plans, value, onPick }) {
            **右に pr-2 -mr-2 を必ず付けること。** 付けないと、
            巻き取り棒（スクロールバー）がカードの右ふちにぴったり重なって出てしまう。
            右に少しだけ逃げ場を作り、外側の見た目の幅は -mr-2 で元にもどす */
-        react_1.default.createElement("div", { className: "mt-3 overflow-y-auto pr-2 -mr-2", style: { height: "42vh" } }, shown.length === 0 ? (react_1.default.createElement("div", { className: "py-10 text-center" },
+        /* fill（小窓の中、2.14.0〜）… 高さは 42vh のまま、キーボードで小窓が低くなったときだけ縮む（最小 96px）。
+           件数で縮まないのは同じ */
+        react_1.default.createElement("div", { className: "mt-3 overflow-y-auto pr-2 -mr-2" + (fill ? " min-h-0" : ""), style: fill ? { height: "42vh", flexShrink: 1, minHeight: 96 } : { height: "42vh" } }, shown.length === 0 ? (react_1.default.createElement("div", { className: "py-10 text-center" },
             react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, (plans || []).length === 0 ? "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093" : "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement("div", { className: "space-y-1.5 pb-1" }, shown.map((p) => {
             const on = value === p.id;
             const c = planColorOf(p, planC);
@@ -20536,14 +20538,19 @@ function PlanSelect({ value, onChange, plans, placeholder = "計画を選択", t
                 + " flex items-center justify-between text-left disabled:opacity-50 " + (className || "") },
             react_1.default.createElement("span", { className: current ? "fs-subhead text-neutral-900 truncate" : "fs-subhead text-neutral-400 truncate" }, current ? (current.name || "\uFF08\u540D\u524D\u306A\u3057\uFF09") : placeholder),
             react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-500 shrink-0 ml-2" })),
-        open && (react_1.default.createElement(WheelSheet, { plain: true, title: title || placeholder, onClose: cancel, onConfirm: confirm, 
-            /* **ここでモーダルを閉じないこと。** temp を空にするだけにして、
-               紙は出したまま、上の帯だけが「選択中：なし」に切りかわるようにする。
-               確定させるにはあらためて「決定」を押してもらう */
-            onClear: noEmpty ? null : () => setTemp("") },
-            react_1.default.createElement("div", { className: "w-full" },
+        /* 「計画をさがす」欄があるので、下から出る紙（WheelSheet）ではなく上寄せの小窓（2.14.0〜、DialogFrame）。
+           一覧は小窓の中で縮めて送れるようにする（fill）。キーボードが出ても、さがす欄と「決定」は隠れない */
+        open && (react_1.default.createElement(DialogFrame, { onClose: cancel },
+            react_1.default.createElement(DialogHeader, { title: title || placeholder, onClose: cancel }),
+            react_1.default.createElement("div", { className: "ft-sheet-body flex flex-col px-4 pt-3 pb-3" },
                 react_1.default.createElement(PlanCurrentBadge, { plans: list, value: temp }),
-                react_1.default.createElement(PlanPickList, { plans: list, value: temp, onPick: (id) => setTemp((v) => (!noEmpty && v === id) ? "" : id) }))))));
+                react_1.default.createElement(PlanPickList, { fill: true, plans: list, value: temp, onPick: (id) => setTemp((v) => (!noEmpty && v === id) ? "" : id) })),
+            react_1.default.createElement("div", { className: DIALOG_FOOT },
+                react_1.default.createElement("button", { type: "button", onClick: cancel, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
+                /* **ここで小窓を閉じないこと。** temp を空にするだけにして、
+                   上の帯だけが「選択中：なし」に切りかわるようにする。確定は「決定」で */
+                !noEmpty && (react_1.default.createElement("button", { type: "button", onClick: () => setTemp(""), className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u9078\u629E\u89E3\u9664")),
+                react_1.default.createElement("button", { type: "button", onClick: confirm, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " fs-body" }, "\u6C7A\u5B9A"))))));
 }
 /* ============================================================
    時刻はドラムで選ぶ（依頼どおり）
@@ -20795,15 +20802,9 @@ function TagPickDialog({ title, selected, known, onApply, onCancel, onCreate, no
         setPicked((prev) => prev.includes(t) ? prev : [...prev, t]);
         setDraft("");
     };
-    return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex }, onClick: close },
-        react_1.default.createElement(BackgroundLock, null),
-        react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
-        react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
-                + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
-            react_1.default.createElement("div", { className: "flex items-center justify-between px-4 py-3 border-b border-neutral-200 shrink-0" },
-                react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide" }, title),
-                react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
-                    react_1.default.createElement(lucide_react_1.X, { size: 24 }))),
+    /* 打つ欄（さがす／新しく作る）があるので、下から出る紙ではなく上寄せの小窓（2.14.0〜、DialogFrame） */
+    return (react_1.default.createElement(DialogFrame, { onClose: close, closing: closing, zIndex: zIndex },
+            react_1.default.createElement(DialogHeader, { title: title, onClose: close }),
             react_1.default.createElement("div", { className: "px-4 pt-3 shrink-0" },
                 react_1.default.createElement("div", { className: "flex gap-2" },
                     react_1.default.createElement("div", { className: "flex-1 min-w-0" },
@@ -20821,11 +20822,11 @@ function TagPickDialog({ title, selected, known, onApply, onCancel, onCreate, no
                 return (react_1.default.createElement("button", { key: t, type: "button", onClick: () => toggle(t), "aria-pressed": on, className: "fs-body-sm font-bold px-3.5 py-2 rounded-full border ft-tap "
                         + (on ? "border-th-800 bg-th-800 text-white" : "border-neutral-200 bg-white text-neutral-600") }, t));
             })))),
-            react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
+            react_1.default.createElement("div", { className: DIALOG_FOOT },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: () => onApply(normalizeTags(picked)), className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-body" },
                     "\u6C7A\u5B9A",
-                    picked.length > 0 ? `（${picked.length}）` : "")))));
+                    picked.length > 0 ? `（${picked.length}）` : ""))));
 }
 function TagField({ value, onChange, knownTags, onCreateTag }) {
     const tags = normalizeTags(value);
@@ -20889,6 +20890,47 @@ function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, 
    **設定を変えたら「保存」で決める形にすること。**
    さわるたびに反映すると、決めたつもりがないのに変わってしまう
    ============================================================ */
+/* ============================================================
+   キーボードで打つ欄がある小窓（2.14.0〜）　⚠️ 打つ欄のある入れ物を「下から出る紙」で作らないこと
+   **名前・合言葉・さがす欄など、キーボードで打つ欄がある入れ物は、すべてこの形にする。**
+   以前は下から出る紙（SheetDialog など）だった。紙は画面の下に留めてあるので、
+   キーボードが出るたびに「紙ごと持ち上げる」必要があり、持ち上げた瞬間に指の下から
+   入力欄が逃げて、キーボードが出ないまま紙が閉じる不具合（2.13.1）の元になった。
+   ・画面の**上寄せ**に置く（items-start）。キーボードは下から来るので、上寄せの小窓は
+     キーボードが出ても**動かない**。背が高いときは、下の端だけがキーボードの上まで縮む
+     （GLOBAL_CSS の .ft-dialog-wrap / .ft-dialog-box）。入力欄は小窓の上のほうに置くこと
+   ・出かたは「その場で薄く」（外わくに anim-fade）。下から滑らせない（画面遷移の決まり）
+   ・うしろは BackgroundLock で留める。外わくは .ft-sheet-wrap のまま（はみ出し止め・引き戻しがそろう）
+   ・tall … 記録を入れる（FolderSetupSheet）のように、中身の量によらず高さいっぱいに出すとき
+   ============================================================ */
+function DialogFrame({ onClose, closing, zIndex = 2147483200, tall, children }) {
+    return (react_1.default.createElement("div", { className: "ft-sheet-wrap ft-dialog-wrap flex items-start justify-center px-4 " + (tall ? "ft-dialog-wrap-tall " : "") + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex }, onClick: onClose },
+        react_1.default.createElement(BackgroundLock, null),
+        react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
+        react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-2xl shadow-lg flex flex-col overflow-hidden ft-dialog-box " + (tall ? "ft-dialog-tall " : "") + "anim-pop", onClick: (e) => e.stopPropagation() }, children)));
+}
+/* 小窓の見出し（題と ✕）。紙の見出しと同じ並び */
+function DialogHeader({ title, onClose, extra }) {
+    return (react_1.default.createElement("div", { className: "flex items-center gap-1 px-4 py-3 border-b border-neutral-200 shrink-0" },
+        react_1.default.createElement("h3", { className: "font-display fs-subhead text-neutral-900 flex-1 min-w-0 truncate" }, title),
+        extra,
+        react_1.default.createElement("button", { type: "button", onClick: onClose, "aria-label": "\u9589\u3058\u308B", className: "w-11 h-11 -mr-2 flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
+            react_1.default.createElement(lucide_react_1.X, { size: 20 }))));
+}
+/* 小窓の足もと（キャンセル／決める）。画面の下に接していないので SAFE_BOTTOM は使わない */
+const DIALOG_FOOT = "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200";
+/* SheetDialog と同じ使い方で、打つ欄がある中身を入れる小窓。**設定を変えたら「保存」で決める形にすること** */
+function FormDialog({ title, children, onCancel, onConfirm, confirmLabel = "保存", disabled, hideConfirm, zIndex = 2147483200 }) {
+    const [closing, close] = useClosing(onCancel);
+    return (react_1.default.createElement(DialogFrame, { onClose: close, closing: closing, zIndex: zIndex },
+        react_1.default.createElement(DialogHeader, { title: title, onClose: close }),
+        react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-4" }, children),
+        react_1.default.createElement("div", { className: DIALOG_FOOT },
+            react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + (hideConfirm ? " w-full " : " flex-1 ") + "btn-h-lg fs-subhead" }, hideConfirm ? "とじる" : "キャンセル"),
+            !hideConfirm && (react_1.default.createElement("button", { type: "button", onClick: onConfirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" }, confirmLabel)))));
+}
+/* **キーボードで打つ欄を、この紙に入れないこと（2.14.0〜）。** 打つ欄があるものは FormDialog（上寄せの小窓）にする。
+   この紙は、えらぶだけの中身（表示する種類・色など）に使う */
 function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保存", disabled, hideConfirm }) {
     const [closing, close] = useClosing(onCancel);
     useLockBackground();
@@ -23844,7 +23886,7 @@ function NameIconSheet({ title, initialName, initialIcon, placeholder, fallback,
        省略（…）で隠すのではなく、そもそも長く打てないようにする */
     const nameMax = presets ? PLAN_TITLE_MAX : null;
     const setNameSafe = (v) => setName(nameMax ? v.slice(0, nameMax) : v);
-    return (react_1.default.createElement(SheetDialog, { title: title, onCancel: onCancel, onConfirm: () => onSave(name.trim(), icon), confirmLabel: confirmLabel, disabled: !name.trim() },
+    return (react_1.default.createElement(FormDialog, { title: title, onCancel: onCancel, onConfirm: () => onSave(name.trim(), icon), confirmLabel: confirmLabel, disabled: !name.trim() },
         react_1.default.createElement("div", { className: "flex items-center gap-3 mb-1" },
             react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (icon && ICON_ART[icon]) ? ICON_ART[icon].bg : c.soft, color: c.deep } },
                 react_1.default.createElement(ItemIcon, { icon: icon, fallback: fallback, color: c })),
@@ -24089,7 +24131,7 @@ function PlanSettingsSheet({ plan, onCancel, onSave }) {
     const [d, setD] = (0, react_1.useState)(plan);
     const c = planColorOf(d, planC);
     const setNameSafe = (v) => setD({ ...d, name: v.slice(0, PLAN_TITLE_MAX) });
-    return (react_1.default.createElement(SheetDialog, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
+    return (react_1.default.createElement(FormDialog, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
         react_1.default.createElement("div", { className: "flex items-center gap-3 mb-1" },
             react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (d.icon && ICON_ART[d.icon]) ? ICON_ART[d.icon].bg : c.soft, color: c.deep } },
                 react_1.default.createElement(ItemIcon, { icon: d.icon, fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), color: c })),
@@ -24854,11 +24896,9 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
     };
     const save = () => onSave({ ...cond, picked: Array.from(picked) });
     return (react_1.default.createElement(react_1.default.Fragment, null,
-        react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: tryClose },
-            react_1.default.createElement(BackgroundLock, null),
-            react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
-            react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-tall "
-                    + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
+        /* 手動の「キーワードで検索」に打つ欄があるので、下から出る紙ではなく上寄せの小窓（2.14.0〜、DialogFrame）。
+           中身の量によらず高さいっぱい（tall）。キーボードが出ると、下の端だけがキーボードの上まで縮む */
+        react_1.default.createElement(DialogFrame, { onClose: tryClose, closing: closing, zIndex: 2147483000, tall: true },
                 react_1.default.createElement("div", { className: "flex items-center gap-1 px-4 py-3 border-b border-neutral-200 shrink-0" },
                     react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide flex-1" }, "\u8A18\u9332\u3092\u5165\u308C\u308B"),
                     react_1.default.createElement(HelpTip, { label: "\u8A18\u9332\u3092\u5165\u308C\u308B", text: "自動で集めたぶんは、条件を変えるまで外せません。\n手動で入れたぶんは、いつでも外せます。" }),
@@ -24909,14 +24949,14 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                                 results.filter((r) => picked.has(r.id)).length,
                                 "\u4EF6")),
                         react_1.default.createElement("div", { className: "-mx-4 ft-seq pt-1" }, results.map((r) => (react_1.default.createElement(RecordRow, { key: r.id, r: r, showDate: true, selectMode: true, selected: picked.has(r.id), onSelect: (x) => toggle(x.id) }))))))))),
-                react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
+                react_1.default.createElement("div", { className: DIALOG_FOOT },
                     react_1.default.createElement("button", { type: "button", onClick: tryClose, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                     react_1.default.createElement("button", { type: "button", onClick: save, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " fs-body" },
                         react_1.default.createElement(lucide_react_1.Check, { size: 17 }),
                         " ",
                         picked.size ? `${picked.size}件を入れて保存` : "保存")),
                 condTagOpen && (react_1.default.createElement(TagPickDialog, { title: "\u30BF\u30B0\u3092\u9078\u3076", zIndex: 2147483250, selected: cond.tags, known: knownTags, onApply: (v) => { setC({ tags: v }); setCondTagOpen(false); }, onCancel: () => setCondTagOpen(false) })),
-                fTagOpen && (react_1.default.createElement(TagPickDialog, { title: "\u30BF\u30B0\u3092\u9078\u3076", zIndex: 2147483250, selected: draft.tags, known: knownTags, onApply: (v) => { setD({ tags: v }); setFTagOpen(false); }, onCancel: () => setFTagOpen(false) })))),
+                fTagOpen && (react_1.default.createElement(TagPickDialog, { title: "\u30BF\u30B0\u3092\u9078\u3076", zIndex: 2147483250, selected: draft.tags, known: knownTags, onApply: (v) => { setD({ tags: v }); setFTagOpen(false); }, onCancel: () => setFTagOpen(false) }))),
         leaveAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u4FDD\u5B58\u305B\u305A\u306B\u9589\u3058\u307E\u3059\u304B", body: "\u5909\u3048\u305F\u5185\u5BB9\u306F\u6B8B\u308A\u307E\u305B\u3093\u3002", danger: false, confirmLabel: "\u9589\u3058\u308B", onCancel: () => setLeaveAsk(false), onConfirm: () => { setLeaveAsk(false); close(); } }))));
 }
 function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, order, onOrder }) {
@@ -25592,11 +25632,11 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                     react_1.default.createElement("button", { type: "button", onClick: () => setPasteOpen(true), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" },
                         react_1.default.createElement(lucide_react_1.ClipboardPaste, { size: 17 }),
                         " \u6587\u5B57\u304B\u3089\u8AAD\u307F\u8FBC\u3080"))),
-            askPass && (react_1.default.createElement(SheetDialog, { title: "\u5408\u8A00\u8449\u3092\u5165\u308C\u3066\u304F\u3060\u3055\u3044", confirmLabel: "\u3072\u3089\u304F", onCancel: () => setAskPass(null), onConfirm: () => openLocked(askPass.obj, askPass.pass) },
+            askPass && (react_1.default.createElement(FormDialog, { title: "\u5408\u8A00\u8449\u3092\u5165\u308C\u3066\u304F\u3060\u3055\u3044", confirmLabel: "\u3072\u3089\u304F", onCancel: () => setAskPass(null), onConfirm: () => openLocked(askPass.obj, askPass.pass) },
                 react_1.default.createElement("p", { className: "fs-body-sm text-neutral-600 leading-relaxed mb-3" }, "\u3053\u306E\u30D5\u30A1\u30A4\u30EB\u306F\u30ED\u30C3\u30AF\u3055\u308C\u3066\u3044\u307E\u3059\u3002\u66F8\u304D\u51FA\u3057\u305F\u3068\u304D\u306E\u5408\u8A00\u8449\u3092\u5165\u308C\u3066\u304F\u3060\u3055\u3044\u3002"),
                 react_1.default.createElement(TextInput, { value: askPass.pass, type: "password", autoFocus: true, placeholder: "\u5408\u8A00\u8449", onChange: (e) => setAskPass({ ...askPass, pass: e.target.value }), onKeyDown: (e) => { if (e.key === "Enter")
                         openLocked(askPass.obj, askPass.pass); } }))),
-            pasteOpen && (react_1.default.createElement(SheetDialog, { title: "\u6587\u5B57\u304B\u3089\u8AAD\u307F\u8FBC\u3080", confirmLabel: "\u8AAD\u307F\u8FBC\u3080", disabled: !pasteText.trim(), onCancel: () => setPasteOpen(false), onConfirm: () => { setPasteOpen(false); tryRestore(pasteText); } },
+            pasteOpen && (react_1.default.createElement(FormDialog, { title: "\u6587\u5B57\u304B\u3089\u8AAD\u307F\u8FBC\u3080", confirmLabel: "\u8AAD\u307F\u8FBC\u3080", disabled: !pasteText.trim(), onCancel: () => setPasteOpen(false), onConfirm: () => { setPasteOpen(false); tryRestore(pasteText); } },
                 react_1.default.createElement(TextArea, { value: pasteText, onChange: (e) => setPasteText(e.target.value), minRows: 5, placeholder: "\u66F8\u304D\u51FA\u3057\u305F\u4E2D\u8EAB\u3092\u3053\u3053\u306B\u8CBC\u308B" }))),
             confirmRestore && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7\u3092\u8AAD\u307F\u8FBC\u307F\u307E\u3059\u304B", body: `記録 ${n(confirmRestore.records)}件・計画 ${n(confirmRestore.plans)}・フォルダ ${n(confirmRestore.folders)}\n\nいまの記録はすべて置き換わります。`, danger: true, confirmLabel: "\u8AAD\u307F\u8FBC\u3080", onCancel: () => setConfirmRestore(null), onConfirm: () => { const o = confirmRestore; setConfirmRestore(null); onRestore(o); tell("読み込みました"); } })),
             react_1.default.createElement(Toast, { msg: msg }))));
@@ -26134,6 +26174,19 @@ html[data-ft-kb] .ft-sheet-wrap { --ft-sab: 0px; }
 /* 中の「一覧」の場所。**flex-1 を使わないこと。**
    flex-1 は基準の高さが0なので、まわりに余りが無いと高さ0までつぶれる */
 .ft-sheet-body { flex: 1 1 auto; min-height: 0; }
+/* キーボードで打つ欄がある小窓（DialogFrame、2.14.0〜）。**画面の上寄せに置き、キーボードで動かさないこと。**
+   ・上は見出しの帯の下あたり、下はホームバーの上まで。背の高さは中身まかせ（上限はこの枠いっぱい）
+   ・キーボードが出たら、下の余白をキーボードの高さにする。上寄せなので小窓の上端＝入力欄は動かず、
+     背が高いときだけ下の端がキーボードの上まで縮む（中身は .ft-sheet-body の中で送れる）
+   ・iPhone が見える窓を下へずらしたとき（--ft-vv-top）は、上もそのぶん下げる
+   ・❌ **items-end（下寄せ）に戻さないこと。** 持ち上げが要る形に戻り、指の下から入力欄が逃げる（2.13.1）
+   ・❌ **余白に transition を付けないこと**（紙と同じ理由） */
+.ft-dialog-wrap { padding-top: calc(env(safe-area-inset-top) + 56px); padding-bottom: calc(env(safe-area-inset-bottom) + 16px); }
+.ft-dialog-wrap.ft-dialog-wrap-tall { padding-top: calc(env(safe-area-inset-top) + 16px); }
+.ft-dialog-box { max-height: 100%; }
+.ft-dialog-tall { height: 100%; }
+html[data-ft-kb] .ft-dialog-wrap { padding-top: calc(env(safe-area-inset-top) + 56px + var(--ft-vv-top, 0px)); padding-bottom: calc(var(--ft-kb, 0px) + 8px); }
+html[data-ft-kb] .ft-dialog-wrap.ft-dialog-wrap-tall { padding-top: calc(env(safe-area-inset-top) + 16px + var(--ft-vv-top, 0px)); }
 
 /* ============================================================
    文字の大きさ（小・中・大）
