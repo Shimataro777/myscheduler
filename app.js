@@ -19586,24 +19586,8 @@ let overlayPin = null;
    持ち上がって、「画面によって下タブの位置が違う」ように見えた。
    代わりに、送られたら留めた位置へ引き戻す。ページは流れの中に居たままなので
    画面の大きさが変わらず、2.11.11 のキーボードの件も同じだけ防げる */
-/* 重なる層（全画面・紙）の中の入力欄で、いま打っているか（2.17.0〜）。
-   useLockBackground と installKeyboardInset の両方が使う */
+/* キーボードを出さない input の種類（installKeyboardInset が使う） */
 const FT_NO_KB_TYPES = { checkbox: 1, radio: 1, button: 1, submit: 1, reset: 1, range: 1, file: 1, color: 1, image: 1, hidden: 1 };
-function ftIsTypingEl(el) {
-    if (!el || !el.closest || !el.closest("[data-ft-overlay], .ft-sheet-wrap"))
-        return false;
-    if (el.isContentEditable)
-        return true;
-    const tag = el.tagName;
-    if (tag === "TEXTAREA")
-        return !el.readOnly && !el.disabled;
-    if (tag === "INPUT")
-        return !el.readOnly && !el.disabled && !FT_NO_KB_TYPES[(el.type || "text").toLowerCase()];
-    return false;
-}
-function ftTypingInLayer() {
-    return typeof document !== "undefined" && ftIsTypingEl(document.activeElement);
-}
 function useLockBackground() {
     (0, react_1.useLayoutEffect)(() => {
         if (typeof document === "undefined")
@@ -19616,14 +19600,10 @@ function useLockBackground() {
             /* **1px の遊びを持たせること。** ぴったり比べると、慣性の最後のひとこまでも
                引き戻しが走り、指を離した瞬間に画面が小さく震える */
             overlayPin = () => {
-                /* **入力中は、ここで引き戻さないこと（2.17.0〜）。**
-                   キーボードが出てくる途中の送りは iPhone がネイティブのアニメーションで行っている。
-                   そこへ scroll イベントのたびに scrollTo を返すと、iPhone の送り（上）と
-                   この引き戻し（下）が1〜2コマずつ交互に描かれ、ヘッダーごと画面が上下に揺れた。
-                   入力中は installKeyboardInset が「こちらでフォーカスを入れる」で押し上げを起こさせず、
-                   起きてしまったぶんは translate で見た目だけ相殺する。ページの位置は、キーボードが消えてから一度だけ戻す */
-                if (ftTypingInLayer())
-                    return;
+                /* **入力中も引き戻すこと（2.16.7〜）。** 2.16.1〜2.16.6 は入力中だけ引き戻しを止めていたため、
+                   紙で打っているあいだに指を動かすと、うしろの一覧が送られていた。
+                   2.16.6 から iOS がキーボードのために画面を送ることはない（installKeyboardInset が、
+                   本物の入力欄にはキーボードより上でしかフォーカスを入れない）ので、取り合いは起きない */
                 const y = window.scrollY || document.documentElement.scrollTop || 0;
                 if (Math.abs(y - overlayLockY) > 1)
                     window.scrollTo(0, overlayLockY);
@@ -19735,7 +19715,8 @@ function useLockBackground() {
          （2.16.2〜2.16.5 の「相殺」は、iOS が報告する量と実際の動きが食い違うと、画面ぜんたいを下げてしまう。やめた）
        ================================================================ */
     const KB_WAIT_MS = 150;   /* タップからこれより前には持ち上げはじめない（キーボードを先に見せる） */
-    const KB_FALLBACK_MS = 420; /* キーボードの出た知らせが来なくても、ここで持ち上げはじめる */
+    const KB_FALLBACK_MS = 420; /* キーボードの出た知らせを、ここまで待つ */
+    const KB_FALLBACK2_MS = 480; /* それでも来なければ、さらにここまで待つ。来なければ画面のキーボードは無いとみなす */
     const KB_UP_MS = 450;     /* 持ち上げる時間。目に優しい遅さにしてある */
     const KB_DOWN_MS = 360;   /* 下ろす時間 */
     const KB_EASE_UP = "cubic-bezier(0.22,1,0.36,1)";   /* --ease-out と同じ */
@@ -19808,6 +19789,8 @@ function useLockBackground() {
             root.setAttribute("data-ft-kbctx", c);
         else
             root.removeAttribute("data-ft-kbctx");
+        /* setGuard は下で定義（呼ばれるのは読み込みのあと） */
+        setGuard(c === "sheet");
     };
     const ctxOf = (el) => (el.closest(".ft-sheet-wrap") ? "sheet" : el.closest("[data-ft-overlay]") ? "overlay" : "page");
     let satProbe = null;
@@ -19948,6 +19931,69 @@ function useLockBackground() {
         };
         pageAnim = requestAnimationFrame(step);
     };
+    /* ---- 紙で打っているあいだは、紙を指で動かさない（2.16.7〜） ----
+       キーボードが出ているとき、iOS は指の動きでページ（見える窓）を送れる。紙の上を上下に払うと、
+       その送りが紙ごと画面をずらし、うしろの一覧まで送られていた。紙の入力欄は広がらないので、
+       位置が決まったらそこで止めておく。
+       ・紙の中で**実際に送れる箱**（タグの一覧・横に並ぶ絵など）は、その向きに送れる余地があるうちは送らせる
+       ・それ以外の指の動きは touchmove で止める（preventDefault）
+       ・入力欄の上での指の動き（カーソルを動かす）は止めない
+       ・**紙で打っているあいだだけ**リスナーを付ける（passive: false のリスナーを常に付けておくと、
+         アプリぜんたいの送りが重くなる）。付けるのは指が触れる前（setCtx）なので、次の指の動きから効く
+       ・全画面（記録の入力）には使わない。欄が伸び、ほかの欄を見ながら書くので、送れるままにしてある */
+    let guardOn = false;
+    let tg = null;
+    const canScroll = (n, dx, dy) => {
+        const cs = getComputedStyle(n);
+        if (Math.abs(dy) >= Math.abs(dx)) {
+            if (!/(auto|scroll)/.test(cs.overflowY) || n.scrollHeight <= n.clientHeight + 1)
+                return false;
+            return dy > 0 ? n.scrollTop > 0 : n.scrollTop + n.clientHeight < n.scrollHeight - 1;
+        }
+        if (!/(auto|scroll)/.test(cs.overflowX) || n.scrollWidth <= n.clientWidth + 1)
+            return false;
+        return dx > 0 ? n.scrollLeft > 0 : n.scrollLeft + n.clientWidth < n.scrollWidth - 1;
+    };
+    const tgStart = (e) => {
+        const p = e.touches && e.touches[0];
+        tg = (p && e.touches.length === 1) ? { x: p.clientX, y: p.clientY, t: e.target } : null;
+    };
+    const tgMove = (e) => {
+        if (!tg || !e.cancelable || !e.touches || !e.touches[0])
+            return;
+        const p = e.touches[0];
+        const dx = p.clientX - tg.x, dy = p.clientY - tg.y;
+        tg.x = p.clientX;
+        tg.y = p.clientY;
+        if (!dx && !dy)
+            return;
+        const t = tg.t;
+        if (t && t.closest && t.closest("input, textarea"))
+            return;
+        const wrap = t && t.closest ? t.closest(".ft-sheet-wrap") : null;
+        /* 紙の外で始まった指（紙が閉じた直後など）は止めない */
+        if (!wrap)
+            return;
+        for (let n = t; n && n.nodeType === 1 && n !== wrap && n !== document.body && n !== root; n = n.parentElement) {
+            if (canScroll(n, dx, dy))
+                return;
+        }
+        e.preventDefault();
+    };
+    const setGuard = (on) => {
+        if (on === guardOn)
+            return;
+        guardOn = on;
+        if (on) {
+            document.addEventListener("touchstart", tgStart, { passive: true, capture: true });
+            document.addEventListener("touchmove", tgMove, { passive: false, capture: true });
+        }
+        else {
+            document.removeEventListener("touchstart", tgStart, { capture: true });
+            document.removeEventListener("touchmove", tgMove, { capture: true });
+            tg = null;
+        }
+    };
     /* ---- こちらでフォーカスを入れる ---- */
     let pending = null;
     const finishPending = (focusReal) => {
@@ -19983,10 +20029,21 @@ function useLockBackground() {
             measure();
     };
     /* キーボードが出たら（または待ちきれなくなったら）、押した欄をキーボードの上へゆっくり持ち上げる */
-    const startSlide = () => {
+    const startSlide = (fromFallback) => {
         const p = pending;
         if (!p || p.started)
             return;
+        /* キーボードの出た知らせがまだ来ていない。いちど待ち足す。それでも来なければ、画面のキーボードが
+           出ない端末（外付けキーボードの iPad など）とみなし、持ち上げずに本物へ移す（2.16.7〜） */
+        let noKb = false;
+        if (fromFallback === true && rawKb() < 60 && !layoutShrunk()) {
+            if (!p.waited) {
+                p.waited = true;
+                p.fallback = setTimeout(() => startSlide(true), KB_FALLBACK2_MS);
+                return;
+            }
+            noKb = true;
+        }
         const wait = KB_WAIT_MS - (Date.now() - p.at);
         if (wait > 0) {
             clearTimeout(p.timer);
@@ -20004,7 +20061,7 @@ function useLockBackground() {
             rememberKb(rawKb());
         if (p.ctx === "overlay" && rawKb() >= 60)
             setFix(true);
-        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - kbTopNow());
+        const need = noKb ? 0 : Math.ceil(el.getBoundingClientRect().bottom + GAP - kbTopNow());
         let moved = false;
         if (need > 0) {
             if (p.ctx === "sheet") {
@@ -20082,7 +20139,7 @@ function useLockBackground() {
         if (rawKb() >= 60)
             startSlide();
         else
-            pending.fallback = setTimeout(startSlide, KB_FALLBACK_MS);
+            pending.fallback = setTimeout(() => startSlide(true), KB_FALLBACK_MS);
     };
     /* ---- キーボードの ^ v で移ったとき・見込みと違ったとき：隠れているぶんだけ合わせる ---- */
     const adjustFor = (el) => {
@@ -20114,6 +20171,9 @@ function useLockBackground() {
             scrollPageBy(need, KB_UP_MS);
     };
     let baseH = 0;
+    /* 最後に合わせたキーボードの高さ。**高さが変わったときだけ**合わせ直す（2.16.7〜）。
+       見える窓が指で動いただけ（visualViewport の scroll）で合わせ直すと、紙が指について動いて崩れた */
+    let lastRaw = -1;
     const layoutShrunk = () => baseH > 0 && layoutHeight() < baseH - 60;
     let settle = 0;
     const onFocusIn = (e) => {
@@ -20160,14 +20220,20 @@ function useLockBackground() {
                     setReserve(raw);
                 if (ctx === "overlay")
                     setFix(true);
-                adjustFor(a);
+                if (Math.abs(raw - lastRaw) >= 4) {
+                    lastRaw = raw;
+                    adjustFor(a);
+                }
                 return;
             }
             if (typing) {
-                if (layoutShrunk())
+                if (layoutShrunk() && Math.abs(lh - lastRaw) >= 4) {
+                    lastRaw = lh;
                     adjustFor(a);
+                }
                 return;
             }
+            lastRaw = -1;
             lowerSheets();
             if (raw >= 60)
                 return; /* キーボードが引っ込む途中。全画面・ページは引っ込みきるまで今のまま */
@@ -25257,7 +25323,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                 } })),
             menuOpen && (react_1.default.createElement(TypePickSheet, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", types: plan.doneAt ? ["__undone", "__edit", "__delete"] : ["__done", "__edit", "__delete"], labels: {
                     __done: "この計画をやり遂げた", __undone: "やり遂げたのを取り消す",
-                    __edit: "名前・色・絵", __delete: "この計画を削除",
+                    __edit: "計画の設定", __delete: "この計画を削除",
                 }, icons: {
                     __done: react_1.default.createElement(lucide_react_1.Check, { size: 22 }), __undone: react_1.default.createElement(lucide_react_1.RotateCcw, { size: 22 }),
                     __edit: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }),
@@ -26717,7 +26783,7 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 /* **紙は、キーボードの上へ持ち上げること（2.11.26〜）。**
    iPhone はキーボードを出しても fixed の高さを変えない。外わくを上下 0 で留めたままだと、
    下からせり上がる紙（フォルダ名の入力など）がまるごとキーボードの裏に入り、打てなかった。
-   --ft-kb（キーボードの高さ）と --ft-vv-top（見える窓の上端）は installKeyboardInset が入れる。
+   （2.16.4 から、紙の持ち上げは installKeyboardInset が紙の箱の transform で行う。下の余白の規則は外した）
    ・**外わくの大きさ（top / bottom）は変えず、内側の余白で持ち上げること。**
      外わくを縮めると暗がりも縮み、キーボードの角のすき間から、暗くなっていない一覧がのぞく
    ・下寄せ（items-end）の紙だけ上下の余白を足す。まん中の小窓（p-6）は下だけ。
