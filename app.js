@@ -21522,9 +21522,9 @@ function ImagesField({ images, onChange, onError }) {
     const pick = async (files) => {
         if (!files || !files.length)
             return;
-        /* **5枚めを黙って捨てないこと。** なぜ入らなかったのかが分からない */
-        if (files.length > rest && onError)
-            onError(`絵は ${MAX_IMAGES} 枚までです`);
+        /* 入りきらないぶんは、そのまま落とす。
+           **「絵は4枚までです」のお知らせを出さないこと（2.11.19〜）。**
+           ボタンに「あと○枚」と出ているので、同じことを二度言わない */
         setBusy(true);
         try {
             const out = [];
@@ -21547,21 +21547,23 @@ function ImagesField({ images, onChange, onError }) {
         fileRef.current.click(); };
     return (react_1.default.createElement("div", null,
         react_1.default.createElement("input", { ref: fileRef, type: "file", accept: "image/*", multiple: true, style: { position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }, onChange: (e) => { const fs = e.target.files; pick(fs).then(() => { e.target.value = ""; }); } }),
-        list.length === 0 ? (react_1.default.createElement("button", { type: "button", onClick: open, disabled: busy, 
-            /* **高くしすぎないこと。** 写真が主役の記録ばかりではない */
-            className: "w-full min-h-[96px] rounded-2xl border border-dashed border-neutral-300 bg-neutral-50 flex flex-col items-center justify-center gap-1.5 text-neutral-400 ft-tap ft-tap-card" },
-            busy ? react_1.default.createElement(Spinner, { size: 20 }) : react_1.default.createElement(lucide_react_1.Image, { size: 24 }),
-            react_1.default.createElement("span", { className: "fs-body-sm font-bold" }, busy ? "読み込み中" : "写真を選ぶ"))) : (react_1.default.createElement(react_1.default.Fragment, null,
-            react_1.default.createElement("div", { className: "grid gap-2 mb-2 " + (list.length === 1 ? "grid-cols-1" : "grid-cols-2") }, list.map((src, i) => (react_1.default.createElement("div", { key: i, className: "relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-100 ft-chip", style: { aspectRatio: list.length === 1 ? "4 / 3" : "1 / 1" } },
-                react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } }),
-                /* 右上の✕で、その1枚だけ外す。**TapOnceButton を通すこと**（値が変わるだけのボタン。
-                   続けて押したときに iPhone が click を配らないことがある）。
-                   **白いふちを付けること。** 白っぽい写真の上でも✕が見える */
-                react_1.default.createElement(TapOnceButton, { onTap: () => onChange(list.filter((_, k) => k !== i)), "aria-label": "\u3053\u306E\u5199\u771F\u3092\u5916\u3059", className: "absolute top-1.5 right-1.5 z-10 w-9 h-9 rounded-full bg-black/55 text-white border-2 flex items-center justify-center ft-tap ft-tap-icon", style: { borderColor: "rgba(255,255,255,.85)" } },
-                    react_1.default.createElement(lucide_react_1.X, { size: 17, strokeWidth: 2.5 })))))),
-            react_1.default.createElement("button", { type: "button", onClick: open, disabled: busy || rest === 0, className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body" },
-                busy ? react_1.default.createElement(Spinner, { size: 15 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 15 }),
-                rest === 0 ? `写真は ${MAX_IMAGES} 枚まで` : `写真を追加（あと${rest}枚）`)))));
+        /* **1枚だけのときに、大きな1列にしないこと（2.11.19〜）。**
+           1枚めと2枚めで写真の大きさ・並びが変わると、外したときに画面が組み直され、
+           遅れて届く押し込みが別の✕に当たる（引継書 6-③）。見た目も落ち着かない。
+           枚数にかかわらず、いつも2列・正方形で並べる */
+        list.length > 0 && (react_1.default.createElement("div", { className: "grid grid-cols-2 gap-2 mb-2" }, list.map((src, i) => (react_1.default.createElement("div", { key: i, className: "relative rounded-2xl overflow-hidden border border-neutral-200 bg-neutral-100 ft-chip", style: { aspectRatio: "1 / 1" } },
+            react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } }),
+            /* 右上の✕で、その1枚だけ外す。**TapOnceButton を通すこと**（値が変わるだけのボタン。
+               続けて押したときに iPhone が click を配らないことがある）。
+               **白いふちを付けること。** 白っぽい写真の上でも✕が見える */
+            react_1.default.createElement(TapOnceButton, { onTap: () => onChange(list.filter((_, k) => k !== i)), "aria-label": "\u3053\u306E\u5199\u771F\u3092\u5916\u3059", className: "absolute top-1.5 right-1.5 z-10 w-9 h-9 rounded-full bg-black/55 text-white border-2 flex items-center justify-center ft-tap ft-tap-icon", style: { borderColor: "rgba(255,255,255,.85)" } },
+                react_1.default.createElement(lucide_react_1.X, { size: 17, strokeWidth: 2.5 }))))))),
+        /* **1枚も無いときに、点線の大きな箱を出さないこと（2.11.19〜）。**
+           写真が主役の記録ばかりではないので、はじめは1本のボタンだけにする。
+           1枚あるときの「写真を追加」と同じボタン・同じ余白にそろえる */
+        react_1.default.createElement("button", { type: "button", onClick: open, disabled: busy || rest === 0, className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body" },
+            busy ? react_1.default.createElement(Spinner, { size: 15 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 15 }),
+            busy ? "読み込み中" : rest === 0 ? `写真は ${MAX_IMAGES} 枚まで` : `写真を追加（あと${rest}枚）`)));
 }
 /* ============================================================
    繰り返しの中身をえらぶ
