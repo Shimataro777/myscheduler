@@ -19705,14 +19705,25 @@ function useLockBackground() {
             return !el.readOnly && !el.disabled && !NO_KB_TYPES[(el.type || "text").toLowerCase()];
         return false;
     };
-    /* 入力欄に触れた・入った時点で、キーボードぶんの余白を先に足す */
+    /* 入力欄に触れた・入った時点で、キーボードぶんの余白を先に足す。
+       **ただし紙（ft-sheet-wrap）の中の入力欄では、触れた時点（touchstart / pointerdown）で持ち上げないこと（2.13.1〜）。**
+       全画面の送り場は「いちばん下に余白を足すだけ」なので見た目が動かないが、紙は外わくの余白で
+       **紙ごと上へ動く**。指が触れたまま紙が持ち上がると、指を離した場所には入力欄がなくなり、
+       iPhone はそのタップを入力欄ではなく暗がり（または下の一覧の位置）へ配る。
+       入力欄に入れないのでキーボードは出ず、暗がりの click で紙が閉じてしまった
+       （フォルダの設定で名前に触れると、紙が上へ跳んで、キーボードが出ないまま閉じた）。
+       紙では focusin（＝入力欄に入れたあと）で、その場で持ち上げる */
     const reserve = (e) => {
         const t = e.target;
         const el = t && t.closest ? t.closest("input, textarea, [contenteditable]") : null;
         if (!isTyping(el))
             return;
-        if (el.closest(".ft-sheet-wrap") && !coarse())
-            return;
+        if (el.closest(".ft-sheet-wrap")) {
+            if (!coarse())
+                return;
+            if (e.type !== "focusin")
+                return;
+        }
         if (shown < guessKb())
             setKb(guessKb());
         clearTimeout(settle);
@@ -19738,6 +19749,43 @@ function useLockBackground() {
             setKb(0);
         });
     };
+    /* 紙の入力欄から始まったタップの click を、入力欄の外へ流さない（2.13.1〜）。
+       iPhone は入力欄へ入れる（mousedown）→ mouseup → click の順に配り、あとの2つは
+       その時点の位置で当たり直す。focusin で紙を持ち上げると、同じタップの click が
+       暗がりや紙の外わくに当たり、紙が閉じてしまう。
+       「入力欄で押し始めたのに、入力欄の外で click になった」ものだけを、紙の中で止める。
+       暗がりで押し始めたタップ（ふつうに閉じる操作）は止めない */
+    let downEl = null;
+    let downAt = 0;
+    const noteDown = (e) => {
+        const t = e.target;
+        const el = t && t.closest ? t.closest("input, textarea, [contenteditable]") : null;
+        if (isTyping(el) && el.closest(".ft-sheet-wrap")) {
+            downEl = el;
+            downAt = Date.now();
+        }
+        else {
+            downEl = null;
+        }
+    };
+    const guardClick = (e) => {
+        const d = downEl;
+        if (!d)
+            return;
+        downEl = null;
+        if (Date.now() - downAt > 1500)
+            return;
+        const t = e.target;
+        if (t === d || (t && d.contains && d.contains(t)))
+            return;
+        if (!t || !t.closest || !t.closest(".ft-sheet-wrap"))
+            return;
+        e.stopPropagation();
+        e.preventDefault();
+    };
+    document.addEventListener("touchstart", noteDown, { passive: true, capture: true });
+    document.addEventListener("pointerdown", noteDown, { passive: true, capture: true });
+    document.addEventListener("click", guardClick, true);
     document.addEventListener("touchstart", reserve, { passive: true, capture: true });
     document.addEventListener("pointerdown", reserve, { passive: true, capture: true });
     document.addEventListener("focusin", reserve, true);
@@ -26071,7 +26119,9 @@ button:active { transition-duration: 60ms; }
    ・下寄せ（items-end）の紙だけ上下の余白を足す。まん中の小窓（p-6）は下だけ。
      上寄せ（items-start）の小窓は、上に置いてあるのでそのまま
    ・❌ **transition を付けないこと。** 持ち上がるのが遅れると、iPhone が入力欄を見せようとして
-     ページごと送り、useLockBackground の引き戻しと二重に動く（2.11.18 と同じ理由） */
+     ページごと送り、useLockBackground の引き戻しと二重に動く（2.11.18 と同じ理由）
+   ・❌ **紙は、入力欄に指が触れた時点で持ち上げないこと（2.13.1〜）。** 指の下から入力欄が逃げて、
+     キーボードが出ないまま暗がりの click で紙が閉じる。持ち上げるのは focusin から（installKeyboardInset） */
 html[data-ft-kb] .ft-sheet-wrap.items-end { padding-top: var(--ft-vv-top, 0px); padding-bottom: var(--ft-kb, 0px); }
 html[data-ft-kb] .ft-sheet-wrap.items-center { padding-bottom: calc(var(--ft-kb, 0px) + 24px); }
 /* キーボードが出ているあいだは、見える高さが半分ほどになる。
