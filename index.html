@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover ＝ ノッチのある機種でも画面の端まで使う -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1" />
+    <title>My手帳</title>
+    <meta name="description" content="ひびの記録をつける、じぶんだけの手帳" />
+    <meta name="theme-color" content="#FFFFFF" />
+
+    <!-- ホーム画面に置いたとき、上の余白まで深い緑にする -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="My手帳" />
+
+    <!-- 文字の読み込みを少しでも早くするための下ごしらえ -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <link rel="stylesheet" href="./app.css?v=2.11.23" />
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon-v6.png" />
+    <link rel="manifest" href="./manifest-v6.json" />
+
+    <style>
+      /* 読み込みが終わるまでの間だけ出す絵。
+         中身が出たら __hibiHideSplash() で静かに消える */
+      /* **上下左右を、inset だけに任せないこと。**
+         iPhone では下の端（ホームバーのあたり）が数十px 空き、
+         そこからアプリ本体の下の帯がのぞいてしまう。
+         四辺を明示し、高さは大きいほうの画面（lvh / dvh）まで取る */
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        top: 0; right: 0; bottom: 0; left: 0;
+        width: 100%;
+        min-width: 100%;
+        height: 100vh;
+        min-height: 100vh;
+        z-index: 2147483600;
+        /* アイコンと同じ、白地に水色の手帳。**アプリの帯の色と混ぜないこと** */
+        background: #FFFFFF;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, -apple-system, "Hiragino Sans", sans-serif;
+        transition: opacity 320ms ease;
+      }
+      /* 名前と版数。**版数を大きく出さないこと。**
+         目には入るが、読ませるためのものではない */
+      #app-splash .name {
+        margin-top: 22px;
+        font-size: 22px; font-weight: 700; color: #3E7EA6; letter-spacing: .08em;
+      }
+      #app-splash .ver {
+        margin-top: 7px;
+        font-size: 11.5px; color: rgba(62,126,166,.55); letter-spacing: .04em;
+      }
+      #app-splash .mark {
+        width: 92px;
+        height: 82px;
+        border: 5px solid #6FB9E0;
+        border-radius: 12px;
+        position: relative;
+      }
+      #app-splash .mark::before {
+        content: "";
+        position: absolute;
+        left: 23px; top: -5px; bottom: -5px;
+        width: 5px;
+        background: #6FB9E0;
+      }
+      #app-splash .mark::after {
+        content: "";
+        position: absolute;
+        left: 55px; top: -5px;
+        width: 18px; height: 44px;
+        background: #6FB9E0;
+        clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 74%, 0 100%);
+      }
+      /* **しるし・名前・版数を、ひとつずつ動かして出さないこと**（2.11.0〜）。
+         字やアイコンが細かく動くと読みづらい。はじめから定位置に置き、
+         消えるときだけ絵ぜんたいを薄くする。
+         **#app-splash 自身の transition（消えるときの薄まり）だけを許し、
+         中の部品にはどんな transition / animation も付かないようにしておく**
+         （2.11.22〜）。今後どこかに `.mark` などと同じクラス名や、うっかり
+         広すぎるセレクタ（例：`div { transition: ... }`）を足しても、
+         起動画面の中では絶対に動かないようにする用心 */
+      #app-splash * {
+        transition: none !important;
+        animation: none !important;
+      }
+      @supports (height: 100lvh) {
+        #app-splash { height: 100lvh; min-height: 100lvh; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #app-splash { transition: none; }
+      }
+      /* **起動画面が消えはじめるまで、アプリ本体を見えなくしておくこと。**
+         本体は読み込みの途中でも先に描かれ、下の帯も出る。起動画面は上に重なって
+         いるはずだが、画面の下の端や、起動画面が出る前後の一瞬に、帯だけが
+         透けて見えることがある。見えなければ透けようがない。
+         **display: none にしないこと。** ヘッダーの高さを測る部品が
+         0 のまま測ってしまい、余白がずれる。visibility で隠す */
+      body.mt-booting #root {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      /* **起動画面のあいだ、紙（ページ）自体を送れる状態にしないこと**（2.11.22〜）。
+         症状：起動画面のしるし（アイコン）が、出た瞬間に上から下へずれて見える。
+         原因：本体（#root）は visibility だけで隠していて、高さはふつうに
+         測れる状態のまま。中の一覧が長いと、隠れているだけで紙ぜんたいの
+         高さが画面より高くなり、起動画面が出ている数百 ms のあいだ紙が
+         送れる状態になる。viewport-fit=cover で端まで広げた画面のまま
+         紙が送れる状態だと、iPhone は「実際に送れる高さ」を測り直し、
+         その拍子に position: fixed で置いたもの（起動画面もそのひとつ）が
+         数十px ずれて見える。3章「下タブが画面ごとに上下する不具合」
+         （body を position: fixed にしたときに起きるもの）と同じ、
+         iPhone の「広げた画面を測り直す」ときの副作用が、こちらは
+         「紙が送れる状態」で起きている。
+         直し方：起動画面が出ているあいだは html・body とも送れない状態にし、
+         本体を見せる瞬間（mtShowApp）に一緒に外す。中身の一覧がどれだけ
+         長くても、起動画面のときは紙ぜんたいとしては送れない状態のまま
+         で保つ */
+      body.mt-booting {
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body class="mt-booting">
+    <div id="app-splash">
+      <div class="mark"></div>
+      <p class="name">My手帳</p>
+      <p class="ver" id="app-splash-ver"></p>
+    </div>
+    <div id="root"></div>
+    <script>
+      /* 版数はここひとつで決める。**あちこちに書かないこと**（食い違う）。
+         アプリの中からも window.__MT_VERSION で読む */
+      /* X＝見た目や操作性の大きな変更・画面の追加
+         Y＝細かな機能向上・部分的な追加・画面の手直し
+         Z＝不具合や誤字の直し */
+      window.__MT_VERSION = "2.11.23";
+      document.getElementById("app-splash-ver").textContent = "v" + window.__MT_VERSION;
+
+      /* **html 自体も、起動画面のあいだは送れない状態にしておく**（2.11.22〜）。
+         `body.mt-booting { overflow: hidden }`（上の <style>）だけでは、
+         紙を実際に送っているのは body ではなく html（documentElement）の
+         ほうなので足りないことがある。ここで直に閉じ、mtShowApp で一緒に開ける */
+      document.documentElement.style.overflow = "hidden";
+
+      /* 消し方は index.html の側に持たせてある。
+         こうしておくと、本体の読み込みが失敗しても絵が残り続けない */
+      /* **かならず最低の時間だけ見せること。** 読み込みが速い端末では
+         一瞬だけ光って消え、かえって目ざわりになる */
+      var MT_SPLASH_MS = 1400;
+      var mtSplashFrom = Date.now();
+      /* 本体を見せる。起動画面が消えはじめる（ふわっと薄くなる）のと同じ瞬間に呼ぶ */
+      function mtShowApp() {
+        document.body.classList.remove("mt-booting");
+        document.documentElement.style.overflow = "";
+      }
+      window.__hibiHideSplash = function () {
+        var el = document.getElementById("app-splash");
+        /* **二度目の呼び出しで、その場で本体を出さないこと。**
+           起動直後に一度呼ばれ、記録を読み終えたあとにもう一度呼ばれる。
+           ここで出すと、まだ起動画面が出ているうちに本体が見えてしまう。
+           一度目が用意した時計に任せる（絵が無いときだけ出す） */
+        if (el && el.dataset.going) return;
+        if (!el) { mtShowApp(); return; }
+        el.dataset.going = "1";
+        var wait = Math.max(0, MT_SPLASH_MS - (Date.now() - mtSplashFrom));
+        setTimeout(function () {
+          /* 薄くなりはじめるのと同時に本体を出す。それより早く出さないこと（帯が透ける） */
+          mtShowApp();
+          el.style.opacity = "0";
+          setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 360);
+        }, wait);
+      };
+      /* 念のため、5秒たったら必ず消す */
+      setTimeout(function () { window.__hibiHideSplash(); }, 5000);
+      /* 最後の歯止め。アプリが読み込み終わりを知らせてこなくても、
+         12秒たてば本体を出す（真っ白なまま使えなくならないように） */
+      setTimeout(mtShowApp, 12000);
+    </script>
+    <!-- **?v= は app.css と app.js の両方に必ず付けること。**
+         付けないと、端末に残った古いファイルがそのまま使われ、
+         直したはずの見た目が変わらない。版数を上げたらここも必ず合わせる -->
+    <script src="./app.js?v=2.11.23" defer></script>
+  </body>
+</html>
