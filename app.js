@@ -24910,7 +24910,10 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
         react_1.default.createElement(TopChrome, null,
             react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
             react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) })),
-        react_1.default.createElement("div", { className: "px-4 pt-1 ft-col space-y-2.5 ft-seq" },
+        /* **2列のカード（2.11.25〜）。** 絵を主役にして、文字は下にまとめる。
+           並べ方・大きさは GLOBAL_CSS の .ft-fgrid / .ft-fcard にある。
+           **space-y-* を付けないこと。** グリッドの中では子の上に余白が付いて、段がずれる */
+        react_1.default.createElement("div", { className: "px-4 pt-1 ft-col ft-fgrid ft-seq" },
             sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
             sorted.map((f) => {
@@ -24918,29 +24921,32 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
                 const n = folderRecords(f, records).length;
                 const auto = folderHasCond(f);
                 const picked = (f.picked || []).length;
-                const cond = folderCondText(f, N);
-                return (react_1.default.createElement("div", { key: f.id, role: "button", tabIndex: 0, onClick: () => onOpen(f), ...longPressProps(f), className: "w-full flex items-center gap-3 rounded-2xl bg-white p-4 text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer" },
-                    react_1.default.createElement("span", { className: "w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (f.icon && ICON_ART[f.icon]) ? ICON_ART[f.icon].bg : myc.soft,
-                            border: `1px solid ${myc.line}`, color: myc.deep } },
-                        react_1.default.createElement(ItemIcon, { icon: f.icon, fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: myc })),
-                    react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                        react_1.default.createElement("span", { className: "block font-display fs-title text-neutral-900 leading-snug break-words" }, f.name || "（名前なし）"),
-                        react_1.default.createElement("span", { className: "flex items-center gap-1.5 mt-1.5 flex-wrap" },
-                            react_1.default.createElement("span", { className: "fs-body-sm font-bold text-neutral-500 tabular-nums" },
+                /* ハッシュタグを先に。タグが無い自動フォルダだけ、ほかの条件（種類・期間など）を出す */
+                const tagText = normalizeTags(f.tags).map((t) => "#" + t).join(" ");
+                const sub = tagText || (auto ? folderCondText(f, N) : "");
+                const art = f.icon && ICON_ART[f.icon];
+                return (react_1.default.createElement("div", { key: f.id, role: "button", tabIndex: 0, onClick: () => onOpen(f), ...longPressProps(f), "aria-label": `${f.name || "（名前なし）"}、${n}件`, className: "ft-fcard bg-white text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer" },
+                    /* 絵。**切り抜きは正方形（CropSheet aspect:1）なので、窓も 1/1 のまま。** 形を変えると絵が見切れる */
+                    react_1.default.createElement("span", { className: "ft-fthumb", style: { background: art ? art.bg : myc.soft, border: `1px solid ${myc.line}`, color: myc.deep } },
+                        react_1.default.createElement(ItemIcon, { icon: f.icon, fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 40 }), color: myc }),
+                        /* 固定は絵の右上に重ねる。押しても札はひらかない（PinButton が pointerdown を止めている） */
+                        react_1.default.createElement("span", { className: "ft-fpin" },
+                            react_1.default.createElement(PinButton, { on: f.pinned, onClick: (e) => { e.stopPropagation(); onPin(f); } }))),
+                    react_1.default.createElement("span", { className: "ft-fbody" },
+                        react_1.default.createElement("span", { className: "ft-fname font-display fs-subhead text-neutral-900" }, f.name || "（名前なし）"),
+                        react_1.default.createElement("span", { className: "ft-fmeta" },
+                            react_1.default.createElement("span", { className: "fs-label font-bold text-neutral-500 tabular-nums" },
                                 n,
                                 "\u4EF6"),
-                            auto && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 fs-caption font-bold rounded-md px-1.5 py-[2px]", style: { background: myc.soft, color: myc.deep } },
-                                react_1.default.createElement(lucide_react_1.Filter, { size: 11 }),
-                                " \u81EA\u52D5")),
-                            picked > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 fs-caption font-bold rounded-md px-1.5 py-[2px] bg-neutral-100 text-neutral-600" },
-                                react_1.default.createElement(lucide_react_1.Check, { size: 11, strokeWidth: 3, className: "thick" }),
-                                " \u624B\u52D5",
-                                picked,
-                                "\u4EF6")),
-                            auto && cond && react_1.default.createElement("span", { className: "fs-caption text-neutral-400 truncate" }, cond),
-                            !auto && picked === 0 && react_1.default.createElement("span", { className: "fs-caption text-neutral-400" }, "\u307E\u3060\u7A7A\u3067\u3059"))),
-                    react_1.default.createElement(PinButton, { on: f.pinned, onClick: (e) => { e.stopPropagation(); onPin(f); } }),
-                    react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })));
+                            auto && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 fs-micro font-bold rounded-md px-1.5 py-[2px]", style: { background: myc.soft, color: myc.deep } },
+                                react_1.default.createElement(lucide_react_1.Filter, { size: 10 }),
+                                "\u81EA\u52D5")),
+                            picked > 0 && (react_1.default.createElement("span", { className: "inline-flex items-center gap-1 fs-micro font-bold rounded-md px-1.5 py-[2px] bg-neutral-100 text-neutral-600" },
+                                react_1.default.createElement(lucide_react_1.Check, { size: 10, strokeWidth: 3, className: "thick" }),
+                                "\u624B\u52D5",
+                                picked)),
+                            !auto && picked === 0 && react_1.default.createElement("span", { className: "fs-caption text-neutral-400" }, "\u307E\u3060\u7A7A\u3067\u3059")),
+                        sub && react_1.default.createElement("span", { className: "ft-fsub fs-caption text-neutral-400" }, sub))));
             }),
             folders.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093")))),
@@ -25732,6 +25738,28 @@ input, textarea, [contenteditable="true"], .ft-text {
   -webkit-touch-callout: default;
 }
 .ft-press { -webkit-touch-callout: none; }
+
+/* フォルダ一覧の2列カード（2.11.25〜）。
+   携帯の柱（32rem）では2列、iPad 横など柱が広いとき（56rem）は4列。
+   **auto-fill で列の数を決めないこと。** 細い携帯（320px）で1列に落ち、文字の大きさ「大」でも崩れる */
+.ft-fgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+.ft-fgrid > .ft-noresult { grid-column: 1 / -1; }
+@media (min-width: 820px) { .ft-fgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; } }
+/* 札の角（16px）−内側の余白（8px）＝絵の角（8px）。入れ子の角を同じ中心にそろえる */
+.ft-fcard { display: flex; flex-direction: column; min-width: 0; padding: 8px; border-radius: 16px; }
+.ft-fthumb { position: relative; display: flex; align-items: center; justify-content: center;
+  width: 100%; aspect-ratio: 1 / 1; border-radius: 8px; overflow: hidden; }
+/* 用意の絵（ICON_ART）は窓に合わせて大きくする。写真は ItemIcon が cover で敷く */
+.ft-fthumb > svg { width: 56%; height: auto; }
+.ft-fpin { position: absolute; top: 4px; right: 4px; }
+/* 写真の上でも見えるよう、白いふちを付ける */
+.ft-fpin > button { box-shadow: 0 0 0 2px rgba(255,255,255,.9); }
+.ft-fbody { display: flex; flex-direction: column; min-width: 0; padding: 10px 4px 4px; }
+/* 名前は2行まで。長い名前で札の高さがばらつかないように */
+.ft-fname { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  line-height: 1.35; word-break: break-word; }
+.ft-fmeta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.ft-fsub { display: block; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 button:active { transition-duration: 60ms; }
 
 /* ============================================================
