@@ -21995,7 +21995,15 @@ function ProgressBar({ ratio, color, deep, height }) {
      （指では pointerup の直後に click が来るので、時間で見分ける）
    ・**上（札）へ伝えないこと。** 伝わると、たたむ／開くがいっしょに動いて
      札の高さが変わり、続けて押した指が別の行に当たる
+   ・**「もう受けた」の記録は、部品ごとではなく、アプリ全体で持つこと（2.11.19〜）。**
+     iPhone は指を離して 0.3 秒ほど遅れて click を配り、その間に画面の形が変わると、
+     click は「指を離した場所に、いまあるもの」へ届く。写真を外す✕を押すと、残った写真が
+     2列から1列に描き直され、その✕がちょうど指の下に来て、遅れた click を受けて
+     もう1枚も消えていた。記録が部品ごとだと、押した本人しか見張れず、別の部品が
+     受け取るこの道を防げない。指を離した時刻を tapOnceGlobal に残し、その直後（700ms）に
+     どの受け口へ届いた click も捨てる
    ============================================================ */
+const tapOnceGlobal = { at: 0 };
 function useTapOnce(onTap) {
     const st = (0, react_1.useRef)({ id: null, x: 0, y: 0, at: 0 });
     return {
@@ -22008,7 +22016,10 @@ function useTapOnce(onTap) {
         onPointerUp: (e) => {
             e.stopPropagation();
             const s = st.current;
-            st.current = { ...s, id: null, at: Date.now() };
+            const now = Date.now();
+            /* 指を離した時刻を、アプリ全体で覚える。あとから別の部品に届く click を捨てるため */
+            tapOnceGlobal.at = now;
+            st.current = { ...s, id: null, at: now };
             if (s.id !== e.pointerId)
                 return;
             if (Math.abs(e.clientX - s.x) > 12 || Math.abs(e.clientY - s.y) > 12)
@@ -22019,8 +22030,11 @@ function useTapOnce(onTap) {
         onClick: (e) => {
             e.stopPropagation();
             e.preventDefault();
-            /* 指やマウスのぶんは、もう pointerup で受けてある（幽霊クリック） */
-            if (Date.now() - st.current.at < 700)
+            /* 指やマウスのぶんは、もう pointerup で受けてある（幽霊クリック）。
+               **自分の記録だけで見ないこと。** 画面の形が変わると、遅れた click は
+               押したのとは別の部品（写真が1枚に減って大きくなった✕など）に届く。
+               アプリ全体の「最後に指を離した時刻」も見て、その直後のものは捨てる */
+            if (Date.now() - Math.max(st.current.at, tapOnceGlobal.at) < 700)
                 return;
             onTap();
         },
