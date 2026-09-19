@@ -17494,6 +17494,10 @@ const TAG_KEY = KEY("tags");
    ふたつを見くらべて、まだ控えを取っていない書きかえがあるかを知る */
 const BACKUP_AT_KEY = KEY("backupat");
 const CHANGED_AT_KEY = KEY("changedat");
+/* 書き出しのあとに書きかえたものの控え（2.11.27〜）。{ "rec:id": 時刻, "plan:id": …, "prefs": … }。
+   **記録の時刻だけで数えないこと。** 消した記録、フォルダ・計画の名前やアイコン、
+   表示設定、タグの書きかえは、記録の時刻に残らないので数から漏れていた */
+const CHANGE_LOG_KEY = KEY("changelog");
 /* **書きかえたら、必ずここを通すこと。** 通し忘れると、
    控えが古いままなのに「取ってある」と見えてしまう */
 function markChanged() {
@@ -17505,7 +17509,56 @@ function markChanged() {
 const PREF_KEY = KEY("prefs");
 const DRAFT_KEY = KEY("draft");
 /* 起ち上がりに「控えのほうが新しいままか」を確かめるキー。**キーを増やしたらここにも足すこと** */
-const SYNC_KEYS = [REC_KEY, PLAN_KEY, KIND_KEY, FOLDER_KEY, TAG_KEY, BACKUP_AT_KEY, CHANGED_AT_KEY, PREF_KEY, DRAFT_KEY, KEY("decophotos")];
+const SYNC_KEYS = [REC_KEY, PLAN_KEY, KIND_KEY, FOLDER_KEY, TAG_KEY, BACKUP_AT_KEY, CHANGED_AT_KEY, CHANGE_LOG_KEY, PREF_KEY, DRAFT_KEY, KEY("decophotos")];
+/* 前と次の一覧をくらべて、増えた・消えた・中身が変わったものの id を返す。
+   **同じ物（参照）はくらべないこと。** 何千件もある記録を毎回まるごと文字にしない */
+function changedIds(prev, next) {
+    const out = [];
+    const before = new Map();
+    for (const x of prev || [])
+        if (x && x.id != null)
+            before.set(x.id, x);
+    const seen = new Set();
+    for (const x of next || []) {
+        if (!x || x.id == null)
+            continue;
+        seen.add(x.id);
+        const old = before.get(x.id);
+        if (old === x)
+            continue;
+        if (!old) {
+            out.push(x.id);
+            continue;
+        }
+        try {
+            if (JSON.stringify(old) !== JSON.stringify(x))
+                out.push(x.id);
+        }
+        catch (e) {
+            out.push(x.id);
+        }
+    }
+    for (const id of before.keys())
+        if (!seen.has(id))
+            out.push(id);
+    return out;
+}
+/* 表示設定のうち、「中身の書きかえ」に数えないもの。
+   並び順は一覧の上のボタンで気軽に切り替えるので、そのたびに書き出しを促さない。
+   lastBackup は書き出したときに入れる印そのもの */
+const PREF_NOT_CONTENT = { sortOrder: 1, folderSortOrder: 1, recordOrder: 1, lastBackup: 1 };
+function prefsContentKey(p) {
+    const o = {};
+    for (const k of Object.keys(p || {}).sort())
+        if (!PREF_NOT_CONTENT[k])
+            o[k] = p[k];
+    try {
+        return JSON.stringify(o);
+    }
+    catch (e) {
+        return String(Math.random());
+    }
+}
 /* ============================================================
    小さな道具
    ============================================================ */
@@ -17771,10 +17824,19 @@ function OrderToggle({ value, onChange }) {
         react_1.default.createElement(lucide_react_1.ArrowRightLeft, { size: 14, style: { transform: "rotate(90deg)" } }),
         ORDER_LABEL[cur]));
 }
-/* 並べかえ。**固定したものを、まっ先に出すこと**（記録の並びと同じ考え方） */
-const sortItems = (list, mode) => list.slice().sort((a, b) => {
+/* 並べかえ。**固定したものを、まっ先に出すこと**（記録の並びと同じ考え方）。
+   counts は id → 件数 の Map。「件数順」（フォルダだけ、2.13.0〜）のときに渡す。
+   **件数が同じときは、無音順にならないよう名前順で決めること** */
+const sortItems = (list, mode, counts) => list.slice().sort((a, b) => {
     if (!!a.pinned !== !!b.pinned)
         return a.pinned ? -1 : 1;
+    if (mode === "count" && counts) {
+        const ca = counts.get(a.id) || 0;
+        const cb = counts.get(b.id) || 0;
+        if (ca !== cb)
+            return cb - ca; // 多い順
+        return compareName(a, b);
+    }
     return mode === "updated" ? compareUpdated(a, b) : compareName(a, b);
 });
 /* 大事な記録に付ける印。淡い色でそろえる */
@@ -17797,9 +17859,13 @@ const DEFAULT_PREFS = {
     /* 予定の3つのわくに、どの色を当てるか */
     schedColor: { ...DEFAULT_SCHEDULE_COLORS },
     typeName: {}, // 記録の種類の呼び名を変えたいとき
-    /* 並び順。**画面ごとに別々に覚えないこと。** 表示設定でひとつだけ決める
-       （"name" ＝ 名前順／"updated" ＝ 更新順） */
+    /* 計画の並び順（表示設定「計画」）。"name" ＝ 名前順／"updated" ＝ 更新順。
+       **以前は sortOrder ひとつをフォルダと共用していた（〜2.12.0）。**
+       いまは計画だけがここを見る。フォルダは folderSortOrder（2.13.0〜）を見る */
     sortOrder: "name",
+    /* フォルダの並び順（表示設定「フォルダ」、2.13.0〜）。
+       "name" ＝ 名前順／"updated" ＝ 更新順／"count" ＝ 件数順（中の記録が多い順） */
+    folderSortOrder: "name",
     /* 記録の並び（"old" ＝ 時間順／"recent" ＝ 更新順）。
        Today・探す・フォルダの中で共通 */
     recordOrder: "old",
@@ -17820,6 +17886,10 @@ async function loadPrefs() {
             typeName: { ...((p && p.typeName) || {}) },
             /* 「新しい順」は廃止した。**むかしの値が残っていたら、時間順に読み替える。** */
             recordOrder: (p && p.recordOrder === "recent") ? "recent" : "old",
+            /* フォルダと計画の並び順を分けた（2.13.0〜）。
+               **folderSortOrder が無い古い設定は、それまで共用していた sortOrder を引き継ぐこと。**
+               引き継がないと、更新のとたんフォルダの並びだけ「名前順」に戻って見える */
+            folderSortOrder: (p && typeof p.folderSortOrder === "string") ? p.folderSortOrder : ((p && p.sortOrder) || DEFAULT_PREFS.sortOrder),
         };
     }
     catch (e) {
@@ -19008,7 +19078,9 @@ async function copyToClipboard(text) {
    ============================================================ */
 const inputCls = "w-full rounded-xl bg-white border border-neutral-200 px-3.5 py-3 ft-input leading-normal text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-4 focus:ring-th-800/20 focus:border-th-800 h-[48px]";
 const SAFE_TOP = (extra) => ({ paddingTop: `calc(env(safe-area-inset-top) + ${extra}px)` });
-const SAFE_BOTTOM = (extra) => ({ paddingBottom: `calc(env(safe-area-inset-bottom) + ${extra}px)` });
+/* 紙の中では、キーボードが出ているあいだ下の安全域を 0 にする（--ft-sab、GLOBAL_CSS）。
+   ホームバーはキーボードの裏なので、空けておくと紙がそのぶん狭くなる */
+const SAFE_BOTTOM = (extra) => ({ paddingBottom: `calc(var(--ft-sab, env(safe-area-inset-bottom)) + ${extra}px)` });
 const BTN_H = "btn-h";
 /* 沈み方はグローバルCSSの .ft-tap にまとめてある。
    ボタンごとに active:scale-… を書かないこと（少しずつ深さや速さがずれていく） */
@@ -19189,12 +19261,17 @@ function ListSearchBar({ value, onChange, placeholder, right }) {
                     react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
             right)));
 }
-function SortToggle({ value, onChange, onDark }) {
-    const name = value !== "updated";
-    return (react_1.default.createElement("button", { type: "button", onClick: () => onChange(name ? "updated" : "name"), "aria-label": `並べかえ：いま${name ? "名前順" : "更新順"}`, className: "h-9 pl-2 pr-2.5 flex items-center gap-1 rounded-full fs-label font-bold ft-tap ft-tap-icon "
+/* 押すたびに options を順ぐりに切り替える。**options を渡さなければ、これまでどおり名前順／更新順の2つ**（2.13.0〜）。
+   フォルダはここに件数順を足した3つを渡す（FOLDER_SORT_OPTIONS） */
+function SortToggle({ value, onChange, onDark, options }) {
+    const opts = options || SORT_NAME_OPTIONS;
+    const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+    const cur = opts[idx] || opts[0];
+    const next = opts[(idx + 1) % opts.length];
+    return (react_1.default.createElement("button", { type: "button", onClick: () => onChange(next.value), "aria-label": `並べかえ：いま${cur.label}`, className: "h-9 pl-2 pr-2.5 flex items-center gap-1 rounded-full fs-label font-bold ft-tap ft-tap-icon "
             + (onDark ? "text-white/80" : "text-neutral-500 hover:bg-neutral-100") },
         react_1.default.createElement(lucide_react_1.ArrowRightLeft, { size: 14, style: { transform: "rotate(90deg)" } }),
-        name ? "名前順" : "更新順"));
+        cur.label));
 }
 function HelpTip({ text, label }) {
     const btnRef = (0, react_1.useRef)(null);
@@ -19579,15 +19656,45 @@ function useLockBackground() {
     /* 前回のキーボードの高さ。まだ出たことがなければ画面の高さの 45% を見込む */
     let lastKb = 0;
     const guessKb = () => lastKb || Math.round(Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0) * 0.45);
-    const setKb = (kb) => {
+    let shownTop = -1;
+    const setKb = (kb, top = 0) => {
+        const root = document.documentElement;
+        /* 見えている上端（iPhone が見える窓を下へずらしたぶん）。紙の外わくの上をここにそろえる */
+        const t = kb > 0 ? Math.max(0, Math.round(top)) : 0;
+        if (t !== shownTop) {
+            shownTop = t;
+            root.style.setProperty("--ft-vv-top", t + "px");
+        }
         if (kb === shown)
             return;
         shown = kb;
-        document.documentElement.style.setProperty("--ft-kb", kb + "px");
+        root.style.setProperty("--ft-kb", kb + "px");
+        /* キーボードが出ているあいだの印。紙の高さの上限をゆるめるのに使う（GLOBAL_CSS） */
+        if (kb > 0)
+            root.setAttribute("data-ft-kb", "");
+        else
+            root.removeAttribute("data-ft-kb");
+    };
+    /* 指で触れない端末（マウス・外付けキーボード）では、画面のキーボードは出ない。
+       **紙の中の入力欄で先に余白を足さないこと。** 紙だけ持ち上がったまま戻らない */
+    const coarse = () => { try {
+        return window.matchMedia("(pointer: coarse)").matches;
+    }
+    catch (e) {
+        return true;
+    } };
+    /* 先に足した余白の後始末。しばらく待ってもキーボードが出なければ 0 に戻す */
+    let settle = 0;
+    const realKb = () => {
+        const layoutH = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+        const kb = Math.round(layoutH - vv.height - vv.offsetTop);
+        return kb >= 60 ? kb : 0;
     };
     const NO_KB_TYPES = { checkbox: 1, radio: 1, button: 1, submit: 1, reset: 1, range: 1, file: 1, color: 1, image: 1, hidden: 1 };
     const isTyping = (el) => {
-        if (!el || !el.closest || !el.closest("[data-ft-overlay]"))
+        /* 紙・小窓（ft-sheet-wrap）の中の入力欄も数えること（2.11.26〜）。
+           数えないと、紙がキーボードの裏に入ったまま持ち上がらない */
+        if (!el || !el.closest || !el.closest("[data-ft-overlay], .ft-sheet-wrap"))
             return false;
         if (el.isContentEditable)
             return true;
@@ -19604,8 +19711,13 @@ function useLockBackground() {
         const el = t && t.closest ? t.closest("input, textarea, [contenteditable]") : null;
         if (!isTyping(el))
             return;
+        if (el.closest(".ft-sheet-wrap") && !coarse())
+            return;
         if (shown < guessKb())
             setKb(guessKb());
+        clearTimeout(settle);
+        settle = setTimeout(() => { if (realKb() === 0)
+            setKb(0); }, 1200);
     };
     const measure = () => {
         cancelAnimationFrame(raf);
@@ -19616,7 +19728,7 @@ function useLockBackground() {
                 kb = 0;
             if (kb > 0) {
                 lastKb = kb;
-                setKb(kb);
+                setKb(kb, vv.offsetTop);
                 return;
             }
             /* キーボードが出てくる途中（まだ測れない）あいだは、先に足した余白を消さない。
@@ -19631,6 +19743,8 @@ function useLockBackground() {
     document.addEventListener("focusin", reserve, true);
     document.addEventListener("focusout", measure, true);
     vv.addEventListener("resize", measure);
+    /* 見える窓が下へずれただけ（高さは同じ）のときも、紙の上端を合わせ直す */
+    vv.addEventListener("scroll", measure);
     window.addEventListener("orientationchange", measure);
     measure();
 })();
@@ -20738,8 +20852,10 @@ function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保
                 react_1.default.createElement("h3", { className: "font-display fs-subhead text-neutral-900 flex-1 min-w-0 truncate" }, title),
                 react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "w-11 h-11 -mr-2 flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.X, { size: 20 }))),
-            react_1.default.createElement("div", { className: "ft-sheet-body px-4 py-4" }, children),
-            react_1.default.createElement("div", { className: "flex gap-2 px-4 py-3 border-t border-neutral-200 shrink-0", style: { paddingBottom: "calc(env(safe-area-inset-bottom) + 12px)" } },
+            /* **overflow-y-auto を外さないこと（2.11.26〜）。** キーボードが出ると紙が低くなり、
+               送れないと中身（アイコンの一覧など）が切れる */
+            react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-4" }, children),
+            react_1.default.createElement("div", { className: "flex gap-2 px-4 py-3 border-t border-neutral-200 shrink-0", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + (hideConfirm ? " w-full " : " flex-1 ") + "btn-h-lg fs-subhead" }, hideConfirm ? "とじる" : "キャンセル"),
                 !hideConfirm && (react_1.default.createElement("button", { type: "button", onClick: onConfirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" }, confirmLabel))))));
 }
@@ -20794,7 +20910,7 @@ function NeedBackupBanner({ onOpen, dim }) {
             react_1.default.createElement(lucide_react_1.Download, { size: 18 }),
             count > 0 && react_1.default.createElement(CountBadge, { n: count })),
         react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-            react_1.default.createElement("span", { className: "block fs-body-sm font-bold text-amber-900" }, "\u66F8\u304D\u51FA\u3057\u3066\u3044\u306A\u3044\u8A18\u9332\u304C\u3042\u308A\u307E\u3059"),
+            react_1.default.createElement("span", { className: "block fs-body-sm font-bold text-amber-900" }, "\u66F8\u304D\u51FA\u3057\u3066\u3044\u306A\u3044\u5909\u66F4\u304C\u3042\u308A\u307E\u3059"),
             backupAt && (react_1.default.createElement("span", { className: "block fs-caption text-amber-700 tabular-nums" },
                 "\u524D\u56DE\u306E\u4FDD\u5B58\uFF1A",
                 fmtDate(backupAt.slice(0, 10))))),
@@ -23142,6 +23258,8 @@ function SelectBar({ sel, list, extraLabel, onExtra }) {
    ============================================================ */
 /* 並び順のえらびもの。**画面ごとに字を変えないこと** */
 const SORT_NAME_OPTIONS = [{ value: "name", label: "名前順" }, { value: "updated", label: "更新順" }];
+/* フォルダだけの並び順（2.13.0〜）。件数＝中に集まる記録の数（folderRecords）。多い順に出す */
+const FOLDER_SORT_OPTIONS = [...SORT_NAME_OPTIONS, { value: "count", label: "件数順" }];
 const SORT_RECORD_OPTIONS = [{ value: "old", label: "時間順" }, { value: "recent", label: "更新順" }];
 const SPANS = [{ key: "day", label: "日" }, { key: "week", label: "週" }, { key: "month", label: "月" }];
 /* Today の上に出す、期日が近いイベントの札。
@@ -24898,8 +25016,15 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
             }
         },
     });
-    /* 名前順か更新順。名前順のときは「01.」「02.」を数として見る */
-    const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort), [folders, sort, q]);
+    /* 名前順・更新順・件数順。名前順のときは「01.」「02.」を数として見る。
+       件数（folderRecords）はカードの表示にも使うので、ここで一度だけ数えておく（2.13.0〜） */
+    const counts = (0, react_1.useMemo)(() => {
+        const m = new Map();
+        for (const f of folders)
+            m.set(f.id, folderRecords(f, records).length);
+        return m;
+    }, [folders, records]);
+    const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort, counts), [folders, sort, q, counts]);
     /* 下タブ「フォルダ」をもう一度押したとき（useTabReturn）。デフォルト＝検索なし。並び順は戻さない */
     useTabReturn(resetSig, {
         viewKey: q,
@@ -24909,7 +25034,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(TopChrome, null,
             react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
-            react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort }) })),
+            react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort, options: FOLDER_SORT_OPTIONS }) })),
         /* **2列のカード（2.11.25〜）。** 絵を主役にして、文字は下にまとめる。
            並べ方・大きさは GLOBAL_CSS の .ft-fgrid / .ft-fcard にある。
            **space-y-* を付けないこと。** グリッドの中では子の上に余白が付いて、段がずれる */
@@ -24918,7 +25043,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
             sorted.map((f) => {
                 const myc = fc;
-                const n = folderRecords(f, records).length;
+                const n = counts.get(f.id) || 0;
                 const auto = folderHasCond(f);
                 const picked = (f.picked || []).length;
                 /* ハッシュタグを先に。タグが無い自動フォルダだけ、ほかの条件（種類・期間など）を出す */
@@ -25097,9 +25222,14 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                     } })),
                 react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u4E26\u3073\u9806"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
+                    /* **フォルダと計画は、2.13.0からデフォルトの並び順を別々に持つ。**
+                       以前は sortOrder ひとつを共用していた（DEFAULT_PREFS の該当コメントを参照） */
                     react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-200" },
-                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B"),
-                        react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0\u30FB\u8A08\u753B", noEmpty: true })),
+                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u30D5\u30A9\u30EB\u30C0"),
+                        react_1.default.createElement(DrumSelect, { value: draft.folderSortOrder || "name", onChange: (v) => set({ folderSortOrder: v || "name" }), options: FOLDER_SORT_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0", noEmpty: true })),
+                    react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-200" },
+                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u8A08\u753B"),
+                        react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u8A08\u753B", noEmpty: true })),
                     react_1.default.createElement("div", { className: "px-4 py-3" },
                         react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB"),
                         react_1.default.createElement(DrumSelect, { value: draft.recordOrder || "old", onChange: (v) => set({ recordOrder: v || "old" }), options: SORT_RECORD_OPTIONS, title: "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB", noEmpty: true })))),
@@ -25520,6 +25650,13 @@ html { scrollbar-gutter: stable; }
   .ft-spread { column-count: 2; column-gap: 16px; margin-left: 0; margin-right: 0; }
   .ft-spread .ft-slot { padding-left: 0; padding-right: 0; padding-bottom: 16px; }
   .ft-spread > * { break-inside: avoid; -webkit-column-break-inside: avoid; }
+  /* **2段のときは、札の上に余白を付けないこと（2.11.27〜）。**
+     space-y-* は「2枚目から上に余白」を付ける。段に流し込むと、右の段のいちばん上に来た札にも
+     その余白が残り（iPhone・iPad の WebKit は段の切れ目で余白を消さない）、
+     左の段より一段下がって見えた（計画の一覧）。
+     余白を下へ移せば、段の切れ目の余白は左の段の底に隠れて見えない。
+     間隔は ft-slot（記録の札）と同じ 16px にそろえる */
+  .ft-spread[class*="space-y-"] > * { margin-top: 0; margin-bottom: 16px; }
   /* 下の帯は幅いっぱいに広げず、真ん中へ寄せる */
   .ft-tabbar-wrap > div { max-width: var(--ft-colw); margin-left: auto; margin-right: auto; }
 }
@@ -25925,6 +26062,25 @@ button:active { transition-duration: 60ms; }
 /* 記録をさがす紙は、ほぼ画面いっぱい。**中身の量で高さを変えないこと。**
    どちらのタブを出しても、同じ大きさで開く */
 .ft-sheet-tall { height: 92%; max-height: 92%; }
+/* **紙は、キーボードの上へ持ち上げること（2.11.26〜）。**
+   iPhone はキーボードを出しても fixed の高さを変えない。外わくを上下 0 で留めたままだと、
+   下からせり上がる紙（フォルダ名の入力など）がまるごとキーボードの裏に入り、打てなかった。
+   --ft-kb（キーボードの高さ）と --ft-vv-top（見える窓の上端）は installKeyboardInset が入れる。
+   ・**外わくの大きさ（top / bottom）は変えず、内側の余白で持ち上げること。**
+     外わくを縮めると暗がりも縮み、キーボードの角のすき間から、暗くなっていない一覧がのぞく
+   ・下寄せ（items-end）の紙だけ上下の余白を足す。まん中の小窓（p-6）は下だけ。
+     上寄せ（items-start）の小窓は、上に置いてあるのでそのまま
+   ・❌ **transition を付けないこと。** 持ち上がるのが遅れると、iPhone が入力欄を見せようとして
+     ページごと送り、useLockBackground の引き戻しと二重に動く（2.11.18 と同じ理由） */
+html[data-ft-kb] .ft-sheet-wrap.items-end { padding-top: var(--ft-vv-top, 0px); padding-bottom: var(--ft-kb, 0px); }
+html[data-ft-kb] .ft-sheet-wrap.items-center { padding-bottom: calc(var(--ft-kb, 0px) + 24px); }
+/* キーボードが出ているあいだは、見える高さが半分ほどになる。
+   上の暗がりを残す 82% / 92% のままだと、入力欄と保存ボタンしか入らないので、上限をゆるめる */
+html[data-ft-kb] .ft-sheet-box,
+html[data-ft-kb] .ft-sheet-tall { max-height: calc(100% - env(safe-area-inset-top) - 12px); }
+html[data-ft-kb] .ft-sheet-tall { height: calc(100% - env(safe-area-inset-top) - 12px); }
+/* ホームバーはキーボードの裏なので、紙の足もとの安全域を空けない（SAFE_BOTTOM が読む） */
+html[data-ft-kb] .ft-sheet-wrap { --ft-sab: 0px; }
 /* 中の「一覧」の場所。**flex-1 を使わないこと。**
    flex-1 は基準の高さが0なので、まわりに余りが無いと高さ0までつぶれる */
 .ft-sheet-body { flex: 1 1 auto; min-height: 0; }
@@ -26140,6 +26296,29 @@ function AppMain() {
         setChangedAt(now);
         markChanged();
     }, []);
+    /* 書き出しのあとに書きかえたもの（CHANGE_LOG_KEY）。**覚え（ref）から足すこと。**
+       続けて書きかえたとき、ひとつ前の控えを古い値で上書きしない */
+    const [changeLog, setChangeLogState] = (0, react_1.useState)({});
+    const changeLogRef = (0, react_1.useRef)({});
+    const putChangeLog = (0, react_1.useCallback)((v) => {
+        changeLogRef.current = v;
+        setChangeLogState(v);
+        try {
+            storageSet(CHANGE_LOG_KEY, JSON.stringify(v));
+        }
+        catch (e) { /* noop */ }
+    }, []);
+    /* keys: ["rec:…", "plan:…", "prefs" …]。ひとつでもあれば「書きかえあり」にする */
+    const noteChanges = (0, react_1.useCallback)((keys) => {
+        if (!keys || keys.length === 0)
+            return;
+        const now = new Date().toISOString();
+        const next = { ...changeLogRef.current };
+        for (const k of keys)
+            next[k] = now;
+        putChangeLog(next);
+        bumpChanged();
+    }, []); // eslint-disable-line
     /* 読み込みの途中で立つ書きかえは、数えない（自分で書いたものではない） */
     const needBackup = !!loaded && !!changedAt && (!backupAt || changedAt > backupAt);
     const [records, setRecordsState] = (0, react_1.useState)([]);
@@ -26232,9 +26411,18 @@ function AppMain() {
                 setTagMasterState([]);
             }
             try {
-                const [ba, ca] = await Promise.all([storageGet(BACKUP_AT_KEY), storageGet(CHANGED_AT_KEY)]);
+                const [ba, ca, cl] = await Promise.all([storageGet(BACKUP_AT_KEY), storageGet(CHANGED_AT_KEY), storageGet(CHANGE_LOG_KEY)]);
                 setBackupAt(ba || "");
                 setChangedAt(ca || "");
+                let log = {};
+                try {
+                    const o = JSON.parse(cl || "{}");
+                    if (o && typeof o === "object" && !Array.isArray(o))
+                        log = o;
+                }
+                catch (e) { /* 壊れていたら空から */ }
+                changeLogRef.current = log;
+                setChangeLogState(log);
             }
             catch (e) { /* noop */ }
             prefsRef.current = pf;
@@ -26291,14 +26479,27 @@ function AppMain() {
     const unsavedCount = (0, react_1.useMemo)(() => {
         if (!needBackup)
             return 0;
-        if (!backupAt)
-            return records.length;
+        /* 書きかえたものの数え方（2.11.27〜）
+           ・記録の時刻（前の版から続くやり方）で新しい記録と、控え（changeLog）に残ったものを合わせる
+           ・同じもの（rec:id）を二度数えないよう、集合で数える
+           ・消した記録、フォルダ・計画の名前やアイコン、表示設定、タグは控えのほうで数える */
+        const keys = new Set();
         /* **updatedAt だけを見ないこと。** 印だけ付けた札が数から漏れる */
-        return records.filter((r) => {
+        for (const r of records) {
+            if (!backupAt) {
+                keys.add("rec:" + r.id);
+                continue;
+            }
             const t = [r.updatedAt, r.checkedAt, r.createdAt].filter(Boolean).sort().pop() || "";
-            return String(t) > backupAt;
-        }).length;
-    }, [needBackup, backupAt, records]);
+            if (String(t) > backupAt)
+                keys.add("rec:" + r.id);
+        }
+        for (const [k, t] of Object.entries(changeLog || {}))
+            if (!backupAt || String(t) > backupAt)
+                keys.add(k);
+        /* 時刻が前後して 0 件に見えても、書きかえがあるなら 1 件以上として知らせる */
+        return Math.max(1, keys.size);
+    }, [needBackup, backupAt, records, changeLog]);
     /* いまの一覧の覚え。**画面の描き直しを待たないこと。**
        続けて押されたとき、二度目が古い一覧から組み立て直してしまい、
        一度目の印が消える。押したその場でここを更新して、次の呼び出しに渡す */
@@ -26321,9 +26522,11 @@ function AppMain() {
         return v;
     };
     const setRecords = (0, react_1.useCallback)((next) => {
+        const prev = recordsRef.current;
         const v = resolveNext(next, recordsRef);
         setRecordsState(v);
-        bumpChanged();
+        /* 増えた・消えた・直した記録を、ひとつずつ数える（消した記録も数えること） */
+        noteChanges(changedIds(prev, v).map((id) => "rec:" + id));
         saveList(REC_KEY, v).then((res) => {
             if (res && res.ok === false) {
                 tell("保存できませんでした。写真を減らすか、バックアップを取ってから古い記録を消してください");
@@ -26335,18 +26538,27 @@ function AppMain() {
     }, []);
     /* ヘッダー・アイコンの控えを作り直すときに渡す「いまの中身」。**覚え（ref）から読むこと** */
     const decoSource = (0, react_1.useCallback)(() => ({ prefs: prefsRef.current, folders: foldersRef.current, plans: plansRef.current }), []);
-    const setPlans = (0, react_1.useCallback)((next) => { const v = resolveNext(next, plansRef); setPlansState(v); bumpChanged(); saveList(PLAN_KEY, v); scheduleDecoSync(decoSource); return v; }, []); // eslint-disable-line
-    const setKinds = (0, react_1.useCallback)((next) => { const v = resolveNext(next, kindsRef); setKindsState(v); bumpChanged(); saveList(KIND_KEY, v); return v; }, []); // eslint-disable-line
-    const setFolders = (0, react_1.useCallback)((next) => { const v = resolveNext(next, foldersRef); setFoldersState(v); bumpChanged(); saveList(FOLDER_KEY, v); scheduleDecoSync(decoSource); return v; }, []); // eslint-disable-line
+    const setPlans = (0, react_1.useCallback)((next) => { const prev = plansRef.current; const v = resolveNext(next, plansRef); setPlansState(v); noteChanges(changedIds(prev, v).map((id) => "plan:" + id)); saveList(PLAN_KEY, v); scheduleDecoSync(decoSource); return v; }, []); // eslint-disable-line
+    const setKinds = (0, react_1.useCallback)((next) => { const prev = kindsRef.current; const v = resolveNext(next, kindsRef); setKindsState(v); noteChanges(changedIds(prev, v).map((id) => "kind:" + id)); saveList(KIND_KEY, v); return v; }, []); // eslint-disable-line
+    const setFolders = (0, react_1.useCallback)((next) => { const prev = foldersRef.current; const v = resolveNext(next, foldersRef); setFoldersState(v); noteChanges(changedIds(prev, v).map((id) => "folder:" + id)); saveList(FOLDER_KEY, v); scheduleDecoSync(decoSource); return v; }, []); // eslint-disable-line
     const setTagMaster = (0, react_1.useCallback)((next) => {
+        const prev = tagMasterRef.current;
         const v = normalizeTags(resolveNext(next, tagMasterRef));
+        /* タグの追加・名前の変更・並べ替え・削除も、書き出しを促す対象（2.11.27〜） */
+        if (JSON.stringify(prev || []) !== JSON.stringify(v))
+            noteChanges(["tags"]);
         tagMasterRef.current = v;
         setTagMasterState(v);
         storageSet(TAG_KEY, JSON.stringify(v));
         return v;
     }, []);
     const savePrefs = (0, react_1.useCallback)((next) => {
+        const prev = prefsRef.current;
         const v = resolveNext(next, prefsRef);
+        /* 表示設定（色・文字・ヘッダーの写真・呼び名など）の変更も、書き出しを促す対象（2.11.27〜）。
+           並び順と lastBackup は数えない（PREF_NOT_CONTENT） */
+        if (prefsContentKey(prev) !== prefsContentKey(v))
+            noteChanges(["prefs"]);
         setPrefsState(v);
         persistPrefs(v);
         /* **ヘッダーの写真を置き場ひとつに預けっぱなしにしないこと**（DECO_PHOTO_KEY の説明を参照） */
@@ -26621,6 +26833,9 @@ function AppMain() {
                 /* 「新しい順」は廃止した。**むかしの値が残っていたら、時間順に読み替える。** */
                 recordOrder: obj.prefs.recordOrder === "recent" ? "recent" : "old" }
             : { ...prefs, lastBackup: new Date().toISOString() };
+        /* 古いバックアップ（folderSortOrder が無い）も、その時点の共用の並び順を引き継ぐ */
+        if (obj.prefs && typeof obj.prefs === "object" && typeof obj.prefs.folderSortOrder !== "string")
+            nextPrefs.folderSortOrder = obj.prefs.sortOrder || DEFAULT_PREFS.sortOrder;
         savePrefs(nextPrefs);
         /* 取り込み直後は「書き出し済み」の状態として扱う。
            **backupAt を進めないと、直後に読み込みの書きかえ自体が
@@ -26630,6 +26845,8 @@ function AppMain() {
         storageSet(BACKUP_AT_KEY, restoredAt);
         setChangedAt(restoredAt);
         storageSet(CHANGED_AT_KEY, restoredAt);
+        /* 読み込みで立った書きかえの控えは捨てる。**残すと、読み込んだ全件が数に出る** */
+        putChangeLog({});
         setBackupOpen(false);
         tell("読み込みました");
     };
@@ -26725,7 +26942,7 @@ function AppMain() {
                                             react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped, resetSig: todayReset }))),
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, resetSig: tabReset.find || 0 })),
                                         tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), resetSig: tabReset.plan || 0 })),
-                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
+                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.folderSortOrder, onSort: (v) => savePrefs((p) => ({ ...p, folderSortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
                                 loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                                 loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => {
                                         if (k === "today")
@@ -26787,6 +27004,8 @@ function AppMain() {
                                         setBackupAt(now);
                                         storageSet(BACKUP_AT_KEY, now);
                                         savePrefs((p) => ({ ...p, lastBackup: now }));
+                                        /* 書き出したので、控えは空に戻す */
+                                        putChangeLog({});
                                     } })),
                                 helpOpen && react_1.default.createElement(HelpScreen, { onClose: () => setHelpOpen(false) }),
                                 react_1.default.createElement(Toast, { msg: msg })))))))));
