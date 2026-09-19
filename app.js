@@ -19620,7 +19620,8 @@ function useLockBackground() {
                    キーボードが出てくる途中の送りは iPhone がネイティブのアニメーションで行っている。
                    そこへ scroll イベントのたびに scrollTo を返すと、iPhone の送り（上）と
                    この引き戻し（下）が1〜2コマずつ交互に描かれ、ヘッダーごと画面が上下に揺れた。
-                   入力中の後始末は installKeyboardInset の unpan が、キーボードが落ち着いてから一度だけ行う */
+                   入力中は installKeyboardInset が「こちらでフォーカスを入れる」で押し上げを起こさせず、
+                   起きてしまったぶんは translate で見た目だけ相殺する。ページの位置は、キーボードが消えてから一度だけ戻す */
                 if (ftTypingInLayer())
                     return;
                 const y = window.scrollY || document.documentElement.scrollTop || 0;
@@ -19885,8 +19886,8 @@ function useLockBackground() {
         }
         return null;
     };
-    const reveal = () => {
-        const el = document.activeElement;
+    const reveal = (target, instant) => {
+        const el = target || document.activeElement;
         if (!isTyping(el))
             return;
         /* 2.17.0 から全画面の送り場も対象。送るのは入力欄を含む送り場だけ（ページは送らない） */
@@ -19906,6 +19907,10 @@ function useLockBackground() {
             d = r.bottom - c.bottom + M;
         if (Math.abs(d) < 2)
             return;
+        if (instant) {
+            sc.scrollTop += d;
+            return;
+        }
         try {
             sc.scrollBy({ top: d, behavior: motionOn() ? "smooth" : "auto" });
         }
@@ -19915,72 +19920,142 @@ function useLockBackground() {
     };
     const revealSoon = () => {
         clearTimeout(revealT);
-        revealT = setTimeout(reveal, KB_ANIM_MS + 40);
+        revealT = setTimeout(() => reveal(), KB_ANIM_MS + 40);
     };
-    /* ---- 画面ぜんたいのずれを、キーボードが落ち着いてから一度だけ戻す（2.17.0〜） ----
-       見込みの高さが本当のキーボードより小さかったとき（はじめて開いた・予測変換の帯が増えた・
-       別のキーボードに切り替えた など）だけ、iPhone は画面ぜんたいをずらして入力欄を見せる。
-       ずれたまま打たせるとヘッダーが画面の外へ出たままになるので、
-       ・キーボードの出入りが止まってから（resize / scroll が 160ms 来なくなってから）
-       ・指が画面に触れていないときに
-       ・本当の高さで場所を空け直し、うしろを留めた位置へ一度だけ戻し、入力欄を送り場の中で見せる。
-       **動いている最中には何もしないこと。** 途中で戻すと iPhone の動きと交互になり、揺れが戻る。
-       測れた高さは覚えるので、次からは最初の持ち上げで足り、ここは動かない */
-    let unpanT = 0;
-    let touching = 0;
-    const unpanSoon = () => {
-        clearTimeout(unpanT);
-        unpanT = setTimeout(unpan, 160);
+    /* ---- 入力欄に「こちらで」フォーカスを入れる（2.16.2〜） ----
+       **iOS は、タップした時点の入力欄の位置を基準に、画面ぜんたいの押し上げ量を決める。**
+       2.16.1 の実機の画面写しで、focusin で紙を持ち上げたぶんと、iOS の押し上げ（約230px）が
+       両方かかって、紙の見出しがダイナミックアイランドの裏へ入っていた。focusin では遅い。
+       かといって touchstart で持ち上げると、指の下から入力欄が逃げる（2.13.1）。
+       そこで、キーボードに隠れる位置の入力欄をタップしたときは、
+         1. touchend で preventDefault（iOS の「タップで入れる」＝押し上げの基準取りをさせない）
+         2. その場で場所を空ける（紙を持ち上げる／全画面の送り場を縮めて中を送る）
+         3. 入力欄がキーボードより上に来てから、こちらで focus({ preventScroll: true })
+       iOS から見ると「最初からキーボードの上にある入力欄にフォーカスが来た」ので、押し上げる理由がない。
+       ・touchend は同じ指の操作の中なので、iOS は focus() でもキーボードを出す
+       ・❌ touchstart / touchmove は passive のまま（画面を送れなくなる）。止めるのは touchend だけ
+       ・すでに打っている入力欄をタップしたとき（カーソルを動かす）は、iOS にまかせる
+       ・textarea は、キーボードに隠れない位置ならタップのまま（押した場所にカーソルが入る）。
+         隠れる位置のときだけこちらで入れ、カーソルは最後へ置く */
+    let fa = null;
+    const faStart = (e) => {
+        const p = e.touches && e.touches[0];
+        if (!p || e.touches.length > 1) {
+            fa = null;
+            return;
+        }
+        const t = e.target;
+        const el = t && t.closest ? t.closest("input, textarea") : null;
+        fa = (el && isTyping(el) && document.activeElement !== el) ? { x: p.clientX, y: p.clientY, at: Date.now(), el, moved: false } : null;
     };
-    const unpan = () => {
-        if (touching > 0)
-            return;
-        if (!coarse() || !isTyping(document.activeElement) || overlayCount <= 0)
-            return;
-        const off = vv.offsetTop || 0;
-        const y = window.scrollY || document.documentElement.scrollTop || 0;
-        if (off < 2 && Math.abs(y - overlayLockY) < 2)
-            return;
-        const raw = Math.round(layoutHeight() - vv.height);
-        if (!(raw >= 60))
-            return;
-        setKb(raw, 0);
-        window.scrollTo(0, overlayLockY);
-        reveal();
+    const faMove = (e) => {
+        const p = e.touches && e.touches[0];
+        if (fa && p && Math.hypot(p.clientX - fa.x, p.clientY - fa.y) > 10)
+            fa.moved = true;
     };
+    const faEnd = (e) => {
+        const s0 = fa;
+        fa = null;
+        if (!s0 || s0.moved || Date.now() - s0.at > 600 || (e.touches && e.touches.length))
+            return;
+        const el = s0.el;
+        if (!el.isConnected || !isTyping(el) || document.activeElement === el || !coarse())
+            return;
+        const G = guessKb();
+        const inSheet = !!el.closest(".ft-sheet-wrap");
+        const r = el.getBoundingClientRect();
+        const covered = r.bottom > layoutHeight() - G - 12;
+        /* textarea は、隠れないならタップのまま（カーソルを押した場所に入れたい） */
+        if (el.tagName === "TEXTAREA" && !covered && !inSheet)
+            return;
+        if (!inSheet && !covered)
+            return;
+        e.preventDefault();
+        ctx = inSheet ? "sheet" : "overlay";
+        setKb(Math.max(shown > 0 ? shown : 0, G), 0);
+        /* 全画面：送り場が縮んだので、入力欄を送り場の中へ（アニメーションなしで）送る */
+        reveal(el, true);
+        try {
+            el.focus({ preventScroll: true });
+        }
+        catch (err) {
+            el.focus();
+        }
+        if (el.tagName === "INPUT") {
+            try {
+                const n = (el.value || "").length;
+                el.setSelectionRange(n, n);
+            }
+            catch (err) { }
+        }
+    };
+    /* ---- それでも iOS が押し上げたときの相殺（2.16.2〜。保険） ----
+       見込みより大きいキーボード（絵文字・ほかのキーボード・はじめて開いた）などで押し上げが起きたら、
+       visualViewport.offsetTop のぶんだけ、いちばん外の層（全画面・紙の外わく）を CSS の translate で
+       下へずらし、見た目の位置を元に戻す。紙の下の余白は、ずらしたぶんを引かない本当の高さ（raw）にする。
+       ・transform ではなく translate プロパティを使う（入場の anim-* や FLIP の transform と混ざらない）
+       ・入れ子の紙（全画面の中の紙など）はずらさない（外の層ごと動くので二重になる）
+       ・❌ window.scrollTo で押し上げを戻さないこと。iOS の動きと取り合って揺れる（2.16.0 まで）
+       ・visualViewport のイベントは iOS の描画より遅れて届くので、押し上げが起きたときは一瞬見える。
+         だから本命は上の「こちらでフォーカス」で、こちらは保険 */
+    let compLayers = [];
+    const outerLayers = () => [...document.querySelectorAll("[data-ft-overlay], .ft-sheet-wrap")]
+        .filter((el) => !(el.parentElement && el.parentElement.closest("[data-ft-overlay], .ft-sheet-wrap")));
+    const applyComp = (y) => {
+        y = Math.max(0, Math.round(y || 0));
+        const layers = y >= 1 ? outerLayers() : [];
+        compLayers.forEach((el) => { if (!layers.includes(el))
+            el.style.removeProperty("translate"); });
+        layers.forEach((el) => el.style.setProperty("translate", "0 " + y + "px"));
+        compLayers = layers;
+        document.documentElement.toggleAttribute("data-ft-comp", layers.length > 0);
+    };
+    /* キーボードが出ていないときのレイアウトの高さ。キーボードでレイアウトごと縮む iOS
+       （見える高さと同じだけ縮み、offsetTop もずれない）では、紙を持ち上げる必要がない */
+    let baseH = 0;
     const measure = () => {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
-            /* raw ＝ キーボードそのものの高さ（覚えるのはこちら）。
-               kb  ＝ レイアウトの下から隠れている高さ（紙の下の余白に使う）。iPhone が画面をずらしたぶん小さい */
-            const raw = Math.round(layoutHeight() - vv.height);
-            let kb = Math.round(raw - vv.offsetTop);
-            if (!(kb >= 60))
-                kb = 0;
+            /* raw ＝ キーボードそのものの高さ（レイアウトの高さ − 見えている高さ）。
+               押し上げは translate で相殺するので、紙の下の余白も raw をそのまま使う（2.16.2〜） */
+            const lh = layoutHeight();
+            const raw = Math.round(lh - vv.height);
+            const off = vv.offsetTop || 0;
             const typing = isTyping(document.activeElement);
-            if (kb > 0 && typing) {
-                if (raw >= 60)
-                    rememberKb(raw);
-                setKb(kb, vv.offsetTop);
+            if (!typing && raw < 60 && off < 1)
+                baseH = lh;
+            /* レイアウトごと縮んだ（キーボードのぶん、見える高さといっしょに小さくなった）なら、
+               こちらで持ち上げない。二重に上がる */
+            const layoutShrunk = typing && baseH > 0 && lh < baseH - 60;
+            if (typing && raw >= 60) {
+                rememberKb(raw);
+                setKb(raw, 0);
+                applyComp(off);
                 revealSoon();
-                unpanSoon();
                 return;
             }
-            if (kb > 0) {
-                /* 入力欄から外れたのに、キーボードがまだ引っ込みきっていない。
-                   紙はキーボードといっしょに下げはじめる（2.16.0〜）。全画面はこれまでどおり */
-                if (ctx === "sheet") {
-                    setKb(0);
+            if (typing && layoutShrunk) {
+                applyComp(0);
+                setKb(0);
+                return;
+            }
+            if (!typing) {
+                applyComp(0);
+                if (raw >= 60 && ctx !== "sheet") {
+                    /* 全画面：キーボードが引っ込みきるまで縮めたまま（早く戻すと送っていた位置がずれる） */
+                    setKb(raw, 0);
                     return;
                 }
-                setKb(kb, vv.offsetTop);
+                setKb(0);
+                /* うしろを留めているなら、入力のあいだに iOS が送ったページを、キーボードが消えてから一度だけ戻す */
+                if (raw < 60 && overlayCount > 0) {
+                    const y = window.scrollY || document.documentElement.scrollTop || 0;
+                    if (Math.abs(y - overlayLockY) > 1)
+                        window.scrollTo(0, overlayLockY);
+                }
                 return;
             }
-            /* キーボードが出てくる途中（まだ測れない）あいだは、先に足した余白を消さない。
-               消すと送り場が縮んで、見ている位置がずれる */
-            if (typing)
-                return;
-            setKb(0);
+            /* キーボードが出てくる途中（まだ測れない）は、先に空けた場所を消さない */
         });
     };
     /* 紙の入力欄から外れたら、キーボードが引っ込むのを待たずに紙を下げはじめる（2.16.0〜）。
@@ -19997,6 +20072,7 @@ function useLockBackground() {
                 return;
             clearTimeout(settle);
             clearTimeout(revealT);
+            applyComp(0);
             setKb(0);
         }, 0);
     };
@@ -20161,15 +20237,11 @@ function useLockBackground() {
     document.addEventListener("touchstart", noteDown, { passive: true, capture: true });
     document.addEventListener("pointerdown", noteDown, { passive: true, capture: true });
     document.addEventListener("click", guardClick, true);
-    /* 指が触れているあいだは unpan を待たせる（指で画面を動かしているのを取り上げない） */
-    document.addEventListener("touchstart", (e) => { touching = (e.touches && e.touches.length) || 1; }, { passive: true, capture: true });
-    const touchOff = (e) => {
-        touching = (e.touches && e.touches.length) || 0;
-        if (!touching && isTyping(document.activeElement))
-            unpanSoon();
-    };
-    document.addEventListener("touchend", touchOff, { passive: true, capture: true });
-    document.addEventListener("touchcancel", touchOff, { passive: true, capture: true });
+    /* こちらでフォーカスを入れる（2.16.2〜）。touchend だけは passive: false（preventDefault するため） */
+    document.addEventListener("touchstart", faStart, { passive: true, capture: true });
+    document.addEventListener("touchmove", faMove, { passive: true, capture: true });
+    document.addEventListener("touchend", faEnd, { passive: false, capture: true });
+    document.addEventListener("touchcancel", () => { fa = null; }, { passive: true, capture: true });
     document.addEventListener("focusin", reserve, true);
     document.addEventListener("focusout", onFocusOut, true);
     vv.addEventListener("resize", measure);
@@ -26508,6 +26580,10 @@ html[data-ft-kb][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .
    入力欄に触れた瞬間に紙と暗がりがまとめて上へずれたまま戻らなかった。
    overflow: clip は送る余地を作らない。使えない古い iPhone では installKeyboardInset が送られた外わくを 0 へ戻す */
 @supports (overflow: clip) { .ft-sheet-wrap { overflow: clip; } }
+/* 紙の外わくの外がわも白で埋める（2.16.2〜。[data-ft-overlay] と同じ）。
+   キーボードでレイアウトごと縮む iOS では、外わくの下の端がキーボードの上の帯より上に来て、
+   そのすき間（帯のまわりは半透明）から、暗くなっていない一覧がのぞいていた。影は外がわだけなので、中の見た目は変わらない */
+.ft-sheet-wrap { box-shadow: 0 0 0 100vmax #FFFFFF; }
 /* しぼりこみの中の日付は、カプセルと同じ高さに */
 .ft-h-pill { min-height: 44px; height: 44px; }
 .ft-sheet-box  { max-height: 82%; }
