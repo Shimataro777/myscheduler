@@ -19777,6 +19777,8 @@ function useLockBackground() {
         const lowering = kb === 0 && shown > 0;
         const boxes = (lowering && motionOn()) ? sheetBoxes() : [];
         const before = boxes.map((b) => b.getBoundingClientRect().top);
+        if (boxes.length)
+            endLiftFx();
         boxes.forEach((b) => { if (b.__ftKbAnim) {
             b.__ftKbAnim.cancel();
             b.__ftKbAnim = null;
@@ -19953,6 +19955,106 @@ function useLockBackground() {
         if (fa && p && Math.hypot(p.clientX - fa.x, p.clientY - fa.y) > 10)
             fa.moved = true;
     };
+    /* ---- 持ち上げを滑らかに見せる（2.16.3〜）：「iOS が読む位置」と「見た目の位置」を分ける ----
+       ・紙の箱は、レイアウトではその場で最終位置へ上げる（2.16.2 のまま）。そのうえで Web Animations の
+         transform で「元の位置 → 最終位置」へ KB_ANIM_MS かけて滑らせる（FLIP）
+       ・**本物の入力欄には、紙と逆向きの同じ動きを同じ時間・同じ曲線で当てる。** 紙＋入力欄で差し引き 0 になり、
+         iOS が読む入力欄（とカーソル）の位置は、動いているあいだもずっと最終位置（キーボードより上）のまま。
+         押し上げの理由は生まれない
+       ・その本物の入力欄は、動いているあいだだけ透明にし（.ft-kb-ghost。文字・カーソル・枠・背景だけ透明。
+         opacity / visibility は使わない＝iOS が「見えていない欄」として扱い、カーソルを出さなくなることがある）、
+         見た目は紙といっしょに動く複製（data-ft-kb-clone）で見せる。動き終わったら複製を外し、本物を見せる。
+         位置は同じなので、入れ替わりは見えない
+       ・❌ 入力欄の逆向きの動きを外さないこと。外すと、動いているあいだ入力欄がキーボードの裏にあることになり、
+         iOS が画面ぜんたいを押し上げる（2.16.1 までの症状）
+       ・❌ fill（forwards / both）を付けないこと（終わったあとも transform が残り、中の fixed がずれる）
+       ・「画面の動き」オフ／視差効果を減らす、では動かさない（その場で上がる） */
+    let liftFx = null;
+    const endLiftFx = () => {
+        const fx = liftFx;
+        liftFx = null;
+        if (!fx)
+            return;
+        fx.anims.forEach((a) => { try {
+            a.cancel();
+        }
+        catch (e) { } });
+        if (fx.clone && fx.clone.parentNode)
+            fx.clone.parentNode.removeChild(fx.clone);
+        if (fx.el)
+            fx.el.classList.remove("ft-kb-ghost");
+    };
+    const makeClone = (el, box) => {
+        const r = el.getBoundingClientRect();
+        const br = box.getBoundingClientRect();
+        const c = el.cloneNode(true);
+        ["id", "name", "autofocus", "required"].forEach((a) => c.removeAttribute(a));
+        try {
+            c.value = el.value;
+        }
+        catch (e) { }
+        c.readOnly = true;
+        c.tabIndex = -1;
+        c.setAttribute("aria-hidden", "true");
+        c.setAttribute("data-ft-kb-clone", "");
+        Object.assign(c.style, {
+            position: "absolute", margin: "0", boxSizing: "border-box", pointerEvents: "none", zIndex: "5",
+            left: (r.left - br.left - box.clientLeft) + "px", top: (r.top - br.top - box.clientTop) + "px",
+            width: r.width + "px", height: r.height + "px",
+        });
+        box.appendChild(c);
+        if (el.tagName === "TEXTAREA")
+            c.scrollTop = el.scrollTop;
+        return c;
+    };
+    /* 持ち上げる前に呼ぶ。動かす前の位置を測り、持ち上げたあとに動きを始める関数を返す */
+    const prepLift = (el) => {
+        endLiftFx();
+        if (!motionOn())
+            return null;
+        const box = sheetBoxes().find((b) => b.contains(el));
+        if (!box)
+            return null;
+        if (box.__ftKbAnim) {
+            box.__ftKbAnim.cancel();
+            box.__ftKbAnim = null;
+        }
+        const before = box.getBoundingClientRect().top;
+        return () => {
+            const d = before - box.getBoundingClientRect().top;
+            if (Math.abs(d) < 2 || !box.isConnected)
+                return;
+            const opt = { duration: KB_ANIM_MS, easing: KB_EASE };
+            let clone = null;
+            try {
+                clone = makeClone(el, box);
+            }
+            catch (e) {
+                clone = null;
+            }
+            try {
+                const a1 = box.animate([{ transform: `translateY(${d}px)` }, { transform: "translateY(0)" }], opt);
+                /* 逆向き。紙と同じ時間・同じ曲線・同じ瞬間に始めるので、毎コマ差し引き 0 */
+                const a2 = el.animate([{ transform: `translateY(${-d}px)` }, { transform: "translateY(0)" }], opt);
+                if (clone)
+                    el.classList.add("ft-kb-ghost");
+                box.__ftKbAnim = a1;
+                const fx = { anims: [a1, a2], clone, el };
+                liftFx = fx;
+                a1.onfinish = () => {
+                    if (box.__ftKbAnim === a1)
+                        box.__ftKbAnim = null;
+                    if (liftFx === fx)
+                        endLiftFx();
+                };
+            }
+            catch (e) {
+                if (clone && clone.parentNode)
+                    clone.parentNode.removeChild(clone);
+                el.classList.remove("ft-kb-ghost");
+            }
+        };
+    };
     const faEnd = (e) => {
         const s0 = fa;
         fa = null;
@@ -19972,9 +20074,15 @@ function useLockBackground() {
             return;
         e.preventDefault();
         ctx = inSheet ? "sheet" : "overlay";
+        /* 紙：動かす前の位置を測っておく（2.16.3〜） */
+        const play = inSheet ? prepLift(el) : null;
         setKb(Math.max(shown > 0 ? shown : 0, G), 0);
         /* 全画面：送り場が縮んだので、入力欄を送り場の中へ（アニメーションなしで）送る */
         reveal(el, true);
+        /* 見た目の動きは、レイアウトを上げたあと・focus の前に始める。
+           本物の入力欄は差し引き 0 なので、focus の時点で iOS が読む位置は最終位置のまま */
+        if (play)
+            play();
         try {
             el.focus({ preventScroll: true });
         }
@@ -20072,6 +20180,7 @@ function useLockBackground() {
                 return;
             clearTimeout(settle);
             clearTimeout(revealT);
+            endLiftFx();
             applyComp(0);
             setKb(0);
         }, 0);
@@ -26580,6 +26689,10 @@ html[data-ft-kb][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .
    入力欄に触れた瞬間に紙と暗がりがまとめて上へずれたまま戻らなかった。
    overflow: clip は送る余地を作らない。使えない古い iPhone では installKeyboardInset が送られた外わくを 0 へ戻す */
 @supports (overflow: clip) { .ft-sheet-wrap { overflow: clip; } }
+/* 紙が持ち上がるあいだだけ、本物の入力欄を透明にする（2.16.3〜。installKeyboardInset の prepLift）。
+   見た目は紙といっしょに動く複製が受け持つ。**opacity / visibility で隠さないこと**（iOS がカーソルを出さなくなることがある） */
+.ft-kb-ghost, .ft-kb-ghost::placeholder { color: transparent !important; -webkit-text-fill-color: transparent !important; caret-color: transparent !important; }
+.ft-kb-ghost { background: transparent !important; border-color: transparent !important; box-shadow: none !important; outline: none !important; }
 /* 紙の外わくの外がわも白で埋める（2.16.2〜。[data-ft-overlay] と同じ）。
    キーボードでレイアウトごと縮む iOS では、外わくの下の端がキーボードの上の帯より上に来て、
    そのすき間（帯のまわりは半透明）から、暗くなっていない一覧がのぞいていた。影は外がわだけなので、中の見た目は変わらない */
