@@ -22505,6 +22505,13 @@ function PhotoViewer({ images, index, onClose }) {
     };
     const onDown = (e) => {
         e.stopPropagation();
+        /* **ボタン（✕・もとの大きさに戻す）の上から始まった指は、ここで受けないこと（2.11.23〜）。**
+           下で wrapRef.setPointerCapture を呼ぶと、指を離したときの click が
+           ボタンではなく wrapRef へ届き、ボタンの onClick が動かなくなる
+           （ドラムの WheelSheet で「行の onClick に頼らない」としているのと同じ仕組み）。
+           ボタンは wrapRef の中にあるので、ここで見分けて素通りさせる */
+        if (e.target && e.target.closest && e.target.closest("button"))
+            return;
         const s = st.current;
         s.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (wrapRef.current && wrapRef.current.setPointerCapture) {
@@ -22593,6 +22600,11 @@ function PhotoViewer({ images, index, onClose }) {
     const onUp = (e) => {
         e.stopPropagation();
         const s = st.current;
+        /* onDown が受けなかった指（ボタンから始まったもの）は、離しても何もしない。
+           これが無いと、前の操作の s.moved が残っていて「一度たたき」として数えられ、
+           280ms 後にビューアごと閉じてしまう */
+        if (!s.pts.has(e.pointerId))
+            return;
         s.pts.delete(e.pointerId);
         if (s.mode === "pinch") {
             if (s.pts.size >= 1) {
@@ -25934,11 +25946,16 @@ button:active { transition-duration: 60ms; }
 .text-th-950{color:var(--th-950)}
 .border-th-950{border-color:var(--th-950)}
 .bg-th-50\\/40{background-color:color-mix(in srgb, var(--th-50) 40%, transparent)}
+/* **:hover は、マウスのある端末だけに付けること（2.11.23〜）。**
+   指で触れると iPhone / iPad は :hover を付けたままにし、押したボタンの色が残る。
+   新しい hover: の道具は、必ずこの @media の中に書く（app.css 側も同じ） */
+@media (hover:hover) and (pointer:fine){
 .hover\\:bg-th-50:hover{background-color:var(--th-50)} .hover\\:bg-th-100:hover{background-color:var(--th-100)}
 .hover\\:bg-th-800:hover{background-color:var(--th-800)} .hover\\:bg-th-900:hover{background-color:var(--th-900)}
+}
 .text-th-700{color:var(--th-700)} .text-th-800{color:var(--th-800)} .text-th-900{color:var(--th-900)}
 .text-th-800\\/60{color:color-mix(in srgb, var(--th-800) 60%, transparent)}
-.hover\\:text-th-900:hover{color:var(--th-900)}
+@media (hover:hover) and (pointer:fine){ .hover\\:text-th-900:hover{color:var(--th-900)} }
 .border-th-200{border-color:var(--th-200)} .border-th-300{border-color:var(--th-300)}
 .border-th-700{border-color:var(--th-700)} .border-th-800{border-color:var(--th-800)} .border-th-900{border-color:var(--th-900)}
 .border-th-700\\/35{border-color:color-mix(in srgb, var(--th-700) 35%, transparent)}
@@ -25950,15 +25967,15 @@ button:active { transition-duration: 60ms; }
    出力されず、白い字が白い面にのって「ボタンが消える」ことがある */
 /* 主なボタンは黒に近い墨色。**色で塗らないこと**（色は要所だけ） */
 .bg-ink{background-color:#141416}
-.bg-ink:hover{background-color:#000000}
+@media (hover:hover) and (pointer:fine){ .bg-ink:hover{background-color:#000000} }
 .text-ink{color:#141416}
 .bg-rose-700{background-color:var(--color-danger)}
 .bg-rose-800{background-color:var(--color-danger-strong)}
-.hover\\:bg-rose-800:hover{background-color:var(--color-danger-strong)}
+@media (hover:hover) and (pointer:fine){ .hover\\:bg-rose-800:hover{background-color:var(--color-danger-strong)} }
 .bg-rose-50{background-color:var(--color-danger-surface)}
-.hover\\:bg-rose-50:hover{background-color:var(--color-danger-surface)}
+@media (hover:hover) and (pointer:fine){ .hover\\:bg-rose-50:hover{background-color:var(--color-danger-surface)} }
 .text-rose-700{color:var(--color-danger)}
-.hover\\:text-rose-700:hover{color:var(--color-danger)}
+@media (hover:hover) and (pointer:fine){ .hover\\:text-rose-700:hover{color:var(--color-danger)} }
 .border-rose-200{border-color:var(--color-danger-border)}
 .text-white{color:#FFFFFF}
 .bg-white{background-color:#FFFFFF}
@@ -25968,7 +25985,7 @@ button:active { transition-duration: 60ms; }
 /* 地はまっ白。**色を敷かないこと。**（札は影とうすい線で浮かせる） */
 .bg-app{background-color:#FFFFFF}
 .bg-white\\/15{background-color:rgba(255,255,255,.15)}
-.hover\\:bg-white\\/15:hover{background-color:rgba(255,255,255,.15)}
+@media (hover:hover) and (pointer:fine){ .hover\\:bg-white\\/15:hover{background-color:rgba(255,255,255,.15)} }
 .text-white\\/70{color:rgba(255,255,255,.7)}
 .border-dashed-th{border-color:var(--th-200)}
 /* 札のうすい影。線をなくして、影で浮かせる */

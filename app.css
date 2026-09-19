@@ -88,7 +88,18 @@ body{background:#FFFFFF;-webkit-font-smoothing:antialiased;
 img,svg,video{display:block;max-width:100%}
 button,input,textarea,select{font:inherit;color:inherit;background:transparent}
 button{cursor:pointer}
-input:focus,textarea:focus,button:focus,select:focus{outline:none}
+input:focus,textarea:focus,select:focus{outline:none}
+/* **button の :focus を、まるごと消さないこと（2.11.23〜）。**
+   以前は button:focus{outline:none} で、キーボードで Tab を押しても、いま
+   どこにいるのか見えなかった。かといって :focus のまま枠を出すと、タップやクリックの
+   あとも枠が残る。指・マウスで当たったフォーカスは出さず、キーボードで来たときだけ
+   :focus-visible で見せる。入力欄（input / textarea / select）は、それぞれの
+   focus: の道具（inputCls）で見せているので、ここでは触れない */
+button:focus:not(:focus-visible){outline:none}
+button:focus-visible,[role="button"]:focus-visible,a:focus-visible,summary:focus-visible{
+  outline:2px solid var(--th-800,#35A985);
+  outline-offset:-2px; /* 内側に引く。overflow:hidden の札や見出しの中でも、枠が切れない */
+}
 /* 入力欄の字。**16pxを下回らせないこと。** iPhoneのSafariは16px未満の入力欄に
    触れると画面を勝手に拡大してしまう。max() で下限を16pxに留めたまま、
    文字の大きさの設定では「大きくなる方向にだけ」連動させる */
@@ -194,12 +205,19 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .h-full{height:100%}
 .head-bar{}
 .hidden{display:none}
+/* **:hover は、マウスのある端末だけに付けること（2.11.23〜）。**
+   iPhone / iPad は、指で触れると :hover を付け、次にほかを触れるまで外さない。
+   押したボタンの色が変わったまま残り、続けて押したときの反応も鈍く見える。
+   新しい hover: の道具を足すときも、必ずこの @media の中に書く。
+   （GLOBAL_CSS 側の hover 系も同じ。読み込み順を変えないよう、元の場所のまま包んである） */
+@media (hover:hover) and (pointer:fine){
 .hover\:bg-neutral-100:hover{background-color:#F5F5F5}
 .hover\:bg-neutral-50:hover{background-color:#FAFAFA}
 .hover\:bg-rose-50:hover{background-color:var(--color-danger-surface)}
 .hover\:bg-rose-800:hover{background-color:var(--color-danger-strong)}
 .hover\:text-red-700:hover{color:#B91C1C}
 .hover\:text-rose-700:hover{color:var(--color-danger)}
+}
 .inline-block{display:inline-block}
 .inline-flex{display:inline-flex}
 .inset-0{top:0;right:0;bottom:0;left:0}
