@@ -19714,28 +19714,32 @@ function useLockBackground() {
         return Math.round(layoutHeight() * 0.5);
     };
     /* ================================================================
-       キーボードと入力欄（2.16.4〜 作り直し）
+       キーボードと入力欄（2.16.6〜）
        ----------------------------------------------------------------
-       **iOS は、フォーカスが入った時点（とキーボードが出るあいだ）の「本物のカーソルの位置」で、
-       画面ぜんたいを押し上げるかどうかを決める。** キーボードに隠れる位置の入力欄に本物のカーソルを
-       出した瞬間に、ヘッダーごと押し上げられる（2.16.1 までの症状）。
-       そこで、キーボードに隠れる入力欄をタップしたときは、
+       **iOS は、フォーカスが入った時点の本物のカーソルの位置で、画面ぜんたいを押し上げるかを決める。**
+       だから、どの画面のどの入力欄も、タップで iOS に直接フォーカスさせない（2.16.5 までは「キーボードに
+       隠れない欄」「下タブの画面の欄」を iOS にまかせていて、そこからずれが戻っていた）。
          1. touchend で preventDefault（iOS の「タップで入れる」を止める）
-         2. 持ち上がった先の位置に置いた、見えない入力欄（data-ft-kb-proxy）にフォーカス
-            → キーボードはすぐ出はじめる。iOS から見るとカーソルはキーボードより上なので押し上げない
-         3. 押した入力欄には、その場でフォーカス枠だけを出す（.ft-kb-pending-ring）。
-            **カーソルは描かない（2.16.5〜）。** 本物のカーソルは持ち上がりきってから出る
-         4. 入力エリアを CSS の transition（transform）で KB_ANIM_MS かけて持ち上げる
-         5. 上がりきったら、本物の入力欄へフォーカスを移す（キーボードは出たまま）
-       ・紙：紙の箱ごと transform で持ち上げる。下ろすときも transition
-       ・全画面：送り場の中身（子）を transform で持ち上げ、上がりきったら scrollTop へ置きかえる。
-         **見出しと下のボタンの帯は動かさない**（ボタンはキーボードの裏に残る）
-       ・キーボードに隠れない入力欄は、ふつうのタップのまま（カーソルは押した場所）
-       ・❌ 本物の入力欄に、キーボードの裏の位置でフォーカスを入れないこと（押し上げが戻る）
-       ・❌ 押し上げに window.scrollTo のくり返しで対抗しないこと（揺れる）
+         2. 画面の上のほう（見出しの下あたり）に置いた、見えない入力欄（data-ft-kb-proxy）にフォーカス
+            → キーボードが下から出てくる。iOS から見ると入力欄はキーボードより上なので、押し上げない
+         3. キーボードが出たのを待って（KB_WAIT_MS 以上）、押した入力欄のある所を
+            ゆっくり（KB_UP_MS、ease-out）キーボードの上へ持ち上げる。**キーボードの高さは実際に測った値を使う**
+              ・紙：紙の箱を transform（CSS transition）
+              ・全画面：送り場の中身（子）を transform。終わったら scrollTop へ置きかえる。見出し・下のボタンは動かさない
+              ・下タブの画面など（ページそのもの）：ページを同じ曲線で送る
+         4. 持ち上がりきったら、本物の入力欄へフォーカスを移す（キーボードは出たまま）。打ちかけの文字も移す
+       ・すでに打っている欄をタップしたとき（カーソルを動かす）だけは iOS にまかせる
+       ・カーソルの絵は描かない（2.16.5）。押した欄にはフォーカス枠だけを出す
+       ・❌ 本物の入力欄に、キーボードの裏になる位置で focus() しない
+       ・❌ 押し上げに window.scrollTo のくり返しで対抗しない／offsetTop で画面を下へずらして相殺しない
+         （2.16.2〜2.16.5 の「相殺」は、iOS が報告する量と実際の動きが食い違うと、画面ぜんたいを下げてしまう。やめた）
        ================================================================ */
-    const KB_ANIM_MS = 280;
-    const KB_EASE = "cubic-bezier(.2,.85,.25,1)";
+    const KB_WAIT_MS = 150;   /* タップからこれより前には持ち上げはじめない（キーボードを先に見せる） */
+    const KB_FALLBACK_MS = 420; /* キーボードの出た知らせが来なくても、ここで持ち上げはじめる */
+    const KB_UP_MS = 450;     /* 持ち上げる時間。目に優しい遅さにしてある */
+    const KB_DOWN_MS = 360;   /* 下ろす時間 */
+    const KB_EASE_UP = "cubic-bezier(0.22,1,0.36,1)";   /* --ease-out と同じ */
+    const KB_EASE_DOWN = "cubic-bezier(0.22,1,0.36,1)";
     const GAP = 12;
     const root = document.documentElement;
     let ctx = "";
@@ -19756,10 +19760,21 @@ function useLockBackground() {
         return true;
     } };
     const NO_KB_TYPES = FT_NO_KB_TYPES;
-    const isTyping = ftIsTypingEl;
+    /* キーボードで打つ欄か（どの画面にあっても）。日付・時刻などの選ぶ欄は含めない */
+    const TEXT_TYPES = { text: 1, search: 1, email: 1, url: 1, tel: 1, password: 1, number: 1 };
+    const isTyping = (el) => {
+        if (!el || !el.tagName)
+            return false;
+        if (el.tagName === "TEXTAREA")
+            return !el.readOnly && !el.disabled;
+        if (el.tagName === "INPUT")
+            return !el.readOnly && !el.disabled && !!TEXT_TYPES[(el.type || "text").toLowerCase()];
+        return false;
+    };
     const isProxy = (el) => !!(el && el.hasAttribute && el.hasAttribute("data-ft-kb-proxy"));
     const rawKb = () => Math.round(layoutHeight() - vv.height);
-    /* 全画面の送り場の下に足す「送れる余地」（--ft-kb、::after）。足しても見た目は動かない */
+    const kbTopNow = () => (rawKb() >= 60 ? vv.height + (vv.offsetTop || 0) : layoutHeight() - guessKb());
+    /* 送れる余地（--ft-kb）。全画面の送り場の最後・ページの最後に足す。足しても見た目は動かない */
     const setReserve = (kb) => {
         kb = Math.max(0, Math.round(kb || 0));
         if (kb < 60)
@@ -19773,16 +19788,12 @@ function useLockBackground() {
         else
             root.removeAttribute("data-ft-kb");
     };
-    /* キーボードが出きったあと、全画面の送り場をキーボードの上端で終わらせる（data-ft-kbfix）。
-       打っているうちにカーソルが下へ進んでも、iOS が送り場の中だけを送るようにするため。
-       下のボタンの帯は外わくの下に置いたまま（キーボードの裏）。出きる前には付けない
-       （付けた瞬間に、キーボードがまだ来ていない下のほうが白くなる） */
+    /* キーボードが出たあと、全画面の送り場をキーボードの上端で終わらせる（下のボタンの帯はキーボードの裏へ残す） */
     const FOOT_SEL = "[data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col > .flex-1.overflow-y-auto ~ .shrink-0";
     const setFix = (on) => {
         if (on === root.hasAttribute("data-ft-kbfix"))
             return;
         if (on) {
-            /* 下のボタンの帯を流れから外すぶん、送り場の最後に同じ高さを残す（送っている位置がずれないように） */
             let fh = 0;
             document.querySelectorAll(FOOT_SEL).forEach((f) => { fh = Math.max(fh, Math.round(f.getBoundingClientRect().height)); });
             root.style.setProperty("--ft-kbfoot", fh + "px");
@@ -19791,6 +19802,14 @@ function useLockBackground() {
         else
             root.removeAttribute("data-ft-kbfix");
     };
+    const setCtx = (c) => {
+        ctx = c;
+        if (c)
+            root.setAttribute("data-ft-kbctx", c);
+        else
+            root.removeAttribute("data-ft-kbctx");
+    };
+    const ctxOf = (el) => (el.closest(".ft-sheet-wrap") ? "sheet" : el.closest("[data-ft-overlay]") ? "overlay" : "page");
     let satProbe = null;
     const safeTop = () => {
         if (!satProbe) {
@@ -19817,20 +19836,18 @@ function useLockBackground() {
             n = n.parentElement;
         return n && n !== w ? n : null;
     };
-    /* 本物のフォーカスが入るまで、押した入力欄にフォーカス枠だけを出す（枠のある入力欄だけ） */
     const showRing = (el) => {
         if (/(^|\s)focus:ring-4(\s|$)/.test(el.className))
             el.classList.add("ft-kb-pending-ring");
     };
     const hideRing = (el) => { el.classList.remove("ft-kb-pending-ring"); };
-    /* 見えない入力欄。キーボードを呼ぶためだけに使う。**持ち上がった先の位置**に置く（iOS が読む位置） */
-    const makeProxy = (el, layer, top) => {
+    /* 見えない入力欄。**画面の上のほう**（見出しの下あたり）に置く。キーボードの高さによらず、いつもキーボードより上 */
+    const makeProxy = (el) => {
         const isTA = el.tagName === "TEXTAREA";
         const p = document.createElement(isTA ? "textarea" : "input");
         if (!isTA) {
-            const ty = (el.type || "text").toLowerCase();
             try {
-                p.type = NO_KB_TYPES[ty] ? "text" : ty;
+                p.type = (el.type || "text").toLowerCase() === "password" ? "password" : (el.type || "text");
             }
             catch (e) { }
         }
@@ -19842,13 +19859,10 @@ function useLockBackground() {
         p.setAttribute("aria-hidden", "true");
         p.setAttribute("data-ft-kb-proxy", "");
         p.tabIndex = -1;
-        const r = el.getBoundingClientRect();
-        const lr = layer.getBoundingClientRect();
-        Object.assign(p.style, { position: "absolute", left: Math.round(r.left - lr.left) + "px", top: Math.round(top - lr.top) + "px",
-            width: Math.round(r.width) + "px", height: Math.round(r.height) + "px", margin: "0", padding: "0", border: "0",
-            fontSize: "16px", background: "transparent", color: "transparent", caretColor: "transparent",
-            outline: "none", boxShadow: "none", pointerEvents: "none", resize: "none", zIndex: "-1" });
-        layer.appendChild(p);
+        Object.assign(p.style, { position: "fixed", left: "0", top: Math.round(safeTop() + 64) + "px", width: "100%", height: "40px",
+            margin: "0", padding: "0", border: "0", fontSize: "16px", background: "transparent", color: "transparent",
+            caretColor: "transparent", outline: "none", boxShadow: "none", pointerEvents: "none", resize: "none", zIndex: "-1" });
+        document.body.appendChild(p);
         return p;
     };
     const insertText = (el, v) => {
@@ -19860,28 +19874,31 @@ function useLockBackground() {
         }
         catch (e) { }
     };
-    /* ---- 紙の持ち上げ（CSS transition だけ） ---- */
+    /* ---- 紙：紙の箱を transform で上げ下げ ---- */
     const liftedBoxes = new Set();
-    const setSheetY = (box, y, animate) => {
+    const setSheetY = (box, y, ms, ease) => {
         y = Math.max(0, Math.round(y || 0));
-        const was = box.__ftLiftY || 0;
-        if (y === was)
+        if (y === (box.__ftLiftY || 0))
             return;
         box.__ftLiftY = y;
         clearTimeout(box.__ftLiftT);
-        box.style.transition = (animate && motionOn()) ? `transform ${KB_ANIM_MS}ms ${KB_EASE}` : "none";
+        box.style.transition = (ms && motionOn()) ? `transform ${ms}ms ${ease}` : "none";
         box.style.transform = y ? `translateY(${-y}px)` : "";
         if (y)
             liftedBoxes.add(box);
         else
             liftedBoxes.delete(box);
-        box.__ftLiftT = setTimeout(() => { box.style.transition = ""; }, KB_ANIM_MS + 40);
+        box.__ftLiftT = setTimeout(() => { box.style.transition = ""; }, (ms || 0) + 40);
+    };
+    const sheetCap = (box) => {
+        const natTop = box.getBoundingClientRect().top + (box.__ftLiftY || 0);
+        return Math.max(0, natTop - safeTop() - 8);
     };
     const lowerSheets = () => { [...liftedBoxes].forEach((b) => { if (b.isConnected)
-        setSheetY(b, 0, true);
+        setSheetY(b, 0, KB_DOWN_MS, KB_EASE_DOWN);
     else
         liftedBoxes.delete(b); }); };
-    /* ---- 全画面の送り場の持ち上げ：中身（子）を transform で上げ、上がりきったら scrollTop へ置きかえる ---- */
+    /* ---- 全画面：送り場の中身（子）を transform で上げ、終わったら scrollTop へ置きかえる ---- */
     const startScrollerLift = (sc, y) => {
         const max = sc.scrollHeight - sc.clientHeight - sc.scrollTop;
         y = Math.max(0, Math.min(Math.round(y), max));
@@ -19895,7 +19912,7 @@ function useLockBackground() {
         sc.__ftLift = { y, kids: kids.map((k) => [k, k.style.transform, k.style.transition]) };
         kids.forEach((k) => { k.style.transition = "none"; k.style.transform = "translateY(0px)"; });
         void sc.offsetHeight;
-        kids.forEach((k) => { k.style.transition = `transform ${KB_ANIM_MS}ms ${KB_EASE}`; k.style.transform = `translateY(${-y}px)`; });
+        kids.forEach((k) => { k.style.transition = `transform ${KB_UP_MS}ms ${KB_EASE_UP}`; k.style.transform = `translateY(${-y}px)`; });
         return y;
     };
     const endScrollerLift = (sc) => {
@@ -19908,6 +19925,29 @@ function useLockBackground() {
         void sc.offsetHeight;
         L.kids.forEach(([k, , tr]) => { k.style.transition = tr; });
     };
+    /* ---- ページそのもの（下タブの画面など）：同じ曲線でページを送る ---- */
+    let pageAnim = 0;
+    const scrollPageBy = (dy, ms) => {
+        cancelAnimationFrame(pageAnim);
+        const from = window.scrollY || document.documentElement.scrollTop || 0;
+        const max = Math.max(0, document.documentElement.scrollHeight - layoutHeight());
+        const to = Math.max(0, Math.min(max, from + dy));
+        if (Math.abs(to - from) < 1)
+            return;
+        if (!ms || !motionOn()) {
+            window.scrollTo(0, to);
+            return;
+        }
+        const t0 = performance.now();
+        const ease = (t) => 1 - Math.pow(1 - t, 4);
+        const step = (now) => {
+            const t = Math.min(1, (now - t0) / ms);
+            window.scrollTo(0, Math.round(from + (to - from) * ease(t)));
+            if (t < 1)
+                pageAnim = requestAnimationFrame(step);
+        };
+        pageAnim = requestAnimationFrame(step);
+    };
     /* ---- こちらでフォーカスを入れる ---- */
     let pending = null;
     const finishPending = (focusReal) => {
@@ -19916,6 +19956,7 @@ function useLockBackground() {
         if (!p)
             return;
         clearTimeout(p.timer);
+        clearTimeout(p.fallback);
         endScrollerLift(p.sc);
         const ours = document.activeElement === p.proxy;
         const v = p.proxy.value;
@@ -19937,6 +19978,64 @@ function useLockBackground() {
         hideRing(p.el);
         if (p.proxy.parentNode)
             p.proxy.parentNode.removeChild(p.proxy);
+        /* 見込みの高さで足していた余地などを、実際のキーボードに合わせ直す */
+        if (focusReal)
+            measure();
+    };
+    /* キーボードが出たら（または待ちきれなくなったら）、押した欄をキーボードの上へゆっくり持ち上げる */
+    const startSlide = () => {
+        const p = pending;
+        if (!p || p.started)
+            return;
+        const wait = KB_WAIT_MS - (Date.now() - p.at);
+        if (wait > 0) {
+            clearTimeout(p.timer);
+            p.timer = setTimeout(startSlide, wait);
+            return;
+        }
+        p.started = true;
+        clearTimeout(p.fallback);
+        const el = p.el;
+        if (!el.isConnected) {
+            finishPending(false);
+            return;
+        }
+        if (rawKb() >= 60)
+            rememberKb(rawKb());
+        if (p.ctx === "overlay" && rawKb() >= 60)
+            setFix(true);
+        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - kbTopNow());
+        let moved = false;
+        if (need > 0) {
+            if (p.ctx === "sheet") {
+                const box = sheetBoxOf(el);
+                if (box) {
+                    const cur = box.__ftLiftY || 0;
+                    const target = Math.min(sheetCap(box), cur + need);
+                    const rem = need - (target - cur);
+                    if (rem > 0) {
+                        /* 背の高い紙で上がりきらないぶんは、紙の中の送り場を送る */
+                        const isc = scrollerOf(el, box);
+                        if (isc)
+                            isc.scrollTop += Math.min(rem, isc.scrollHeight - isc.clientHeight - isc.scrollTop);
+                    }
+                    setSheetY(box, target, KB_UP_MS, KB_EASE_UP);
+                    moved = target !== cur;
+                }
+            }
+            else if (p.ctx === "overlay") {
+                const sc = scrollerOf(el, el.closest("[data-ft-overlay]"));
+                if (sc && startScrollerLift(sc, need)) {
+                    p.sc = sc;
+                    moved = true;
+                }
+            }
+            else {
+                scrollPageBy(need, KB_UP_MS);
+                moved = true;
+            }
+        }
+        p.timer = setTimeout(() => finishPending(true), (moved && motionOn()) ? KB_UP_MS + 20 : 0);
     };
     let fa = null;
     const faStart = (e) => {
@@ -19947,7 +20046,7 @@ function useLockBackground() {
         }
         const t = e.target;
         const el = t && t.closest ? t.closest("input, textarea") : null;
-        fa = (el && isTyping(el) && document.activeElement !== el) ? { x: p.clientX, y: p.clientY, at: Date.now(), el, moved: false } : null;
+        fa = (el && isTyping(el) && !isProxy(el) && document.activeElement !== el) ? { x: p.clientX, y: p.clientY, at: Date.now(), el, moved: false } : null;
     };
     const faMove = (e) => {
         const p = e.touches && e.touches[0];
@@ -19960,68 +20059,17 @@ function useLockBackground() {
         if (!s0 || s0.moved || Date.now() - s0.at > 600 || (e.touches && e.touches.length))
             return;
         const el = s0.el;
-        if (!el.isConnected || !isTyping(el) || document.activeElement === el || !coarse() || pending)
-            return;
-        const layer = el.closest(".ft-sheet-wrap") || el.closest("[data-ft-overlay]");
-        if (!layer)
-            return;
-        const inSheet = layer.classList.contains("ft-sheet-wrap");
-        /* キーボードがもう出ているとき（別の入力欄から移ってきた）は、その高さで見る */
-        const up = rawKb() >= 60;
-        const G = up ? rawKb() : Math.max(shown > 0 ? shown : 0, guessKb());
-        const kbTop = up ? vv.height + (vv.offsetTop || 0) : layoutHeight() - G;
-        const isTA = el.tagName === "TEXTAREA";
-        /* textarea は、押した場所がキーボードより上なら、ふつうのタップ（カーソルは押した場所） */
-        if (isTA && s0.y + 28 + GAP < kbTop)
-            return;
-        /* 持ち上げる量は、入力欄の下の端で決める（カーソルは文字の最後に入る。textarea は中身に合わせて
-           伸びるので、下の端がほぼ最後の行） */
-        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - kbTop);
-        if (need <= 0)
+        if (!el.isConnected || !isTyping(el) || document.activeElement === el || !coarse())
             return;
         e.preventDefault();
-        ctx = inSheet ? "sheet" : "overlay";
-        if (ctx === "overlay") {
-            setReserve(G);
-            root.setAttribute("data-ft-kbctx", "overlay");
-        }
-        else {
-            root.setAttribute("data-ft-kbctx", "sheet");
-        }
-        /* どれだけ、どこを動かすか */
-        let box = null, dBox = 0, sc = null, ySc = 0;
-        if (inSheet) {
-            box = sheetBoxOf(el);
-            if (box) {
-                const cur = box.__ftLiftY || 0;
-                const natTop = box.getBoundingClientRect().top + cur;
-                const cap = Math.max(0, natTop - safeTop() - 8);
-                const target = Math.min(cap, cur + need);
-                dBox = target - cur;
-                const rem = need - dBox;
-                if (rem > 0) {
-                    /* 背の高い紙で上がりきらないぶんは、紙の中の送り場を（その場で）送る */
-                    const isc = scrollerOf(el, box);
-                    if (isc) {
-                        const can = Math.min(rem, isc.scrollHeight - isc.clientHeight - isc.scrollTop);
-                        if (can > 0) {
-                            isc.scrollTop += can;
-                        }
-                    }
-                }
-                setSheetY(box, target, true);
-            }
-        }
-        else {
-            sc = scrollerOf(el, layer);
-            if (sc)
-                ySc = startScrollerLift(sc, need) || 0;
-        }
-        /* 見えない入力欄を「持ち上がった先」に置いて、キーボードを呼ぶ（同じ指の操作の中なので、キーボードが出る）。
-           送り場が motion オフで即座に送られた場合は、もう最終位置にいる */
-        const r2 = el.getBoundingClientRect();
-        const finalTop = r2.top - (box ? dBox : 0) - ySc;
-        const proxy = makeProxy(el, layer, finalTop);
+        if (pending)
+            finishPending(false);
+        const c = ctxOf(el);
+        setCtx(c);
+        /* 送れる余地を先に足す（見た目は動かない）。持ち上げるときに送る先になる */
+        if (c !== "sheet")
+            setReserve(Math.max(shown > 0 ? shown : 0, guessKb()));
+        const proxy = makeProxy(el);
         showRing(el);
         try {
             proxy.focus({ preventScroll: true });
@@ -20029,41 +20077,41 @@ function useLockBackground() {
         catch (err) {
             proxy.focus();
         }
-        pending = { el, proxy, sc: ySc ? sc : null, timer: 0 };
-        pending.timer = setTimeout(() => finishPending(true), motionOn() ? KB_ANIM_MS + 10 : 0);
+        pending = { el, proxy, ctx: c, sc: null, at: Date.now(), started: false, timer: 0, fallback: 0 };
+        /* キーボードがもう出ている（別の欄から移ってきた）ときは、すぐ持ち上げへ */
+        if (rawKb() >= 60)
+            startSlide();
+        else
+            pending.fallback = setTimeout(startSlide, KB_FALLBACK_MS);
     };
-    /* ---- ふつうのフォーカス（キーボードに隠れない入力欄・キーボードの ^ v で移ったとき） ---- */
-    /* キーボードが出ている・高さが分かっているとき、入力欄（textarea はカーソル）がキーボードに隠れていれば、
-       紙なら紙を、全画面なら送り場を、足りないぶんだけ動かす */
-    const adjustFor = (el, animate) => {
+    /* ---- キーボードの ^ v で移ったとき・見込みと違ったとき：隠れているぶんだけ合わせる ---- */
+    const adjustFor = (el) => {
         if (!el || !isTyping(el) || isProxy(el) || pending)
             return;
-        const up = rawKb() >= 60;
-        if (!up && !layoutShrunk())
+        if (rawKb() < 60 && !layoutShrunk())
             return;
-        const kbTop = vv.height + (vv.offsetTop || 0);
-        /* 全画面の textarea は iOS にまかせる（キーボードが出きれば送り場がキーボードの上端で終わるので、
-           iOS は送り場の中だけを送ってカーソルを見せる） */
-        if (el.tagName === "TEXTAREA" && !el.closest(".ft-sheet-wrap"))
+        const c = ctxOf(el);
+        /* 全画面の textarea は iOS にまかせる（送り場はキーボードの上端で終わっている） */
+        if (c === "overlay" && el.tagName === "TEXTAREA")
             return;
-        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - kbTop);
-        if (el.closest(".ft-sheet-wrap")) {
+        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - (vv.height + (vv.offsetTop || 0)));
+        if (c === "sheet") {
             const box = sheetBoxOf(el);
-            if (!box)
+            if (!box || Math.abs(need) < 2)
                 return;
             const cur = box.__ftLiftY || 0;
-            if (Math.abs(need) < 2)
-                return;
-            const natTop = box.getBoundingClientRect().top + cur;
-            const cap = Math.max(0, natTop - safeTop() - 8);
-            setSheetY(box, Math.max(0, Math.min(cap, cur + need)), animate);
+            setSheetY(box, Math.max(0, Math.min(sheetCap(box), cur + need)), KB_UP_MS, KB_EASE_UP);
             return;
         }
-        if (need > 1) {
+        if (need <= 1)
+            return;
+        if (c === "overlay") {
             const sc = scrollerOf(el, el.closest("[data-ft-overlay]"));
             if (sc)
                 sc.scrollTop += need;
         }
+        else
+            scrollPageBy(need, KB_UP_MS);
     };
     let baseH = 0;
     const layoutShrunk = () => baseH > 0 && layoutHeight() < baseH - 60;
@@ -20072,16 +20120,14 @@ function useLockBackground() {
         const t = e.target;
         if (isProxy(t) || !isTyping(t) || !coarse())
             return;
-        ctx = t.closest(".ft-sheet-wrap") ? "sheet" : "overlay";
-        root.setAttribute("data-ft-kbctx", ctx);
         if (pending && t === pending.el)
             return;
         if (pending)
             finishPending(false);
-        /* 全画面：送れる余地だけ先に足す（見た目は動かない） */
-        if (ctx === "overlay" && shown <= 0)
+        setCtx(ctxOf(t));
+        if (ctx !== "sheet" && shown <= 0)
             setReserve(guessKb());
-        adjustFor(t, false);
+        adjustFor(t);
         clearTimeout(settle);
         settle = setTimeout(() => {
             if (rawKb() < 60 && !layoutShrunk() && !pending) {
@@ -20091,53 +20137,43 @@ function useLockBackground() {
             }
         }, 1500);
     };
-    /* ---- それでも iOS が押し上げたときの相殺（2.16.2〜。保険） ---- */
-    let compLayers = [];
-    const outerLayers = () => [...document.querySelectorAll("[data-ft-overlay], .ft-sheet-wrap")]
-        .filter((el) => !(el.parentElement && el.parentElement.closest("[data-ft-overlay], .ft-sheet-wrap")));
-    const applyComp = (y) => {
-        y = Math.max(0, Math.round(y || 0));
-        const layers = y >= 1 ? outerLayers() : [];
-        compLayers.forEach((el) => { if (!layers.includes(el))
-            el.style.removeProperty("translate"); });
-        layers.forEach((el) => el.style.setProperty("translate", "0 " + y + "px"));
-        compLayers = layers;
-        root.toggleAttribute("data-ft-comp", layers.length > 0);
-    };
     const measure = () => {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
             const lh = layoutHeight();
             const raw = Math.round(lh - vv.height);
-            const off = vv.offsetTop || 0;
             const a = document.activeElement;
             const typing = isTyping(a);
-            if (!typing && raw < 60 && off < 1)
+            if (!typing && raw < 60)
                 baseH = lh;
+            if (pending) {
+                /* キーボードが出た知らせ。持ち上げはここから（KB_WAIT_MS より前なら、そこまで待つ） */
+                if (raw >= 60 && pending.ctx !== "sheet")
+                    setReserve(raw);
+                if (raw >= 60 || layoutShrunk())
+                    startSlide();
+                return;
+            }
             if (typing && raw >= 60) {
                 rememberKb(raw);
-                applyComp(off);
-                if (ctx === "overlay") {
+                if (ctx !== "sheet")
                     setReserve(raw);
+                if (ctx === "overlay")
                     setFix(true);
-                }
-                adjustFor(a, true);
+                adjustFor(a);
                 return;
             }
             if (typing) {
-                applyComp(0);
-                /* キーボードでレイアウトごと縮む iOS：縮んだ高さで合わせ直す */
                 if (layoutShrunk())
-                    adjustFor(a, true);
+                    adjustFor(a);
                 return;
             }
-            applyComp(0);
             lowerSheets();
             if (raw >= 60)
-                return; /* キーボードが引っ込む途中。全画面は引っ込みきるまで今のまま */
+                return; /* キーボードが引っ込む途中。全画面・ページは引っ込みきるまで今のまま */
             setFix(false);
             setReserve(0);
-            root.removeAttribute("data-ft-kbctx");
+            setCtx("");
             if (overlayCount > 0) {
                 const y = window.scrollY || document.documentElement.scrollTop || 0;
                 if (Math.abs(y - overlayLockY) > 1)
@@ -26539,6 +26575,8 @@ button:active { transition-duration: 60ms; }
      抜けた高さぶんは送り場の最後に残す（--ft-kbfoot）ので、送っている位置はずれない
    ・❌ padding / 位置に transition を付けないこと。動きは installKeyboardInset の transform だけ */
 html[data-ft-kb] [data-ft-overlay] .flex-1.overflow-y-auto::after { content: ""; display: block; flex-shrink: 0; height: var(--ft-kb, 0px); pointer-events: none; }
+/* 下タブの画面など、ページそのものの入力欄（2.16.6〜）：ページの最後にキーボードぶんの送れる余地を足す（見た目は動かない） */
+html[data-ft-kb][data-ft-kbctx="page"] body { padding-bottom: var(--ft-kb, 0px); }
 html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col { padding-bottom: var(--ft-kb, 0px); }
 html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col > .flex-1.overflow-y-auto ~ .shrink-0 { position: absolute; left: 0; right: 0; bottom: 0; }
 html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child > .absolute.inset-0.flex-col > .flex-1.overflow-y-auto::after { height: var(--ft-kbfoot, 0px); }
