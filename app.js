@@ -26564,6 +26564,15 @@ input, textarea, [contenteditable="true"], .ft-text {
   -webkit-user-select: text; user-select: text;
   -webkit-touch-callout: default;
 }
+/* **入力欄にも既定のタップハイライトを消しておくこと（バグ修正・2.16.8〜）。**
+   button, [role="button"], label, a には付けてあったが input / textarea が
+   抜けていたため、文章の途中にカーソルを移動させようとタップするたびに、
+   iOS 既定の半透明の黒い膜（タップハイライト）が欄いっぱいに一瞬乗り、
+   「背景が黒／濃いグレーに変わった」ように見えていた。フォーカスの枠は
+   focus:ring-…（inputCls）で出しているので、ここを消しても見た目は変わらない */
+input, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
 .ft-press { -webkit-touch-callout: none; }
 
 /* フォルダ一覧の2列カード（2.11.25〜）。
