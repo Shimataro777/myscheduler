@@ -19531,12 +19531,16 @@ if (typeof document !== "undefined" && document.addEventListener) {
     document.addEventListener("animationcancel", markEntered, true);
 }
 /* 閉じる。**ms を渡さないかぎり、待たずにその場で閉じること。**
-   以前は紙・小窓もふくめ、すべて ms（180〜240ms）待ってから onClose を呼んでいたが、退場の動き
-   （anim-sheet-out / anim-fade-out / anim-right-out など）は GLOBAL_CSS で空にしてあったので、
-   待つあいだ画面が止まって見えるだけで、「キャンセル」「戻る」がもたついて感じられた。
-   2.11.0 で登場の動きは戻したが、退場は空のままにして、この待ち時間も無くした。
-   **紙・小窓（シート／ダイアログ）は、いまもこの形（ms を渡さない）のまま。**
-   2.17.0 で、画面（OverlayScreen）の退場だけ、動きを戻した（引継書「画面遷移の決まり」）。
+   2.10.4〜2.17.1 は、退場の動き（anim-sheet-out / anim-fade-out）が GLOBAL_CSS で空だったので、
+   紙・小窓は ms を渡さず、その場で消していた。
+   **2.17.2 から、紙・小窓もふくめ、すべての重なりに退場の動きがある。**
+   ・下から出た紙 → 下へ滑って消える（FT_EXIT_SHEET_MS）
+   ・その場で出た小窓 → その場で薄れて消える（FT_EXIT_FADE_MS）
+   ・右から出た画面 → 右へ（FT_EXIT_RIGHT_MS）、下から出た全画面 → 下へ（FT_EXIT_BOTTOM_MS）
+   **✕・キャンセル・背景だけを動かさないこと。** 「保存」「決定」「選ぶ」も同じ道（requestClose）を
+   通すこと。片方だけ動かすと、押すボタンによって消え方が変わってちぐはぐに見える。
+   書き方は `useClosing((fn) => fn(), FT_EXIT_*_MS)` で受けて、`requestClose(() => …)` に
+   「閉じたあとにやること」を渡す形にそろえてある（引継書「閉じるときの待ち時間」）。
    ・ms を渡したときだけ：closing を true にして退場のクラスへ切り替え、その動きの長さぶん
      （FT_EXIT_RIGHT_MS / FT_EXIT_BOTTOM_MS。GLOBAL_CSS の --ft-enter-push / --ft-enter-modal と
      必ず同じ値にすること）待ってから onClose を呼ぶ。待っているあいだ二重に押されても弾く
@@ -19598,6 +19602,12 @@ function useClosing(onClose, ms = 0) {
    画面が閉じる動きの長さ（useClosing の ms）に使う */
 const FT_EXIT_RIGHT_MS = 300;
 const FT_EXIT_BOTTOM_MS = 340;
+/* 紙（シート）・小窓の退場の長さ（2.17.2〜）。
+   **GLOBAL_CSS の --ft-enter-sheet / --ft-enter-fade と、必ず同じ値にすること。**
+   2.17.1 までは紙・小窓の退場が空で、閉じるときだけパッと消えていた。
+   2.17.2 で、下から出たものは下へ、その場で出たものはその場で薄れる形にそろえた */
+const FT_EXIT_SHEET_MS = 300;
+const FT_EXIT_FADE_MS = 200;
 /* 重なる画面が開いているあいだ、うしろの画面を動かないようにする。
    何枚か重なることがあるので、枚数を数えて最後の1枚が閉じたときだけ元に戻す。
    **戻し忘れると、以後どの画面も動かせなくなる。**
@@ -19827,8 +19837,10 @@ function useLockBackground() {
             root.setAttribute("data-ft-kbctx", c);
         else
             root.removeAttribute("data-ft-kbctx");
-        /* setGuard は下で定義（呼ばれるのは読み込みのあと） */
-        setGuard(c === "sheet");
+        /* **ここで指の見張りを入り切りしないこと（2.17.2〜）。**
+           2.17.1 までは「紙で打っているあいだ」だけ見張っていたので、キーボードを出していない
+           ときに紙の字（見出し・ラベル・ボタンの字）を上下に払うと、紙ごと・うしろの一覧ごと
+           動いてしまった。いまは指が紙の上に降りた時点で見張りを付ける（下の tgStart） */
     };
     const ctxOf = (el) => (el.closest(".ft-sheet-wrap") ? "sheet" : el.closest("[data-ft-overlay]") ? "overlay" : "page");
     let satProbe = null;
@@ -19969,19 +19981,30 @@ function useLockBackground() {
         };
         pageAnim = requestAnimationFrame(step);
     };
-    /* ---- 紙で打っているあいだは、紙を指で動かさない（2.16.7〜） ----
-       キーボードが出ているとき、iOS は指の動きでページ（見える窓）を送れる。紙の上を上下に払うと、
-       その送りが紙ごと画面をずらし、うしろの一覧まで送られていた。紙の入力欄は広がらないので、
-       位置が決まったらそこで止めておく。
-       ・紙の中で**実際に送れる箱**（タグの一覧・横に並ぶ絵など）は、その向きに送れる余地があるうちは送らせる
+    /* ---- 紙（シート・小窓）は、中身を払っても動かさない（2.16.7〜。2.17.2 で作り直し） ----
+       iOS は、紙の中に送れる余地が無くても、指の動きでページ（見える窓）を送ってしまう。
+       その送りが紙ごと画面をずらし、うしろの一覧まで動いて見えていた（useLockBackground が
+       引き戻すので、揺れて戻る動きにもなる）。**紙は、置いた場所から動かさない。**
+       ・紙の中で**実際に送れる箱**（タグの一覧・アイコンの一覧・横に並ぶ絵など）は、
+         その向きに送れる余地があるうちは、これまでどおり送らせる（送りの邪魔をしない）
        ・それ以外の指の動きは touchmove で止める（preventDefault）
-       ・入力欄の上での指の動き（カーソルを動かす）は止めない
-       ・**紙で打っているあいだだけ**リスナーを付ける（passive: false のリスナーを常に付けておくと、
-         アプリぜんたいの送りが重くなる）。付けるのは指が触れる前（setCtx）なので、次の指の動きから効く
+       ・**入力欄の上の指の動きも止める（2.17.2〜）。** 2.17.1 までは「カーソルを動かすため」に
+         素通ししていたが、そのせいで欄の字を上へ払うと紙ごと動いていた。
+         ただし**中を送れる textarea だけは送らせる**（下の canScroll）。
+         カーソルは、置きたいところを軽く叩けば動く（払う操作では動かさない）
+       ・**passive: false の touchmove を、いつも付けておかないこと。** アプリぜんたいの送りが重くなる。
+         指が紙の上に降りた瞬間（touchstart）に付け、離したら外す。touchstart は touchmove より先に
+         届くので、これで間に合う
        ・全画面（記録の入力）には使わない。欄が伸び、ほかの欄を見ながら書くので、送れるままにしてある */
-    let guardOn = false;
     let tg = null;
+    let tgMoveOn = false;
     const canScroll = (n, dx, dy) => {
+        /* textarea は「中を送れるときだけ」送らせる。字を選ぶための払いでは紙を動かさない */
+        if (n.tagName === "TEXTAREA") {
+            if (Math.abs(dy) < Math.abs(dx) || n.scrollHeight <= n.clientHeight + 1)
+                return false;
+            return dy > 0 ? n.scrollTop > 0 : n.scrollTop + n.clientHeight < n.scrollHeight - 1;
+        }
         const cs = getComputedStyle(n);
         if (Math.abs(dy) >= Math.abs(dx)) {
             if (!/(auto|scroll)/.test(cs.overflowY) || n.scrollHeight <= n.clientHeight + 1)
@@ -19991,10 +20014,6 @@ function useLockBackground() {
         if (!/(auto|scroll)/.test(cs.overflowX) || n.scrollWidth <= n.clientWidth + 1)
             return false;
         return dx > 0 ? n.scrollLeft > 0 : n.scrollLeft + n.clientWidth < n.scrollWidth - 1;
-    };
-    const tgStart = (e) => {
-        const p = e.touches && e.touches[0];
-        tg = (p && e.touches.length === 1) ? { x: p.clientX, y: p.clientY, t: e.target } : null;
     };
     const tgMove = (e) => {
         if (!tg || !e.cancelable || !e.touches || !e.touches[0])
@@ -20006,11 +20025,9 @@ function useLockBackground() {
         if (!dx && !dy)
             return;
         const t = tg.t;
-        if (t && t.closest && t.closest("input, textarea"))
-            return;
-        const wrap = t && t.closest ? t.closest(".ft-sheet-wrap") : null;
+        const wrap = tg.wrap;
         /* 紙の外で始まった指（紙が閉じた直後など）は止めない */
-        if (!wrap)
+        if (!wrap || !wrap.isConnected)
             return;
         for (let n = t; n && n.nodeType === 1 && n !== wrap && n !== document.body && n !== root; n = n.parentElement) {
             if (canScroll(n, dx, dy))
@@ -20018,20 +20035,27 @@ function useLockBackground() {
         }
         e.preventDefault();
     };
-    const setGuard = (on) => {
-        if (on === guardOn)
+    const tgMoveBind = (on) => {
+        if (on === tgMoveOn)
             return;
-        guardOn = on;
-        if (on) {
-            document.addEventListener("touchstart", tgStart, { passive: true, capture: true });
+        tgMoveOn = on;
+        if (on)
             document.addEventListener("touchmove", tgMove, { passive: false, capture: true });
-        }
-        else {
-            document.removeEventListener("touchstart", tgStart, { capture: true });
+        else
             document.removeEventListener("touchmove", tgMove, { capture: true });
-            tg = null;
-        }
     };
+    const tgStart = (e) => {
+        const p = e.touches && e.touches[0];
+        const t = p && e.touches.length === 1 ? e.target : null;
+        const wrap = t && t.closest ? t.closest(".ft-sheet-wrap") : null;
+        /* **指が2本以上のときは見張らないこと。** 写真をつまんで大きさを変える操作を殺してしまう */
+        tg = wrap ? { x: p.clientX, y: p.clientY, t, wrap } : null;
+        tgMoveBind(!!tg);
+    };
+    const tgEnd = () => { tg = null; tgMoveBind(false); };
+    document.addEventListener("touchstart", tgStart, { passive: true, capture: true });
+    document.addEventListener("touchend", tgEnd, { passive: true, capture: true });
+    document.addEventListener("touchcancel", tgEnd, { passive: true, capture: true });
     /* ---- こちらでフォーカスを入れる ---- */
     let pending = null;
     const finishPending = (focusReal) => {
@@ -21092,23 +21116,27 @@ function WheelColumn({ items, value, onChange, minWidth = 72 }) {
 /* zIndex＝重なり順。ほかの小窓の上にさらに重ねるときは大きい数を渡すこと */
 /* plain ＝ ドラムではなく、ふつうの中身を入れるとき（帯を出さない） */
 function WheelSheet({ title, onClose, onConfirm, onClear, children, zIndex = 2147483000, plain }) {
-    return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center", style: { zIndex }, onClick: onClose },
+    /* 閉じるときは下へ滑らせる（2.17.2〜）。決定・選択解除も同じ道を通す */
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onClose);
+    return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center", style: { zIndex }, onClick: close },
         react_1.default.createElement(BackgroundLock, null),
-        react_1.default.createElement("div", { className: "absolute inset-0 bg-black/40 anim-fade" }),
+        react_1.default.createElement("div", { className: "absolute inset-0 bg-black/40 " + (closing ? "anim-fade-out" : "anim-fade") }),
         /* **flex-col と ft-sheet-box を外さないこと（2.15.0〜）。** キーボードで持ち上げたとき、
            紙の高さが見える高さに収まらず、上の見出しと「計画をさがす」が画面の上へはみ出していた */
-        react_1.default.createElement("div", { className: "relative w-full max-w-lg bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box anim-sheet", onClick: (e) => e.stopPropagation() },
+        react_1.default.createElement("div", { className: "relative w-full max-w-lg bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
+                + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
             react_1.default.createElement("div", { className: "flex items-center justify-between px-4 py-3 border-b border-neutral-200 shrink-0" },
                 react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900" }, title),
-                react_1.default.createElement("button", { type: "button", onClick: onClose, "aria-label": "\u9589\u3058\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100" },
+                react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100" },
                     react_1.default.createElement(lucide_react_1.X, { size: 28 }))),
             react_1.default.createElement("div", { className: "relative px-4 pt-3" + (plain ? " ft-sheet-body flex flex-col" : " shrink-0") },
                 !plain && (react_1.default.createElement("div", { className: "pointer-events-none absolute left-4 right-4 border-y-2 border-th-700/35 bg-th-50/40 rounded-md", style: { height: WHEEL_ITEM_H, top: `calc(0.75rem + ${WHEEL_ITEM_H * ((WHEEL_VISIBLE - 1) / 2)}px)` } })),
                 react_1.default.createElement("div", { className: plain ? "relative flex flex-col flex-1 min-h-0" : "relative flex justify-center gap-2" }, children)),
             react_1.default.createElement("div", { className: "px-4 pt-3 flex gap-2.5 border-t border-neutral-200 mt-3 shrink-0", style: SAFE_BOTTOM(14) },
-                react_1.default.createElement("button", { type: "button", onClick: onClose, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                onClear && (react_1.default.createElement("button", { type: "button", onClick: onClear, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u9078\u629E\u89E3\u9664")),
-                react_1.default.createElement("button", { type: "button", onClick: onConfirm, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " fs-body" }, "\u6C7A\u5B9A")))));
+                react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
+                onClear && (react_1.default.createElement("button", { type: "button", onClick: () => requestClose(onClear), className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u9078\u629E\u89E3\u9664")),
+                react_1.default.createElement("button", { type: "button", onClick: () => requestClose(onConfirm), className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " fs-body" }, "\u6C7A\u5B9A")))));
 }
 /* 1列のドラム選択欄 */
 function DrumSelect({ value, onChange, options, placeholder = "選択", title, className, disabled, noEmpty, clearable }) {
@@ -21338,8 +21366,10 @@ function DateInput({ className, value, onChange, placeholder = "日付を選択"
     const p = parse(value);
     const [cursor, setCursor] = (0, react_1.useState)(() => (p ? { y: p.y, mo: p.mo } : { y: today.getFullYear(), mo: today.getMonth() + 1 }));
     const [picked, setPicked] = (0, react_1.useState)(() => value || "");
-    /* 閉じるときは待たない（useClosing の説明を参照） */
-    const [closing, close] = useClosing(() => { setJumpOpen(false); setOpen(false); });
+    /* 閉じるときは、下へ滑る動きぶんだけ待つ（2.17.2〜。useClosing の説明を参照）。
+       **「決定」「選択解除」も同じ道を通すこと。** ✕ とキャンセルだけ動くと、ちぐはぐに見える */
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(() => { setJumpOpen(false); setOpen(false); });
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
     const openSheet = () => {
         const q = parse(value);
@@ -21359,7 +21389,7 @@ function DateInput({ className, value, onChange, placeholder = "日付を選択"
         }
         return { y, mo };
     });
-    const confirm = () => { onChange && onChange({ target: { value: picked } }); setOpen(false); };
+    const confirm = () => requestClose(() => { onChange && onChange({ target: { value: picked } }); setOpen(false); });
     const firstDow = new Date(cursor.y, cursor.mo - 1, 1).getDay();
     const lastDay = new Date(cursor.y, cursor.mo, 0).getDate();
     const cells = [...Array(firstDow).fill(null), ...Array.from({ length: lastDay }, (_, i) => i + 1)];
@@ -21397,14 +21427,15 @@ function DateInput({ className, value, onChange, placeholder = "日付を選択"
                     }))),
                 react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
                     react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                    allowEmpty && (react_1.default.createElement("button", { type: "button", onClick: () => { onChange && onChange({ target: { value: "" } }); setOpen(false); }, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u9078\u629E\u89E3\u9664")),
+                    allowEmpty && (react_1.default.createElement("button", { type: "button", onClick: () => requestClose(() => { onChange && onChange({ target: { value: "" } }); setOpen(false); }), className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u9078\u629E\u89E3\u9664")),
                     react_1.default.createElement("button", { type: "button", onClick: confirm, disabled: !picked, className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-body" }, "\u6C7A\u5B9A")),
                 jumpOpen && (react_1.default.createElement(MonthJumpSheet, { year: cursor.y, month: cursor.mo, years: jumpYears(cursor.y), zIndex: zIndex + 100, onClose: () => setJumpOpen(false), onConfirm: (y, mo) => { setCursor({ y, mo }); setJumpOpen(false); } })))))));
 }
 /* 複数の日付をカレンダーから選ぶ（計画の一括登録で使う） */
 function MultiDateSheet({ initial, onCancel, onConfirm }) {
     const today = new Date();
-    const [closing, close] = useClosing(onCancel);
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onCancel);
     const [picked, setPicked] = (0, react_1.useState)(() => (initial || []).slice());
     const [cursor, setCursor] = (0, react_1.useState)({ y: today.getFullYear(), mo: today.getMonth() + 1 });
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
@@ -21459,7 +21490,7 @@ function MultiDateSheet({ initial, onCancel, onConfirm }) {
                 react_1.default.createElement("p", { className: "fs-label text-neutral-500 mt-3" }, "\u66DC\u65E5\u306E\u5B57\u3092\u62BC\u3059\u3068\u3001\u305D\u306E\u6708\u306E\u540C\u3058\u66DC\u65E5\u3092\u307E\u3068\u3081\u3066\u9078\u3079\u307E\u3059\u3002")),
             react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                react_1.default.createElement("button", { type: "button", onClick: () => onConfirm(picked.slice().sort()), disabled: !picked.length, className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-body" },
+                react_1.default.createElement("button", { type: "button", onClick: () => requestClose(() => onConfirm(picked.slice().sort())), disabled: !picked.length, className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-body" },
                     "\u6C7A\u5B9A\uFF08",
                     picked.length,
                     "\u65E5\uFF09")),
@@ -21474,7 +21505,8 @@ function MultiDateSheet({ initial, onCancel, onConfirm }) {
 function TagPickDialog({ title, selected, known, onApply, onCancel, onCreate, note, zIndex = 2147483000 }) {
     const [picked, setPicked] = (0, react_1.useState)(normalizeTags(selected));
     const [draft, setDraft] = (0, react_1.useState)("");
-    const [closing, close] = useClosing(onCancel);
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onCancel);
     const q = draft.trim().toLowerCase();
     const list = normalizeTags(known);
     const shown = q ? list.filter((t) => t.toLowerCase().includes(q)) : list;
@@ -21516,7 +21548,7 @@ function TagPickDialog({ title, selected, known, onApply, onCancel, onCreate, no
             })))),
             react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                react_1.default.createElement("button", { type: "button", onClick: () => onApply(normalizeTags(picked)), className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-body" },
+                react_1.default.createElement("button", { type: "button", onClick: () => requestClose(() => onApply(normalizeTags(picked))), className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-body" },
                     "\u6C7A\u5B9A",
                     picked.length > 0 ? `（${picked.length}）` : "")))));
 }
@@ -21580,7 +21612,11 @@ function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, 
    さわるたびに反映すると、決めたつもりがないのに変わってしまう
    ============================================================ */
 function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保存", disabled, hideConfirm }) {
-    const [closing, close] = useClosing(onCancel);
+    /* ✕・キャンセル・背景・保存、どれで閉じても下へ滑らせる（2.17.2〜）。
+       **保存だけ別扱いにしないこと。** 保存のときだけパッと消えて見える */
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onCancel);
+    const confirm = () => requestClose(() => onConfirm && onConfirm());
     useLockBackground();
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483200 }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
@@ -21595,10 +21631,12 @@ function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保
             react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-4" }, children),
             react_1.default.createElement("div", { className: "flex gap-2 px-4 py-3 border-t border-neutral-200 shrink-0", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + (hideConfirm ? " w-full " : " flex-1 ") + "btn-h-lg fs-subhead" }, hideConfirm ? "とじる" : "キャンセル"),
-                !hideConfirm && (react_1.default.createElement("button", { type: "button", onClick: onConfirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" }, confirmLabel))))));
+                !hideConfirm && (react_1.default.createElement("button", { type: "button", onClick: confirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" }, confirmLabel))))));
 }
 function ConfirmDialog({ title, body, confirmLabel = "削除する", danger = true, onConfirm, onCancel }) {
-    const [closing, close] = useClosing(onCancel);
+    /* まん中の小窓は、その場で薄れて消える（2.17.2〜）。下へは滑らせない（出てきた向きと対にする） */
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_FADE_MS);
+    const close = () => requestClose(onCancel);
     useLockBackground();
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-center justify-center p-6 " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483300 }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/50" }),
@@ -21607,23 +21645,25 @@ function ConfirmDialog({ title, body, confirmLabel = "削除する", danger = tr
             body && react_1.default.createElement("p", { className: "fs-body-sm text-neutral-600 leading-relaxed mb-4 whitespace-pre-line" }, body),
             react_1.default.createElement("div", { className: "flex gap-2.5" },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                react_1.default.createElement("button", { type: "button", onClick: onConfirm, className: (danger ? BTN_DANGER : BTN_PRIMARY) + " flex-1 " + BTN_H + " fs-body" }, confirmLabel)))));
+                react_1.default.createElement("button", { type: "button", onClick: () => requestClose(onConfirm), className: (danger ? BTN_DANGER : BTN_PRIMARY) + " flex-1 " + BTN_H + " fs-body" }, confirmLabel)))));
 }
 /* 名前をひとつ打ち込むだけの小窓（フォルダ名・リスト名・カテゴリなど） */
 function NameDialog({ title, label, initial = "", placeholder, confirmLabel = "決定", onConfirm, onCancel }) {
     const [v, setV] = (0, react_1.useState)(initial);
-    const [closing, close] = useClosing(onCancel);
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_FADE_MS);
+    const close = () => requestClose(onCancel);
+    const done = () => { if (v.trim()) requestClose(() => onConfirm(v.trim())); };
     useLockBackground();
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-start justify-center px-6 " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483300, paddingTop: "calc(env(safe-area-inset-top) + 64px)" }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/50" }),
         react_1.default.createElement("div", { className: "relative w-full max-w-sm bg-white rounded-2xl shadow-lg p-5 anim-pop", onClick: (e) => e.stopPropagation() },
             react_1.default.createElement("h3", { className: "font-display fs-subhead text-neutral-900 mb-3" }, title),
             react_1.default.createElement("div", { className: "mb-4" },
-                react_1.default.createElement(TextInput, { value: v, onChange: (e) => setV(e.target.value), placeholder: placeholder || label, autoFocus: true, onKeyDown: (e) => { if (e.key === "Enter" && v.trim())
-                        onConfirm(v.trim()); } })),
+                react_1.default.createElement(TextInput, { value: v, onChange: (e) => setV(e.target.value), placeholder: placeholder || label, autoFocus: true, onKeyDown: (e) => { if (e.key === "Enter")
+                        done(); } })),
             react_1.default.createElement("div", { className: "flex gap-2.5" },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-subhead" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                react_1.default.createElement("button", { type: "button", onClick: () => onConfirm(v.trim()), disabled: !v.trim(), className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-subhead" }, confirmLabel)))));
+                react_1.default.createElement("button", { type: "button", onClick: done, disabled: !v.trim(), className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-subhead" }, confirmLabel)))));
 }
 /* ============================================================
    見出しと三本線
@@ -22808,7 +22848,10 @@ function TypeRow({ t, onPick, label, icon, colorKey }) {
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" })));
 }
 function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons, colorKeys }) {
-    const [closing, close] = useClosing(onCancel);
+    /* 選んだときも下へ滑らせる（2.17.2〜）。**onPick を素通しにしないこと** */
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onCancel);
+    const pick = (t) => requestClose(() => onPick(t));
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center", style: { zIndex: 2147483000 }, onClick: close },
         react_1.default.createElement(BackgroundLock, null),
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/40 " + (closing ? "anim-fade-out" : "anim-fade") }),
@@ -22818,13 +22861,14 @@ function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TY
                 react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900" }, title),
                 react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100" },
                     react_1.default.createElement(lucide_react_1.X, { size: 28 }))),
-            react_1.default.createElement("div", { className: "p-2" }, types.map((t) => (react_1.default.createElement(TypeRow, { key: t, t: t, onPick: onPick, colorKey: colorKeys ? colorKeys[t] : null, label: labels ? labels[t] : null, icon: icons ? icons[t] : null })))))));
+            react_1.default.createElement("div", { className: "p-2" }, types.map((t) => (react_1.default.createElement(TypeRow, { key: t, t: t, onPick: pick, colorKey: colorKeys ? colorKeys[t] : null, label: labels ? labels[t] : null, icon: icons ? icons[t] : null })))))));
 }
 /* 前回、保存しないまま閉じられた記録を知らせるカード */
 function DraftCard({ draft, onResume, onDiscard }) {
     const N = useTypeNames();
     const color = useTypeColor(draft.type);
-    const [closing, close] = useClosing(onDiscard);
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_FADE_MS);
+    const close = () => requestClose(onDiscard);
     useLockBackground();
     /* **画面の上に居すわらせないこと。**
        毎回そこにあると、記録の並びを押しのけてしまう。
@@ -22839,7 +22883,7 @@ function DraftCard({ draft, onResume, onDiscard }) {
                     react_1.default.createElement("p", { className: "fs-subhead font-bold text-neutral-900 truncate" }, recordTitle(draft, N)))),
             react_1.default.createElement("div", { className: "flex gap-2.5" },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
-                react_1.default.createElement("button", { type: "button", onClick: onResume, className: BTN_PRIMARY + " flex-[1.4] " + BTN_H + " fs-body" }, "\u7D9A\u304D\u304B\u3089\u66F8\u304F")))));
+                react_1.default.createElement("button", { type: "button", onClick: () => requestClose(onResume), className: BTN_PRIMARY + " flex-[1.4] " + BTN_H + " fs-body" }, "\u7D9A\u304D\u304B\u3089\u66F8\u304F")))));
 }
 /* ============================================================
    タイムラインの札（記録概要）
@@ -24317,7 +24361,8 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
    チェックリストの項目を、別のチェックリストへ移し替える（持ち越し）
    ============================================================ */
 function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
-    const [closing, close] = useClosing(onCancel);
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onCancel);
     const [nameOpen, setNameOpen] = (0, react_1.useState)(false);
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
     const N = useTypeNames();
@@ -24395,7 +24440,7 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
                             "\u3053\u306E\u65E5\u306B\u306F\u30EA\u30B9\u30C8\u304C\u3042\u308A\u307E\u305B\u3093\u3002",
                             react_1.default.createElement("br", null),
                             "\u4E0B\u304B\u3089\u65B0\u3057\u304F\u4F5C\u308C\u307E\u3059\u3002")),
-                        targets.map((t) => (react_1.default.createElement("button", { key: t.id, type: "button", onClick: () => onMove(t.id), className: "w-full flex items-center gap-2.5 rounded-xl border border-neutral-200 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
+                        targets.map((t) => (react_1.default.createElement("button", { key: t.id, type: "button", onClick: () => requestClose(() => onMove(t.id)), className: "w-full flex items-center gap-2.5 rounded-xl border border-neutral-200 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
                             react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
                                 react_1.default.createElement(lucide_react_1.ListChecks, { size: 17 })),
                             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -24643,6 +24688,9 @@ function IconPicker({ value, onChange, fallback, color, baseColor, presets = tru
             } }))));
 }
 function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCancel, onDone }) {
+    /* 閉じるときは下へ滑らせる（2.17.2〜）。切り抜きが終わってから動かす（作っている間は開いたまま） */
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onCancel);
     const [url, setUrl] = (0, react_1.useState)("");
     const [nat, setNat] = (0, react_1.useState)(null); // 元の絵の大きさ
     const [ng, setNg] = (0, react_1.useState)(false);
@@ -24765,20 +24813,24 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
             const out = await cropImage(url || file, {
                 aspect, scale, dx: clamp(pos.x, limX) * k, dy: clamp(pos.y, limY) * k, maxSide: outW,
             });
-            onDone(out);
+            setBusy(false);
+            requestClose(() => onDone(out));
+            return;
         }
         catch (e) {
-            onCancel();
+            setBusy(false);
+            close();
+            return;
         }
-        setBusy(false);
     };
-    return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center anim-fade", style: { zIndex: 2147483400 }, onClick: onCancel },
+    return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483400 }, onClick: close },
         react_1.default.createElement(BackgroundLock, null),
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/60" }),
-        react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col anim-sheet", onClick: (e) => e.stopPropagation() },
+        react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col "
+                + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
             react_1.default.createElement("div", { className: "flex items-center gap-1 px-4 py-3 border-b border-neutral-200 shrink-0" },
                 react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide flex-1" }, title),
-                react_1.default.createElement("button", { type: "button", onClick: onCancel, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 ft-tap ft-tap-icon" },
+                react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.X, { size: 24 }))),
             react_1.default.createElement("div", { className: "px-4 py-4 flex justify-center" },
                 react_1.default.createElement("div", { ref: boxRef, className: "relative w-full overflow-hidden bg-neutral-900 ft-press", "data-lim": `${Math.round(limX)},${Math.round(limY)},${Math.round(dispW)},${Math.round(box.w)},${nat ? 1 : 0}`, style: { aspectRatio: `${aspect}`, maxHeight: "36vh", maxWidth: `calc(36vh * ${aspect})`,
@@ -24798,7 +24850,7 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
                         } })))),
             react_1.default.createElement("p", { className: "fs-caption text-neutral-400 pb-3 text-center" }, "\u6307\u3067\u52D5\u304B\u3059\uFF0F\u3064\u307E\u3093\u3067\u5927\u304D\u3055\u3092\u5909\u3048\u308B"),
             react_1.default.createElement("div", { className: "shrink-0 flex gap-2.5 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
-                react_1.default.createElement("button", { type: "button", onClick: onCancel, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
+                react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-body" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: done, disabled: busy || !url, className: BTN_PRIMARY + " flex-[1.6] " + BTN_H + " fs-body" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 17 }),
                     " ",
@@ -25286,6 +25338,8 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     const [settingsOpen, setSettingsOpen] = (0, react_1.useState)(false);
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
     const [celebrate, setCelebrate] = (0, react_1.useState)(false);
+    /* お祝いも、その場で薄れて消える（2.17.2〜） */
+    const [celebrateOut, closeCelebrate] = useClosing(() => setCelebrate(false), FT_EXIT_FADE_MS);
     const [doneAsk, setDoneAsk] = (0, react_1.useState)(false);
     const [addOpen, setAddOpen] = (0, react_1.useState)(false);
     const [stepEdit, setStepEdit] = (0, react_1.useState)(null); // 書いているイベント {step, isNew}
@@ -25455,7 +25509,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                     else
                         setDelOpen(true);
                 } })),
-            celebrate && (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-center justify-center anim-fade", style: { zIndex: 2147483400 }, onClick: () => setCelebrate(false) },
+            celebrate && (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-center justify-center " + (celebrateOut ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483400 }, onClick: () => closeCelebrate() },
                 react_1.default.createElement(BackgroundLock, null),
                 react_1.default.createElement("div", { className: "absolute inset-0", style: { background: "rgba(255,255,255,.92)" } }),
                 react_1.default.createElement("div", { className: "relative text-center px-8" },
@@ -25469,7 +25523,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                         react_1.default.createElement("br", null),
                         "\u304A\u3064\u304B\u308C\u3055\u307E\u3067\u3057\u305F\u3002"),
                     react_1.default.createElement("div", { className: "flex justify-center" },
-                        react_1.default.createElement("button", { type: "button", onClick: () => setCelebrate(false), className: BTN_PRIMARY + " btn-h-lg px-8 fs-subhead" }, "\u3068\u3058\u308B"))))),
+                        react_1.default.createElement("button", { type: "button", onClick: () => closeCelebrate(), className: BTN_PRIMARY + " btn-h-lg px-8 fs-subhead" }, "\u3068\u3058\u308B"))))),
             settingsOpen && (react_1.default.createElement(PlanSettingsSheet, { plan: plan, onCancel: () => setSettingsOpen(false), onSave: (v) => { onChange({ ...v, updatedAt: new Date().toISOString() }); setSettingsOpen(false); } })),
             doneAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u3084\u308A\u9042\u3052\u307E\u3057\u305F\u304B", body: "\u8A08\u753B\u306F\u4E00\u89A7\u306E\u4E0B\u306E\u307B\u3046\u3078\u79FB\u308A\u3001\u3044\u3064\u3067\u3082\u898B\u8FD4\u305B\u307E\u3059\u3002", confirmLabel: "\u3084\u308A\u9042\u3052\u305F", onCancel: () => setDoneAsk(false), onConfirm: () => { setDoneAsk(false); onChange({ ...plan, doneAt: todayStr(), updatedAt: new Date().toISOString() }); setCelebrate(true); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u8A08\u753B\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(plan.id); } })))));
@@ -25488,7 +25542,8 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
    ============================================================ */
 const FOLDER_TABS = [{ key: "auto", label: "自動で集める" }, { key: "manual", label: "手動で入れる" }];
 function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, onSave }) {
-    const [closing, close] = useClosing(onCancel);
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onCancel);
     const [tab, setTab] = (0, react_1.useState)(initialTab || "auto");
     const [leaveAsk, setLeaveAsk] = (0, react_1.useState)(false);
     const N = useTypeNames();
@@ -25606,7 +25661,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
             return;
         setTab(dx < 0 ? "manual" : "auto");
     };
-    const save = () => onSave({ ...cond, picked: Array.from(picked) });
+    const save = () => requestClose(() => onSave({ ...cond, picked: Array.from(picked) }));
     return (react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: tryClose },
             react_1.default.createElement(BackgroundLock, null),
@@ -26724,7 +26779,8 @@ button:active { transition-duration: 60ms; }
    ・anim-sheet … 下から出る紙（シート）。下から入る
    ・anim-fade  … 暗がり、中央・上に出る小窓の外わく、写真の拡大。その場で薄く出る
    ・anim-pop   … **空のまま。** 小窓の中身を拡大・縮小させない（外わくの anim-fade だけで出す）
-   **退場（*-out）は空のまま。** 閉じるときは待たずにその場で消す（useClosing を参照）。
+   **退場（*-out）は、登場と対にすること（2.17.2〜）。** 下から出たものは下へ、右から出たものは右へ、
+   その場で出たものはその場で薄れる。長さは useClosing に渡す FT_EXIT_*_MS と必ずそろえる。
    **動き終わったら、動きを外すこと。** animation を持ったままの箱は iPhone で
    自分の層に置かれ続け、中を縦に送ったときの慣性が変わる。
    動き終わると markEntered が data-ft-entered を付け、下の :not() で動きが外れる。
@@ -26748,19 +26804,39 @@ button:active { transition-duration: 60ms; }
 .anim-up:not([data-ft-entered])    { animation: ft-enter-up var(--ft-enter-modal) var(--ease-out) backwards; }
 .anim-sheet:not([data-ft-entered]) { animation: ft-enter-up var(--ft-enter-sheet) var(--ease-out) backwards; }
 .anim-fade:not([data-ft-entered])  { animation: ft-enter-fade var(--ft-enter-fade) ease-out backwards; }
-/* ---- 画面（OverlayScreen）の退場だけ、動きを付ける（2.17.0〜） ----
-   **紙・小窓（シート／ダイアログ）の退場は、下の anim-sheet-out / anim-fade-out のとおり、
-   これまでどおり空のまま。** useClosing に ms を渡していないので、そもそも動く間もなく閉じる。
-   ここを埋めるときは、useClosing の待ち時間（FT_EXIT_RIGHT_MS / FT_EXIT_BOTTOM_MS）と
-   長さを必ずそろえること（引継書「閉じるときの待ち時間」）。
+/* ---- 画面（OverlayScreen）の退場（2.17.0〜） ----
+   2.17.2 から、紙・小窓（シート／ダイアログ）の退場にも動きを付けた（下の anim-sheet-out /
+   anim-fade-out）。どの重なりも「出てきた向きへ帰る」でそろえてある。
+   長さは、useClosing の待ち時間（FT_EXIT_RIGHT_MS / FT_EXIT_BOTTOM_MS /
+   FT_EXIT_SHEET_MS / FT_EXIT_FADE_MS）と必ずそろえること（引継書「閉じるときの待ち時間」）。
    fill-mode は forwards のままにすること。**登場の動きとはちがい forwards を禁じない。**
    閉じかけの短いあいだだけ使う箱で、外れる前に位置を保つのが目的（外れたら箱ごと消える） */
 .anim-right-out        { animation: ft-exit-right var(--ft-enter-push) var(--ease-in) forwards; }
 .anim-down-out         { animation: ft-exit-down var(--ft-enter-modal) var(--ease-in) forwards; }
 .anim-scrim-out-push   { animation: ft-exit-fade var(--ft-enter-push) var(--ease-in) forwards; }
 .anim-scrim-out-modal  { animation: ft-exit-fade var(--ft-enter-modal) var(--ease-in) forwards; }
-.anim-sheet-out { }
-.anim-fade-out  { }
+/* ---- 紙・小窓の退場（2.17.2〜） ----
+   **登場と対にすること。** 下から出た紙は下へ、その場で出た小窓はその場で薄れる。
+   長さは useClosing に渡す FT_EXIT_SHEET_MS / FT_EXIT_FADE_MS と**必ず同じ**にすること
+   （片方だけ変えると、消えたあと待つ・消える前に閉じる、のどちらかになる）。
+   fill-mode は forwards。閉じかけの短いあいだだけ使う箱で、外れる前に位置を保つのが目的 */
+/* **紙だけは keyframes ではなく transition で下ろすこと（2.17.2〜）。**
+   キーボードが出ているあいだ、紙の箱は installKeyboardInset が transform で持ち上げている。
+   keyframes（translate3d(0,0,0) から始まる）を当てると、動きが transform を奪い、
+   持ち上げていた高さぶん**一瞬ストンと落ちてから**滑りはじめる。
+   transition なら、いま居る場所（持ち上がったままの位置）から下まで、ひと続きで滑る。
+   ・!important ＝ installKeyboardInset が入れる style 属性の transform より強くする
+   ・「画面の動き」オフ／「視差効果を減らす」では、下の .ft-still / prefers-reduced-motion が
+     transition-duration を 0.01ms にする（あちらのほうが詳しいので勝つ） */
+.anim-sheet-out {
+  transform: translate3d(0, 100%, 0) !important;
+  transition: transform var(--ft-enter-sheet) var(--ease-in) !important;
+}
+.anim-fade-out  { animation: ft-exit-fade var(--ft-enter-fade) var(--ease-in) forwards; }
+/* 下寄せの紙は、外わく（暗がり）の薄れも紙が下りきるまで続ける。
+   **短いままにしないこと。** 先に外わくが消え、紙が下りきる前に見えなくなる */
+.ft-sheet-wrap.items-end.anim-fade-out,
+.ft-sheet-wrap.items-end > .anim-fade-out { animation-duration: var(--ft-enter-sheet); }
 .anim-pop       { }
 /* 入ってくる画面が、動いているあいだ横や下へはみ出して、うしろが送れないようにする */
 [data-ft-overlay] { overflow: hidden; }
