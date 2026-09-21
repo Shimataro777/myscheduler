@@ -20162,6 +20162,19 @@ function useLockBackground() {
            （計画名・フォルダ名の欄から画面が持ち上がる件）。
            1行の入力欄（input）は中を縦に送る必要がないので、つねに止める。
            textarea だけは、**自分の中に送る余地があるときだけ**送らせる */
+        /* **キーボードが出ているあいだは、紙の中の指の動きを iOS に1こまも渡さないこと（2.18.3〜）。**
+           2.18.2 までは「紙の中に送れる箱（.ft-sheet-body など）があれば素通し」だった。
+           キーボードが出ていると、iOS はその箱を送りきった先（や、送りはじめた直後）で
+           **見える窓（visualViewport）ごと**送ってしまう。これは window.scrollY が動かないので
+           tgPin では戻せず、紙が上へ持ち上がったままになっていた（計画の設定で名前を打っているとき）。
+           そこで、キーボードのあいだは必ず preventDefault し、送れる箱はこちらで送る（kbDrag）。
+           ❌ ここを素通しに戻さないこと。overscroll-behavior: contain では止まらない */
+        if (tg.kb) {
+            e.preventDefault();
+            tgPin();
+            kbDrag(tg, p, dx, dy);
+            return;
+        }
         const field = tg.field;
         if (field && !(field.tagName === "TEXTAREA" && canScroll(field, dx, dy))) {
             e.preventDefault();
@@ -20223,7 +20236,95 @@ function useLockBackground() {
         else
             document.removeEventListener("touchmove", tgMove, { capture: true });
     };
+    /* ---- キーボードが出ているあいだ、紙の中の送りをこちらで行う（2.18.3〜） ----
+       ・指が KB_SLOP を超えて動いてから、縦か横かを決め、その向きに送れる箱をひとつ選ぶ
+         （指の下からさかのぼって、紙の外わくの手前まで。touch-action: none の部品＝ドラム・写真の
+         切り抜きなどに当たったら、そこで止めて何も送らない。部品が自分で指を扱う）
+       ・送る箱は指を離すまで変えない。離したら、指の速さで惰性をつける（kbFling）
+       ・送ったあとの指の離しで、指の下のボタンが押されないようにする（kbEatClick） */
+    const KB_SLOP = 8;
+    const kbTyping = () => {
+        const a = document.activeElement;
+        return !!(a && a.closest && a.closest(".ft-sheet-wrap") && (isTyping(a) || isProxy(a)));
+    };
+    const kbUp = () => rawKb() >= 60 || shown > 0 || !!pending || kbTyping();
+    const kbPick = (g, ax, d) => {
+        for (let n = g.t; n && n.nodeType === 1 && n !== g.wrap && n !== document.body && n !== root; n = n.parentElement) {
+            if (getComputedStyle(n).touchAction === "none")
+                return null;
+            if (ax === "y" ? canScroll(n, 0, d) : canScroll(n, d, 0))
+                return n;
+        }
+        return null;
+    };
+    let fling = 0;
+    const kbStopFling = () => { if (fling) {
+        cancelAnimationFrame(fling);
+        fling = 0;
+    } };
+    const kbDrag = (g, p, dx, dy) => {
+        const now = performance.now();
+        if (!g.drag) {
+            const tx = p.clientX - g.x0, ty = p.clientY - g.y0;
+            if (Math.hypot(tx, ty) < KB_SLOP)
+                return;
+            g.drag = true;
+            g.ax = Math.abs(ty) >= Math.abs(tx) ? "y" : "x";
+            g.sc = kbPick(g, g.ax, g.ax === "y" ? ty : tx);
+            g.v = 0;
+            g.at = now;
+            return;
+        }
+        const sc = g.sc;
+        if (!sc || !sc.isConnected)
+            return;
+        const d = g.ax === "y" ? dy : dx;
+        if (g.ax === "y")
+            sc.scrollTop -= d;
+        else
+            sc.scrollLeft -= d;
+        const dt = Math.max(1, now - g.at);
+        /* 速さ（px/ms）は、ならして持つ。1こまの跳ねで惰性が暴れないように */
+        g.v = g.v * 0.4 + (-d / dt) * 0.6;
+        g.at = now;
+    };
+    const kbFling = (g) => {
+        const sc = g.sc;
+        if (!sc || !sc.isConnected || performance.now() - g.at > 80)
+            return;
+        let v = Math.max(-4, Math.min(4, g.v || 0));
+        if (Math.abs(v) < 0.1)
+            return;
+        const y = g.ax === "y";
+        const max = () => (y ? sc.scrollHeight - sc.clientHeight : sc.scrollWidth - sc.clientWidth);
+        /* 位置は小数で持つ（scrollTop は丸められるので、少しずつ足すと止まって見える） */
+        let pos = y ? sc.scrollTop : sc.scrollLeft;
+        let last = performance.now();
+        const step = (now) => {
+            const dt = Math.min(32, Math.max(0, now - last));
+            last = now;
+            pos = Math.max(0, Math.min(max(), pos + v * dt));
+            if (y)
+                sc.scrollTop = pos;
+            else
+                sc.scrollLeft = pos;
+            v *= Math.pow(0.996, dt);
+            if (Math.abs(v) < 0.02 || pos <= 0 || pos >= max() || !sc.isConnected) {
+                fling = 0;
+                return;
+            }
+            fling = requestAnimationFrame(step);
+        };
+        kbStopFling();
+        fling = requestAnimationFrame(step);
+    };
+    const kbEatClick = () => {
+        const eat = (ev) => { ev.preventDefault(); ev.stopPropagation(); };
+        document.addEventListener("click", eat, true);
+        setTimeout(() => document.removeEventListener("click", eat, true), 350);
+    };
     const tgStart = (e) => {
+        kbStopFling();
         const p = e.touches && e.touches[0];
         const t = p && e.touches.length === 1 ? e.target : null;
         const wrap = t && t.closest ? t.closest(".ft-sheet-wrap") : null;
@@ -20235,6 +20336,8 @@ function useLockBackground() {
             /* 指を置いた時点の送り位置。ここへ引き戻す */
             sy: window.scrollY || document.documentElement.scrollTop || 0,
             outs: tgOuters(wrap),
+            /* キーボードが出ているか（出かかっている・こちらで出している途中も含む）。出ていれば送りはこちらで行う */
+            kb: kbUp(), x0: p.clientX, y0: p.clientY, drag: false, ax: "", sc: null, v: 0, at: 0,
         } : null;
         tgMoveBind(!!tg);
     };
@@ -20243,6 +20346,10 @@ function useLockBackground() {
         const g = tg;
         tgPin();
         tgMoveBind(false);
+        if (g && g.kb && g.drag) {
+            kbEatClick();
+            kbFling(g);
+        }
         if (g) {
             let left = 8;
             const again = () => {
