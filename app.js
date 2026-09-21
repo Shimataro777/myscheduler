@@ -19608,6 +19608,118 @@ const FT_EXIT_BOTTOM_MS = 340;
    2.17.2 で、下から出たものは下へ、その場で出たものはその場で薄れる形にそろえた */
 const FT_EXIT_SHEET_MS = 300;
 const FT_EXIT_FADE_MS = 200;
+/* ============================================================
+   折りたたみ（2.18.0〜）
+   **折りたたみは、ぜんぶこれを通すこと。** 開け閉めを、高さと薄さの ease-in-out でなめらかにする。
+   以前はどれも「出す／出さない」の切り替えだけで、押した瞬間に下の中身がガタッと動いていた。
+   ・open ＝ ひらいているか
+   ・keepMounted ＝ 閉じても中身を残す（display:none にするだけ）。入力中の文字や、
+     開くたびに作り直すと重いもの（検索の条件など）に使う。
+     **既定は「閉じたら描かない」。** WhenCollapse の決まり（閉じているあいだ中身を描かない）を守るため
+   ・高さ・薄さ・overflow は、動いているあいだだけ style 属性に入れ、終わったら外す。
+     **ひらき終わったあとに overflow:hidden を残さないこと。** 中のフォーカス枠や影が切れる。
+     **opacity を残さないこと。** 1 未満の opacity は重なりの層を作り、中から出す紙（日付えらびなど）の
+     z-index が箱の中に閉じこめられる
+   ・transform は使わない（中の position:fixed の紙が、この箱を基準にしてしまう）
+   ・「画面の動き」オフ／視差効果を減らすでは、動かさずにその場で切り替える
+   ============================================================ */
+/* **GLOBAL_CSS の --ft-collapse と、必ず同じ値にすること。** */
+const FT_COLLAPSE_MS = 260;
+function Collapse({ open, keepMounted = false, className = "", children }) {
+    const ref = (0, react_1.useRef)(null);
+    const [mounted, setMounted] = (0, react_1.useState)(!!open);
+    /* いま箱に当てている向き。はじめは、そのままの姿で出す（開いた画面が動いて見えないように） */
+    const applied = (0, react_1.useRef)(!!open);
+    const timer = (0, react_1.useRef)(0);
+    const endRef = (0, react_1.useRef)(null);
+    /* 閉じた姿で生まれた keepMounted の箱。**毎回同じ物を渡すこと**（React に display を触らせない） */
+    const initStyle = (0, react_1.useRef)(!open && keepMounted ? { display: "none" } : undefined);
+    (0, react_1.useEffect)(() => () => clearTimeout(timer.current), []);
+    (0, react_1.useLayoutEffect)(() => {
+        /* 閉じたら描かない箱は、まず描いてから伸ばす（次の描き直しでここへ戻ってくる） */
+        if (open && !mounted) {
+            setMounted(true);
+            return;
+        }
+        const el = ref.current;
+        if (!el || applied.current === !!open)
+            return;
+        applied.current = !!open;
+        clearTimeout(timer.current);
+        if (endRef.current) {
+            el.removeEventListener("transitionend", endRef.current);
+            endRef.current = null;
+        }
+        const clean = () => {
+            el.style.transition = "";
+            el.style.height = "";
+            el.style.overflow = "";
+            el.style.opacity = "";
+        };
+        const settle = () => {
+            clearTimeout(timer.current);
+            if (endRef.current) {
+                el.removeEventListener("transitionend", endRef.current);
+                endRef.current = null;
+            }
+            clean();
+            if (!open) {
+                if (keepMounted)
+                    el.style.display = "none";
+                else
+                    setMounted(false);
+            }
+        };
+        if (motionIsOff()) {
+            clean();
+            el.style.display = open ? "" : (keepMounted ? "none" : "");
+            if (!open && !keepMounted)
+                setMounted(false);
+            return;
+        }
+        /* 動いている途中で向きが変わったら、いまの高さから折り返す */
+        const hidden = el.style.display === "none";
+        const from = hidden ? 0 : (el.style.height ? el.getBoundingClientRect().height : (open ? 0 : el.getBoundingClientRect().height));
+        const fromOp = hidden ? 0 : (el.style.opacity !== "" ? parseFloat(getComputedStyle(el).opacity) : (open ? 0 : 1));
+        el.style.display = "";
+        el.style.transition = "none";
+        el.style.overflow = "hidden";
+        el.style.height = from + "px";
+        el.style.opacity = String(fromOp);
+        const to = open ? el.scrollHeight : 0;
+        void el.offsetHeight; // ここで一度組み直させてから動かす（しないと、はじめの高さが飛ばされる）
+        el.style.transition = `height ${FT_COLLAPSE_MS}ms var(--ease-in-out, ease-in-out), opacity ${FT_COLLAPSE_MS}ms var(--ease-in-out, ease-in-out)`;
+        el.style.height = to + "px";
+        el.style.opacity = open ? "1" : "0";
+        const onEnd = (e) => { if (e.target === el && e.propertyName === "height")
+            settle(); };
+        endRef.current = onEnd;
+        el.addEventListener("transitionend", onEnd);
+        /* transitionend が来ないこと（高さが変わらない・途中で画面を離れた）もあるので、時間でも締める */
+        timer.current = setTimeout(settle, FT_COLLAPSE_MS + 80);
+    }, [open, mounted]); // eslint-disable-line
+    if (!mounted)
+        return null;
+    return react_1.default.createElement("div", { ref, className: "ft-collapse " + className, style: initStyle.current, "aria-hidden": open ? undefined : true }, children);
+}
+/* ============================================================
+   ピル型のタブ（2.18.0〜）
+   **「進行中／完了済」のような、同じ場所の出し分けは、これを使うこと。**
+   計画の一覧（PlanScreen）と計画の画面（PlanDashboard）で同じ物を使う。
+   別々に書くと、少しずつ高さや色がずれていく（FilterFields と同じ理由）。
+   ・tabs ＝ [{ key, label, count? }]。count を渡すと、名前の横に小さく件数を出す
+   ・onCanvas ＝ 灰の下地（bg-canvas）の上に置くとき。レールを一段濃くする
+   ・**切り替えに動きを付けないこと。** 同じ階層の切り替えは「動かさない」（画面遷移の決まり）
+   ============================================================ */
+function PillTabs({ tabs, value, onChange, onCanvas, className = "" }) {
+    return (react_1.default.createElement("div", { className: "ft-pill-track flex rounded-full p-1 " + (onCanvas ? "on-canvas " : "") + className }, tabs.map((t) => {
+        const on = value === t.key;
+        return (react_1.default.createElement("button", { key: t.key, type: "button", onClick: () => onChange(t.key), "aria-pressed": on, style: { minHeight: 42 }, className: "flex-1 rounded-full fs-body font-bold flex items-center justify-center gap-1.5 ft-tap "
+                + (on ? "bg-white text-th-900 card-soft" : "text-th-800/60") },
+            t.label,
+            t.count !== undefined && (react_1.default.createElement("span", { className: "fs-caption tabular-nums " + (on ? "text-th-800" : "text-th-800/60") }, t.count))));
+    })));
+}
 /* 重なる画面が開いているあいだ、うしろの画面を動かないようにする。
    何枚か重なることがあるので、枚数を数えて最後の1枚が閉じたときだけ元に戻す。
    **戻し忘れると、以後どの画面も動かせなくなる。**
@@ -22649,8 +22761,11 @@ function WhenCollapse({ summary, open, onToggle, children }) {
         react_1.default.createElement("button", { type: "button", onClick: onToggle, "aria-expanded": open, className: "w-full flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-4 min-h-[46px] text-left ft-tap ft-tap-card" },
             react_1.default.createElement(lucide_react_1.CalendarClock, { size: 15, className: "text-neutral-400 shrink-0" }),
             react_1.default.createElement("span", { className: "flex-1 min-w-0 fs-body-sm text-neutral-500 truncate whitespace-nowrap" }, summary),
-            react_1.default.createElement(lucide_react_1.ChevronDown, { size: 16, className: "text-neutral-400 shrink-0 transition-all " + (open ? "rotate-180" : "") })),
-        open && (react_1.default.createElement("div", { className: "mt-2" }, children))));
+            react_1.default.createElement(lucide_react_1.ChevronDown, { size: 16, className: "text-neutral-400 shrink-0 ft-chev " + (open ? "rotate-180" : "") })),
+        /* 開け閉めは Collapse でなめらかに（2.18.0〜）。閉じ終わったら中身は描かない（上の決まりのまま）。
+           **上の余白は mt ではなく pt で取ること。** 伸びる箱の中の余白は、高さに含めて測る */
+        react_1.default.createElement(Collapse, { open: open },
+            react_1.default.createElement("div", { className: "pt-2" }, children))));
 }
 /* ============================================================
    RecordForm ＝ 記録を書く画面
@@ -24202,8 +24317,14 @@ function PlanDueCard({ plan, list, onOpen }) {
     /* 名前の帯はその計画の色、中のイベントは「イベント」の色 */
     const color = planColorOf(plan, useTypeColor(PLAN_TYPE));
     const stepColor = useTypeColor(STEP_TYPE);
-    const shown = open ? list : list.slice(0, DUE_SHOWN);
-    const rest = list.length - DUE_SHOWN;
+    /* はじめの2件はいつも出し、残りだけを Collapse で伸び縮みさせる（2.18.0〜） */
+    const head = list.slice(0, DUE_SHOWN);
+    const tail = list.slice(DUE_SHOWN);
+    const rest = tail.length;
+    const dueRow = ({ step, left }) => (react_1.default.createElement("button", { key: step.id, type: "button", onClick: onOpen, className: "w-full flex items-center gap-2 px-3.5 min-h-[46px] py-2 text-left ft-tap ft-tap-card" },
+        step.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: stepColor.mid }, fill: "currentColor" }),
+        react_1.default.createElement("span", { className: "flex-1 min-w-0 fs-body font-bold text-neutral-900 truncate" }, step.title || "（名前なし）"),
+        react_1.default.createElement("span", { className: "fs-body-sm font-bold tabular-nums shrink-0", style: { color: left <= 3 ? stepColor.deep : "#737373" } }, stepLeftLabel(left))));
     return (react_1.default.createElement("div", { className: "flex-1 min-w-0 rounded-2xl bg-white border border-neutral-200 overflow-hidden" },
         react_1.default.createElement("button", { type: "button", onClick: onOpen, className: "w-full flex items-center gap-2 px-3.5 min-h-[46px] py-2 text-left ft-tap ft-tap-card", style: { background: color.soft } },
             react_1.default.createElement("span", { className: "flex-1 min-w-0 fs-body font-bold truncate", style: { color: color.deep } }, plan.name || "（名前なし）"),
@@ -24211,13 +24332,12 @@ function PlanDueCard({ plan, list, onOpen }) {
                 list.length,
                 "\u4EF6"),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 17, className: "shrink-0", style: { color: color.mid } })),
-        react_1.default.createElement("div", { className: "divide-y divide-neutral-100" }, shown.map(({ step, left }) => (react_1.default.createElement("button", { key: step.id, type: "button", onClick: onOpen, className: "w-full flex items-center gap-2 px-3.5 min-h-[46px] py-2 text-left ft-tap ft-tap-card" },
-            step.pinned && react_1.default.createElement(lucide_react_1.Pin, { size: 12, className: "shrink-0", style: { color: stepColor.mid }, fill: "currentColor" }),
-            react_1.default.createElement("span", { className: "flex-1 min-w-0 fs-body font-bold text-neutral-900 truncate" }, step.title || "（名前なし）"),
-            react_1.default.createElement("span", { className: "fs-body-sm font-bold tabular-nums shrink-0", style: { color: left <= 3 ? stepColor.deep : "#737373" } }, stepLeftLabel(left)))))),
+        react_1.default.createElement("div", { className: "divide-y divide-neutral-100" }, head.map(dueRow)),
+        rest > 0 && (react_1.default.createElement(Collapse, { open: open },
+            react_1.default.createElement("div", { className: "border-t border-neutral-100 divide-y divide-neutral-100" }, tail.map(dueRow)))),
         rest > 0 && (react_1.default.createElement("button", { type: "button", onClick: () => setOpen((v) => !v), "aria-expanded": open, className: "w-full flex items-center justify-center gap-1 min-h-[42px] fs-body-sm font-bold text-neutral-500 border-t border-neutral-100 ft-tap" },
             open ? "とじる" : `他${rest}件を表示`,
-            react_1.default.createElement("span", { className: "flex " + (open ? "rotate-180" : "") },
+            react_1.default.createElement("span", { className: "flex ft-chev " + (open ? "rotate-180" : "") },
                 react_1.default.createElement(lucide_react_1.ChevronDown, { size: 15 }))))));
 }
 /* 日→週→月と回すボタンのしるし。ふたつの弧が、輪をえがいて回っている形。
@@ -24687,16 +24807,19 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
                 react_1.default.createElement("span", { className: "flex-1 min-w-0" }, hasCriteria
                     ? react_1.default.createElement("span", { className: "block fs-body font-bold text-th-900 truncate" }, summary || "条件で検索中")
                     : react_1.default.createElement("span", { className: "block fs-body text-neutral-400 truncate" }, open ? "条件をえらんで検索" : "検索する")),
-                react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (open ? "rotate-180" : "") },
+                react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 ft-chev " + (open ? "rotate-180" : "") },
                     react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 }))))),
         react_1.default.createElement("div", { className: "px-4 ft-col" },
-            react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (open ? "" : "hidden") },
+            /* 条件の欄は Collapse でなめらかに開け閉めする（2.18.0〜）。
+               **keepMounted を外さないこと。** 以前の hidden と同じく、閉じても打った条件・欄の状態を残す */
+            react_1.default.createElement(Collapse, { open: open, keepMounted: true },
+            react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4" },
                 react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: search, types: types, onToggleType: toggleType, tags: tags, onOpenTags: () => setTagOpen(true), from: from, to: to, onFrom: setFrom, onTo: setTo }),
                 react_1.default.createElement("div", { className: "flex gap-2" },
                     hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 fs-body shrink-0" }, "\u9078\u629E\u89E3\u9664")),
                     react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" },
                         react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
-                        " \u691C\u7D22\u3059\u308B")))),
+                        " \u691C\u7D22\u3059\u308B"))))),
         react_1.default.createElement("div", { className: "px-5 ft-col" }, !hasCriteria ? null : results.length === 0 ? (react_1.default.createElement("div", { className: "ft-noresult py-10 text-center" },
             react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))) : (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement(ListHeadRow, { sel: sel, list: results, right: `${results.length}件`, sort: react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }) }),
@@ -25144,8 +25267,7 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
                     q && (react_1.default.createElement("button", { type: "button", onClick: () => setQ(""), "aria-label": "\u6D88\u3059", className: "w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-neutral-400 ft-tap ft-tap-icon" },
                         react_1.default.createElement(lucide_react_1.X, { size: 16 })))),
                 react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })),
-            react_1.default.createElement("div", { className: "flex rounded-full bg-th-50 p-1 mt-2" }, PLAN_TABS.map((t) => (react_1.default.createElement("button", { key: t.key, type: "button", onClick: () => goTab(t.key), "aria-pressed": effectiveTab === t.key, style: { minHeight: 42 }, className: "flex-1 rounded-full fs-body font-bold flex items-center justify-center ft-tap "
-                    + (effectiveTab === t.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") }, t.label)))))),
+            react_1.default.createElement(PillTabs, { tabs: PLAN_TABS, value: effectiveTab, onChange: goTab, className: "mt-2" }))),
         /* **キーで作り直して動きを付けないこと。** フォルダのタブと同じ、ただの出し分けにする。
            作り直しをやめることで、繰り返し払っても止まらず、軽いままにする */
         react_1.default.createElement("div", { ref: areaRef, className: "px-4 pt-1 ft-col space-y-2.5", style: { minHeight: "60vh" } },
@@ -25425,9 +25547,14 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     const [doneAsk, setDoneAsk] = (0, react_1.useState)(false);
     const [addOpen, setAddOpen] = (0, react_1.useState)(false);
     const [stepEdit, setStepEdit] = (0, react_1.useState)(null); // 書いているイベント {step, isNew}
-    const [doneOpen, setDoneOpen] = (0, react_1.useState)(false); // 済んだイベントをひらいているか
+    /* イベントの「進行中／完了済」タブ（2.18.0〜。以前は済んだぶんを下の折りたたみに入れていた）。
+       **はじめは「進行中」。** ただし、まだのイベントが1つも無い（ぜんぶ済んだ）計画だけは
+       「完了済」から開く。空の「進行中」を見せて、何も無いように思わせないため */
+    const [stepTab, setStepTab] = (0, react_1.useState)(() => {
+        const st = plan.steps || [];
+        return st.length > 0 && st.every(stepDone) ? "done" : "live";
+    });
     const color = planColorOf(plan, useTypeColor(PLAN_TYPE));
-    const stepColor = useTypeColor(STEP_TYPE);
     const today = todayStr();
     const planRecords = (0, react_1.useMemo)(() => sortRecords(records.filter((r) => r.planId === plan.id), order), [records, plan.id, order]);
     const pinned = (0, react_1.useMemo)(() => planRecords.filter((r) => r.pinned), [planRecords]);
@@ -25498,7 +25625,10 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     const openSteps = (0, react_1.useMemo)(() => steps.filter((s) => !stepDone(s)).sort(compareSteps), [steps]);
     const closedSteps = (0, react_1.useMemo)(() => steps.filter(stepDone).sort(compareSteps), [steps]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
-        react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
+        /* **下地は bg-canvas（薄い灰）にすること（2.18.0〜）。** 札（実績・イベント・記録）はどれも白。
+           白い下地に白い札だと、細い灰のふちだけが頼りになり、札の境目と重なりが読みにくかった。
+           見出し（OverlayHeader）は白のまま。下の灰とのちがいで、どこから中身かが分かる */
+        react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-canvas flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, hideMenu: true, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
@@ -25528,21 +25658,26 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                         react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                             react_1.default.createElement("span", { className: "block fs-subhead font-bold", style: { color: color.deep } }, "\u3084\u308A\u9042\u3052\u307E\u3057\u305F"),
                             react_1.default.createElement("span", { className: "block fs-body-sm text-neutral-500" }, fmtDate(plan.doneAt)))))),
-                react_1.default.createElement("div", { className: "mb-5" },
-                    react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, openSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, onChange: setStep, onUpdate: updateStep, onEdit: () => editStep(s), onPin: (x) => updateStep(x.id, (st) => ({ ...st, pinned: !st.pinned })) })))),
-                    closedSteps.length > 0 && (react_1.default.createElement("div", { className: "-mx-5 px-4" },
-                        react_1.default.createElement("div", { "data-done-box": "1", className: "rounded-2xl overflow-hidden", style: doneOpen
-                                ? { background: stepColor.soft, border: `1px solid ${stepColor.line}` }
-                                : { background: "#FFFFFF", border: "1px solid #E5E5E5" } },
-                            react_1.default.createElement("button", { type: "button", onClick: () => setDoneOpen((v) => !v), "aria-expanded": doneOpen, className: "w-full flex items-center gap-2 px-3.5 min-h-[46px] text-left ft-tap" },
-                                react_1.default.createElement("span", { className: "flex-1 fs-body font-bold", style: { color: doneOpen ? stepColor.deep : "#737373" } },
-                                    "\u3084\u308A\u7D42\u3048\u305F ",
-                                    closedSteps.length,
-                                    "\u4EF6"),
-                                react_1.default.createElement("span", { className: "flex shrink-0", style: { color: doneOpen ? stepColor.mid : "#A3A3A3" } },
-                                    react_1.default.createElement("span", { className: doneOpen ? "flex rotate-180" : "flex" },
-                                        react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 })))),
-                            doneOpen && (react_1.default.createElement("div", { className: "ft-seq pt-1 pb-2" }, closedSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, inset: true, onChange: setStep, onUpdate: updateStep, onEdit: () => editStep(s) }))))))))),
+                /* イベントは「進行中」「完了済」のタブで出し分ける（2.18.0〜）。
+                   **ふたつを縦に並べ直さないこと。** 以前は済んだぶんを下の「やり終えた◯件」に
+                   たたんでいたが、進行中と完了済が同じ流れに並び、いま何をすればよいかが読みにくかった。
+                   ・タブは計画の一覧と同じ PillTabs（onCanvas。灰の下地の上なのでレールを濃くする）
+                   ・件数はタブの名前の横に出す（たたんでいたときの「◯件」の代わり）
+                   ・**切り替えに動きを付けないこと**（同じ階層の切り替えは動かさない）
+                   ・**左右に払っての切り替えは付けないこと。** この画面は左端から払うと戻る。
+                     払いを二つの意味に使うと、戻るつもりでタブが変わる
+                   ・イベントが1つも無いときは、タブごと出さない（上の「実績」の札が案内を出している） */
+                steps.length > 0 && (react_1.default.createElement("div", { className: "mb-5" },
+                    react_1.default.createElement(PillTabs, { onCanvas: true, className: "mb-2.5", value: stepTab, onChange: setStepTab, tabs: [
+                            { key: "live", label: "進行中", count: openSteps.length },
+                            { key: "done", label: "完了済", count: closedSteps.length },
+                        ] }),
+                    stepTab === "live" && (openSteps.length > 0 ? (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, openSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, onChange: setStep, onUpdate: updateStep, onEdit: () => editStep(s), onPin: (x) => updateStep(x.id, (st) => ({ ...st, pinned: !st.pinned })) }))))) : (react_1.default.createElement("div", { className: "py-8 text-center ft-noresult" },
+                        react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u9032\u884C\u4E2D\u306E\u30A4\u30D9\u30F3\u30C8\u306F\u3042\u308A\u307E\u305B\u3093")))),
+                    /* 済んだイベントは、進行中と同じ札の形で並べる（以前の「たたみの中」の詰めた形 inset は使わない）。
+                       固定のボタンは出さない（済んだものを上に留める意味がない。以前と同じ） */
+                    stepTab === "done" && (closedSteps.length > 0 ? (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, closedSteps.map((s) => (react_1.default.createElement(StepCard, { key: s.id, step: s, onChange: setStep, onUpdate: updateStep, onEdit: () => editStep(s) }))))) : (react_1.default.createElement("div", { className: "py-8 text-center ft-noresult" },
+                        react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u3084\u308A\u7D42\u3048\u305F\u30A4\u30D9\u30F3\u30C8\u306F\u307E\u3060\u3042\u308A\u307E\u305B\u3093")))))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                     react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "\u8A18\u9332"),
                     react_1.default.createElement("span", { className: "flex-1" }),
@@ -25770,7 +25905,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                             react_1.default.createElement(lucide_react_1.Search, { size: 17, className: hasCriteria ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
                             react_1.default.createElement("span", { className: "flex-1 min-w-0 truncate fs-body" }, hasCriteria ? react_1.default.createElement("span", { className: "font-bold text-th-900" }, summary || "条件で検索中")
                                 : react_1.default.createElement("span", { className: "text-neutral-400" }, fOpen ? "条件をえらんで検索" : "検索する")),
-                            react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 " + (fOpen ? "rotate-180" : "") },
+                            react_1.default.createElement("span", { className: "flex text-neutral-400 shrink-0 ft-chev " + (fOpen ? "rotate-180" : "") },
                                 react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 }))))),
                 react_1.default.createElement("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto overflow-x-hidden px-4 " + (tab === "manual" ? "pt-2 pb-3" : "py-3"), style: { touchAction: "pan-y" }, onPointerDown: onDown, onPointerUp: onUp }, tab === "auto" ? (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4" },
@@ -25781,7 +25916,9 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                         react_1.default.createElement("span", { className: "fs-subhead font-bold tabular-nums text-neutral-900" },
                             autoSet.size,
                             "\u4EF6")))) : (react_1.default.createElement(react_1.default.Fragment, null,
-                    react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (fOpen ? "" : "hidden") },
+                    /* 探す画面と同じく、Collapse でなめらかに開け閉めする（2.18.0〜。keepMounted を外さない） */
+                    react_1.default.createElement(Collapse, { open: fOpen, keepMounted: true },
+                    react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4" },
                         react_1.default.createElement(FilterFields, { q: draft.q, onQ: (v) => setD({ q: v }), onEnter: search, types: draft.types, onToggleType: toggleDType, tags: draft.tags, onOpenTags: () => setFTagOpen(true), from: draft.from, to: draft.to, onFrom: (v) => setD({ from: v }), onTo: (v) => setD({ to: v }), extra: (react_1.default.createElement(FilterPill, { on: draft.mine, onClick: () => setD({ mine: !draft.mine }) },
                                 react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3, className: "thick" }),
                                 " \u624B\u52D5")) }),
@@ -25789,7 +25926,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                             hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 fs-body shrink-0" }, "\u9078\u629E\u89E3\u9664")),
                             react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" },
                                 react_1.default.createElement(lucide_react_1.Search, { size: 17 }),
-                                " \u691C\u7D22\u3059\u308B"))),
+                                " \u691C\u7D22\u3059\u308B")))),
                     !hasCriteria ? null : results.length === 0 ? (react_1.default.createElement("p", { className: "fs-body text-neutral-400 py-10 text-center" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093")) : (react_1.default.createElement(react_1.default.Fragment, null,
                         react_1.default.createElement("div", { className: "flex items-center gap-2 mb-2" },
                             react_1.default.createElement("button", { type: "button", onClick: pickAll, className: "h-9 px-2 -ml-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, allShown ? "選択解除" : "すべて選択"),
@@ -26920,6 +27057,19 @@ button:active { transition-duration: 60ms; }
 .ft-sheet-wrap.items-end.anim-fade-out,
 .ft-sheet-wrap.items-end > .anim-fade-out { animation-duration: var(--ft-enter-sheet); }
 .anim-pop       { }
+/* ---- 折りたたみ（Collapse）の伸び縮み（2.18.0〜） ----
+   **長さは FT_COLLAPSE_MS（app.js）と必ず同じにすること。**
+   ・display: flow-root ＝ 中の最初と最後の余白（mt-* / mb-*）を箱の外へ漏らさない。
+     漏れると、伸びきった瞬間に箱の高さがその余白ぶん変わり、最後にカクッと跳ねる
+   ・高さと薄さの transition は Collapse が style 属性で入れる（開け閉めの間だけ） */
+:root { --ft-collapse: 260ms; }
+.ft-collapse { display: flow-root; }
+/* 折りたたみの矢じり。開け閉めと同じ長さ・同じゆるめ方で回す */
+.ft-chev { transition: transform var(--ft-collapse) var(--ease-in-out, ease-in-out); }
+/* ピル型タブのレール。白い画面の上では淡い基調色、灰の下地（bg-canvas）の上では一段濃い灰
+   （淡い基調色は灰に溶けて、レールが見えなくなる） */
+.ft-pill-track { background: var(--th-50); }
+.ft-pill-track.on-canvas { background: #E4E6EA; }
 /* 入ってくる画面が、動いているあいだ横や下へはみ出して、うしろが送れないようにする */
 [data-ft-overlay] { overflow: hidden; }
 /* **重なる画面の外がわを白で埋めておくこと（2.11.11〜）。**
