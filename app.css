@@ -529,8 +529,9 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
    **押した瞬間の :active で色を付けないこと。** ふつうのタップでも札が暗く光り、
    ひらく／たたむだけのつもりが「何か始まった」ように見えていた。
    色は、押さえつづけたときだけ付ける（JS が FT_HOLD_TINT_MS のあと .ft-pressing を付ける）。
-   付いたら、長押しが決まる（480ms）まで少しずつ濃くして「このまま押さえると何か起きる」を伝える。
-   ・transition の長さ（330ms）＝ 480 − FT_HOLD_TINT_MS（app.js）。**片方だけ変えないこと**
+   **付いたら、そこで最大の濃さ。だんだん濃くする動きは付けない（2.18.2〜。2.18.1 では
+   480ms かけて少しずつ濃くしていたが、持ち主の指示で「初めから濃くてよい」に変更）。**
+   ・transition は、ほかの札の沈みと同じ「沈むのは速く」の考え方にそろえ、40ms で切り替える
    ・濃さは、ほかの札の沈みと同じ .045（2.11.6 の値）。**札ごとに変えないこと**
    ・上の :active より強くするため、.ft-pressing 側は :active 付きも並べて書く（同じ強さだと、あとに書いたほうが勝つ） */
 .ft-tap-card.ft-hold:active::after{
@@ -539,7 +540,7 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
 .ft-tap-card.ft-hold.ft-pressing::after,
 .ft-tap-card.ft-hold.ft-pressing:active::after{
   opacity: .045;
-  transition: opacity 330ms linear;
+  transition-duration: 40ms;
 }
 @media (hover:hover) and (pointer:fine){
   /* マウス操作の環境だけ、乗せる前の軽いホバーも付ける */

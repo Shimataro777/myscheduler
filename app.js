@@ -19628,9 +19628,9 @@ const FT_COLLAPSE_MS = 260;
 /* 記録カード・イベントの札を押さえてから、色（沈み）を付けはじめるまで（2.18.1〜）。
    **押した瞬間に色を付けないこと。** ふつうのタップ（100ms 前後）でも札が暗く光り、
    「ひらく／たたむ」だけのつもりが、何か始まったように見えていた。
-   この時間を過ぎてまだ押さえていたら「長押しのつもり」とみなし、色を付けて、
-   長押しが決まる（480ms）まで CSS の .ft-hold.ft-pressing で少しずつ濃くする。
-   **app.css の .ft-hold.ft-pressing の transition（330ms ＝ 480 − この値）とそろえること** */
+   この時間を過ぎてまだ押さえていたら「長押しのつもり」とみなし、色を付ける。
+   **付いたら、そこで最大の濃さ（2.18.2〜）。だんだん濃くする動きは付けない**
+   （app.css の .ft-hold.ft-pressing を参照。40ms で切り替わるだけ） */
 const FT_HOLD_TINT_MS = 150;
 function Collapse({ open, keepMounted = false, className = "", children }) {
     const ref = (0, react_1.useRef)(null);
