@@ -19716,6 +19716,7 @@ function Collapse({ open, keepMounted = false, className = "", children }) {
    別々に書くと、少しずつ高さや色がずれていく（FilterFields と同じ理由）。
    ・tabs ＝ [{ key, label, count? }]。count を渡すと、名前の横に小さく件数を出す
    ・onCanvas ＝ 灰の下地（bg-canvas）の上に置くとき。レールを一段濃くする
+     （2.19.0 から、使っている画面は無い。計画の画面は白に戻した）
    ・**切り替えに動きを付けないこと。** 同じ階層の切り替えは「動かさない」（画面遷移の決まり）
    ============================================================ */
 function PillTabs({ tabs, value, onChange, onCanvas, className = "" }) {
@@ -21061,8 +21062,11 @@ function useTabReturn(resetSig, { viewKey, atDefault, toDefault }) {
    ・押しているものの上でも効くよう、面全体で受ける
    ・縦に動かしたときは巻き物（スクロール）に譲る
    ・上下の動きのほうが大きいあいだは、いっさい横へ動かさない
+   ・opts.edgeGuard ＝ 左端からこの px より内側で始まった指だけを数える（既定 0＝端まで数える）。
+     **左端から払うと戻る画面（PlanDashboard）は、かならず渡すこと（2.19.0〜）。**
+     戻るつもりの指が、タブを切り替えてしまうのを防ぐ
    ============================================================ */
-function useSwipePages(onPrev, onNext) {
+function useSwipePages(onPrev, onNext, opts) {
     const areaRef = (0, react_1.useRef)(null);
     const [dir, setDir] = (0, react_1.useState)(0);
     /* **入ってくる動きのクラスを、貼りっぱなしにしないこと。**
@@ -21093,6 +21097,7 @@ function useSwipePages(onPrev, onNext) {
            touch なら、送っているあいだも最後まで届く。
            touch-action にも触らない（触ると縦の慣性が他の画面と変わる） */
         let sx = 0, sy = 0, st = 0, on = false, maxY = 0;
+        const edgeGuard = (opts && opts.edgeGuard) || 0;
         const start = (e) => {
             if (e.touches.length !== 1) {
                 on = false;
@@ -21102,8 +21107,18 @@ function useSwipePages(onPrev, onNext) {
                拡大窓（PhotoViewer）や「別のリストへ移す」の紙は、札の中に作られていて、
                DOM ではこの面の子孫。fixed で全面を覆っていても、touch はここまで上がってくる。
                窓の中で絵を横へ払っただけで、うしろの日・週・月が動いていた */
+            /* **「この面の子孫」の窓・紙だけを除くこと（2.19.0〜）。**
+               この面そのものが重なる画面（OverlayScreen ＝ data-ft-overlay）の中にある場合
+               （計画の画面）、いちばん近い data-ft-overlay は自分の外わくになる。
+               それも除いてしまうと、面のどこを払っても届かない */
             const tg = e.target;
-            if (tg && tg.closest && tg.closest(".ft-sheet-wrap, [data-ft-overlay]")) {
+            const ov = tg && tg.closest ? tg.closest(".ft-sheet-wrap, [data-ft-overlay]") : null;
+            if (ov && el.contains(ov)) {
+                on = false;
+                return;
+            }
+            /* 左端の払い（戻る）と取り合わない */
+            if (edgeGuard > 0 && e.touches[0].clientX < edgeGuard) {
                 on = false;
                 return;
             }
@@ -25390,13 +25405,15 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
                 react_1.default.createElement(SortToggle, { value: sort, onChange: onSort })),
             react_1.default.createElement(PillTabs, { tabs: PLAN_TABS, value: effectiveTab, onChange: goTab, className: "mt-2" }))),
         /* **キーで作り直して動きを付けないこと。** フォルダのタブと同じ、ただの出し分けにする。
-           作り直しをやめることで、繰り返し払っても止まらず、軽いままにする */
+           作り直しをやめることで、繰り返し払っても止まらず、軽いままにする。
+           **札の並びに ft-spread（段組み）を使わないこと（2.19.0〜）。** 横長で右の段の先頭だけ下へずれた。
+           ft-pgrid（格子。横長のときだけ2列、上をそろえる）を使う */
         react_1.default.createElement("div", { ref: areaRef, className: "px-4 pt-1 ft-col space-y-2.5", style: { minHeight: "60vh" } },
-            effectiveTab === "live" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, live.map(renderPlan))),
-            effectiveTab === "done" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, done.map(renderPlan))),
+            effectiveTab === "live" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-pgrid" }, live.map(renderPlan))),
+            effectiveTab === "done" && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-pgrid" }, done.map(renderPlan))),
             effectiveTab === "all" && (react_1.default.createElement(react_1.default.Fragment, null,
-                live.length > 0 && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-spread" }, live.map(renderPlan))),
-                done.length > 0 && (react_1.default.createElement("div", { className: (live.length ? "pt-3 " : "") + "space-y-2.5 ft-seq ft-spread" }, done.map(renderPlan))))),
+                live.length > 0 && (react_1.default.createElement("div", { className: "space-y-2.5 ft-seq ft-pgrid" }, live.map(renderPlan))),
+                done.length > 0 && (react_1.default.createElement("div", { className: (live.length ? "pt-3 " : "") + "space-y-2.5 ft-seq ft-pgrid" }, done.map(renderPlan))))),
             plans.length === 0 ? (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u307E\u3060\u8A08\u753B\u306F\u3042\u308A\u307E\u305B\u3093"))) : ((effectiveTab === "live" ? live.length : effectiveTab === "done" ? done.length : live.length + done.length) === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, emptyText))))),
@@ -25751,15 +25768,21 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
        **済んだものを混ぜて並べないこと。** いま何をすればよいかが読めなくなる */
     const openSteps = (0, react_1.useMemo)(() => steps.filter((s) => !stepDone(s)).sort(compareSteps), [steps]);
     const closedSteps = (0, react_1.useMemo)(() => steps.filter(stepDone).sort(compareSteps), [steps]);
+    /* 「進行中／完了済」を、左右に払って切り替える（2.19.0〜）。
+       左へ払う（onNext）＝「完了済」、右へ払う（onPrev）＝「進行中」。**端で輪にしないこと。**
+       **edgeGuard を外さないこと。** 左端の帯（useEdgeSwipeBack）は「戻る」に使っている */
+    const swipeStepTab = (dir) => { if (steps.length > 0)
+        setStepTab(dir > 0 ? "done" : "live"); };
+    const { areaRef: stepSwipeRef } = useSwipePages(() => swipeStepTab(-1), () => swipeStepTab(1), { edgeGuard: 48 });
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
-        /* **下地は bg-canvas（薄い灰）にすること（2.18.0〜）。** 札（実績・イベント・記録）はどれも白。
-           白い下地に白い札だと、細い灰のふちだけが頼りになり、札の境目と重なりが読みにくかった。
-           見出し（OverlayHeader）は白のまま。下の灰とのちがいで、どこから中身かが分かる */
-        react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-canvas flex flex-col" },
+        /* **下地は bg-app（白）に戻したこと（2.19.0〜）。ほかの画面と同じ。**
+           2.18.0〜2.18.3 は薄い灰（bg-canvas）にしていたが、画面ぜんたいが暗く沈んで見えた。
+           札の境目は、札そのものの細いふち（card-soft）で足りる。**この画面だけ灰に戻さないこと** */
+        react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, hideMenu: true, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
+            react_1.default.createElement("div", { ref: stepSwipeRef, className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
                 /* 「実績」は、この画面でいちばん見たいもの。
                    **ほかの札と同じ顔にしないこと。** 淡い下じきに淡い字だと、
                    まわりに溶けて、どこまで進んだのかが目に入らない。
@@ -25788,14 +25811,17 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                 /* イベントは「進行中」「完了済」のタブで出し分ける（2.18.0〜）。
                    **ふたつを縦に並べ直さないこと。** 以前は済んだぶんを下の「やり終えた◯件」に
                    たたんでいたが、進行中と完了済が同じ流れに並び、いま何をすればよいかが読みにくかった。
-                   ・タブは計画の一覧と同じ PillTabs（onCanvas。灰の下地の上なのでレールを濃くする）
+                   ・タブは計画の一覧と同じ PillTabs（白い下地の上なので、レールは淡い基調色のまま）
                    ・件数はタブの名前の横に出す（たたんでいたときの「◯件」の代わり）
                    ・**切り替えに動きを付けないこと**（同じ階層の切り替えは動かさない）
-                   ・**左右に払っての切り替えは付けないこと。** この画面は左端から払うと戻る。
-                     払いを二つの意味に使うと、戻るつもりでタブが変わる
+                   ・**左右に払って切り替えられる（2.19.0〜、持ち主の指示による）。**
+                     左へ払う＝「完了済」へ、右へ払う＝「進行中」へ。端で輪にしない（右へ払って
+                     戻るつもりの指が、反対のタブへ飛ばないように）。
+                     この画面は左端から払うと戻るので、左端 48px 以内で始まった指は数えない
+                     （useSwipePages の edgeGuard。戻る帯は 36px）
                    ・イベントが1つも無いときは、タブごと出さない（上の「実績」の札が案内を出している） */
                 steps.length > 0 && (react_1.default.createElement("div", { className: "mb-5" },
-                    react_1.default.createElement(PillTabs, { onCanvas: true, className: "mb-2.5", value: stepTab, onChange: setStepTab, tabs: [
+                    react_1.default.createElement(PillTabs, { className: "mb-2.5", value: stepTab, onChange: setStepTab, tabs: [
                             { key: "live", label: "進行中", count: openSteps.length },
                             { key: "done", label: "完了済", count: closedSteps.length },
                         ] }),
@@ -26865,6 +26891,15 @@ html { scrollbar-gutter: stable; }
      余白を下へ移せば、段の切れ目の余白は左の段の底に隠れて見えない。
      間隔は ft-slot（記録の札）と同じ 16px にそろえる */
   .ft-spread[class*="space-y-"] > * { margin-top: 0; margin-bottom: 16px; }
+  /* **計画の一覧は、段組み（column-count）にしないこと（2.19.0〜）。**
+     段に流し込むと、iPhone の WebKit では右の段の先頭の札が 16px 下へずれた
+     （余白を下へ移した 2.11.27 の直しでも残った）。
+     格子（grid）なら、どの札も行の上端から始まるので、上が必ずそろう。
+     並びは左から右、上から下（1枚目｜2枚目、3枚目｜4枚目）。
+     札の高さがちがっても、align-items: start で引き伸ばさない。すき間は gap だけで持つ
+     （space-y-* の上余白は 0 に戻す。gap と足すと二重に空く） */
+  .ft-pgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .ft-pgrid[class*="space-y-"] > * { margin-top: 0; margin-bottom: 0; }
   /* 下の帯は幅いっぱいに広げず、真ん中へ寄せる */
   .ft-tabbar-wrap > div { max-width: var(--ft-colw); margin-left: auto; margin-right: auto; }
 }
