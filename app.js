@@ -23365,11 +23365,17 @@ function PhotoViewer({ images, index, onClose }) {
         }
         apply(true);
     };
-    /* 一度たたきは閉じる。**すぐ閉じないこと。**
-       二度たたきの二度目が来るかを、ひと呼吸だけ待つ */
-    const onTap = (x, y) => {
+    /* 二度たたき（マウスなら二度クリック）で、拡大／もとの大きさ。
+       一度たたきは閉じる。**すぐ閉じないこと。**二度目が来るかを、ひと呼吸だけ待つ。
+       ・待つ長さは、指なら 280ms、マウスなら 450ms（二度クリックは、指の二度たたきより間があく。
+         280ms だと、二度目が来る前に閉じてしまい、拡大できなかった）
+       ・**拡大しているあいだのたたきも数えること（2.17.2〜）。** 拡大中は指を置いた時点で
+         「ずらす操作（pan）」になり、以前は離しても「たたき」に届かず、二度たたきでもとに戻せなかった
+       ・拡大中の一度たたきでは閉じない（見ている途中で消えると困る）。閉じるのは、もとの大きさのとき */
+    const onTap = (x, y, pointerType) => {
+        const win = pointerType === "mouse" ? 450 : 280;
         const now = Date.now();
-        if (now - tapRef.current.at < 280) {
+        if (now - tapRef.current.at < win) {
             tapRef.current.at = 0;
             if (tapRef.current.timer)
                 clearTimeout(tapRef.current.timer);
@@ -23377,7 +23383,9 @@ function PhotoViewer({ images, index, onClose }) {
             return;
         }
         tapRef.current.at = now;
-        tapRef.current.timer = setTimeout(() => { dismiss(); }, 280);
+        if (st.current.scale > 1.05)
+            return;
+        tapRef.current.timer = setTimeout(() => { dismiss(); }, win);
     };
     const onDown = (e) => {
         e.stopPropagation();
@@ -23387,6 +23395,9 @@ function PhotoViewer({ images, index, onClose }) {
            （ドラムの WheelSheet で「行の onClick に頼らない」としているのと同じ仕組み）。
            ボタンは wrapRef の中にあるので、ここで見分けて素通りさせる */
         if (e.target && e.target.closest && e.target.closest("button"))
+            return;
+        /* マウスは左ボタンだけ（右クリックを「たたき」に数えない） */
+        if (e.pointerType === "mouse" && e.button !== 0)
             return;
         const s = st.current;
         s.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -23532,9 +23543,12 @@ function PhotoViewer({ images, index, onClose }) {
             clampPan();
             syncZoom();
             apply(true);
+            /* 拡大中に、動かさず離した ＝ たたき（二度たたきで、もとの大きさへ） */
+            if (!s.moved)
+                onTap(e.clientX, e.clientY, e.pointerType);
         }
         else if (!s.moved) {
-            onTap(e.clientX, e.clientY);
+            onTap(e.clientX, e.clientY, e.pointerType);
         }
         s.mode = null;
     };
