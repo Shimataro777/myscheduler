@@ -17839,13 +17839,10 @@ const sortItems = (list, mode, counts) => list.slice().sort((a, b) => {
     }
     return mode === "updated" ? compareUpdated(a, b) : compareName(a, b);
 });
-/* 大事な記録に付ける印。淡い色でそろえる */
-const MARKS = [
-    { key: "star", label: "星", icon: react_1.default.createElement(lucide_react_1.Star, { size: 15 }), color: "#EFCB86" },
-    { key: "excl", label: "！", icon: react_1.default.createElement(lucide_react_1.AlertTriangle, { size: 15 }), color: "#F2A0AC" },
-    { key: "heart", label: "ハート", icon: react_1.default.createElement(lucide_react_1.Heart, { size: 15 }), color: "#E7A9CE" },
-];
-const markOf = (key) => MARKS.find((m) => m.key === key) || null;
+/* 「大事な記録に付ける印」（星・！・ハート）は廃止した（2.17.0〜）。
+   記録の mark、フォルダの marked、探す・フォルダの条件の「印つき」も、すべて無い。
+   **戻さないこと。** 古い記録・バックアップに mark / marked が残っていても、読み込むときに落とす
+   （migrateRecord / migrateFolder）。「固定（pinned）」は別のもので、そのまま使う */
 /* ============================================================
    設定
    ============================================================ */
@@ -17942,7 +17939,7 @@ function useTypeColor(type) {
 }
 /* ============================================================
    記録
-   共通： id / type / tags / date / time / mark / comment / planId
+   共通： id / type / tags / date / time / comment / planId
    ============================================================ */
 /* scope ＝ その記録が「いつ」に付くか。
    "day"（ふつうの日の記録）／"week"（その週ぜんたい）／"month"（その月ぜんたい）。
@@ -17958,7 +17955,7 @@ function emptyRecord(type, date, scope) {
         fromRepeat: "",
         /* 週・月のメモも繰り返せるので、どの種類でも入れ物を持たせておく */
         repeat: { freq: "none", days: [], until: "", skip: [] },
-        mark: null, comment: "", planId: null,
+        comment: "", planId: null,
         createdAt: new Date().toISOString(), updatedAt: null,
         /* checkedAt ＝ 印を付け外しした時刻。**updatedAt と分けて持つこと。**
            並びには使わない（使うと、押すたびに札が動く） */
@@ -18002,7 +17999,8 @@ function migrateRecord(r) {
         /* 予定だけが持てる「色のわく」。ほかの種類では空のまま */
         /* 古い予定に色が無ければ、1つめのわくとみなす */
         color: r.type === "schedule" ? (SCHEDULE_SLOTS.includes(r.color) ? r.color : "c1") : "",
-        mark: markOf(r.mark) ? r.mark : null,
+        /* 廃止した「印」。古い記録に残っていても落とす（excluded と同じ書き方） */
+        mark: undefined,
         scope: (r.scope === "week" || r.scope === "month") ? r.scope : "day",
         pinned: !!r.pinned,
         fromRepeat: String(r.fromRepeat || ""),
@@ -18386,15 +18384,14 @@ function emptyFolder(name) {
        条件で入ったものを1件だけ外せると、なぜ入らないのかが後から分からなくなる。
        外すのは手動で入れたぶんだけ（picked から抜く）。条件のぶんは条件を変えて外す */
     /* from / to ＝ 集める期間（空なら、いつのものでも集める） */
-    return { id: uid(), name: name || "", tags: [], types: [], from: "", to: "", marked: false,
+    return { id: uid(), name: name || "", tags: [], types: [], from: "", to: "",
         picked: [], pinned: false, createdAt: new Date().toISOString(),
         /* フォルダそのものを直した時刻（並び順「更新順」の基準）。changeFolder が書く */
         updatedAt: null };
 }
 /* **はじめから入っているフォルダは、もう作らないこと。**
    「印つき」を消せない形で置いていたが、要らない人には邪魔なだけだった。
-   印を付けた記録は、探す画面の「印つき」でしぼれる。
-   自分で「印つき」のフォルダを作りたい人は、集める条件から選べる */
+   （2.17.0 で「印」そのものを廃止した。古いデータに残った「印つき」フォルダを、読み込むときに取りのぞく仕組みだけ残してある） */
 const STAR_FOLDER_ID = "folder-marked";
 /* 前に入れておいた「印つき」を、読み込むときに取りのぞく。
    **記録は消えないこと**（フォルダは集めて見せるだけの入れもの） */
@@ -18414,7 +18411,8 @@ function migrateFolder(f) {
             : [],
         from: typeof f.from === "string" ? f.from : "",
         to: typeof f.to === "string" ? f.to : "",
-        marked: !!f.marked, pinned: !!f.pinned,
+        /* 廃止した「印つきだけ集める」条件。古いフォルダに残っていても落とす */
+        marked: undefined, pinned: !!f.pinned,
         /* フォルダの絵。決めていなければ空 */
         icon: typeof f.icon === "string" ? f.icon : "",
         picked: Array.isArray(f.picked) ? f.picked.filter((x) => typeof x === "string") : [],
@@ -18428,7 +18426,7 @@ function migrateFolder(f) {
    **フォルダを2種類に分けて持たないこと。** ひとつのフォルダで
    「条件で自動的に集める」と「手動で入れる」の両方ができる（片方だけでもよい） */
 function folderHasCond(f) {
-    return !!(f && (normalizeTags(f.tags).length || (f.types || []).length || f.marked || f.from || f.to));
+    return !!(f && (normalizeTags(f.tags).length || (f.types || []).length || f.from || f.to));
 }
 /* 条件を、そのまま読める短い文にする。画面に出して「効いている」と伝えるため */
 function folderCondText(f, N) {
@@ -18441,8 +18439,6 @@ function folderCondText(f, N) {
     const tags = normalizeTags(f.tags);
     if (tags.length)
         out.push(tags.map((t) => "#" + t).join(" "));
-    if (f.marked)
-        out.push("印つき");
     if (f.from || f.to)
         out.push(`${f.from ? shortDate(f.from) : "はじめ"}〜${f.to ? shortDate(f.to) : "いま"}`);
     return out.join("・");
@@ -18456,7 +18452,7 @@ function folderRecords(folder, records) {
     /* タグと種類は、どちらか片方だけでも集められる。
        **タグが空だと何も集めない、という作りにしないこと。**
        「メモだけ集める」といった使い方ができなくなる */
-    const hasCond = tags.length > 0 || types.length > 0 || folder.marked;
+    const hasCond = tags.length > 0 || types.length > 0;
     return records.filter((r) => {
         /* 期間は、手動で入れた記録にも効かせる */
         if (folder.from && (r.date || "") < folder.from)
@@ -18466,8 +18462,6 @@ function folderRecords(folder, records) {
         if (picked.has(r.id))
             return true;
         if (!hasCond)
-            return false;
-        if (folder.marked && !r.mark)
             return false;
         if (types.length && !types.includes(r.type))
             return false;
@@ -19536,30 +19530,74 @@ if (typeof document !== "undefined" && document.addEventListener) {
     document.addEventListener("animationend", markEntered, true);
     document.addEventListener("animationcancel", markEntered, true);
 }
-/* 閉じる。**待たずに、その場で閉じること。**
-   以前は ms（180〜240ms）待ってから onClose を呼んでいたが、退場の動き
-   （anim-sheet-out / anim-fade-out / anim-right-out など）は GLOBAL_CSS で空にしてあるので、
-   （2.11.0 で登場の動きは戻したが、退場は空のまま。閉じるのは今までどおりその場で）
+/* 閉じる。**ms を渡さないかぎり、待たずにその場で閉じること。**
+   以前は紙・小窓もふくめ、すべて ms（180〜240ms）待ってから onClose を呼んでいたが、退場の動き
+   （anim-sheet-out / anim-fade-out / anim-right-out など）は GLOBAL_CSS で空にしてあったので、
    待つあいだ画面が止まって見えるだけで、「キャンセル」「戻る」がもたついて感じられた。
-   **退場の動きを戻さないかぎり、ここに待ち時間を入れ直さないこと。**
-   ・closing はいつも false（呼び出し側のクラスの切り替えは、そのまま残してある）
-   ・同じひと押しから二重に届いたぶん（ボタンと暗がりなど）だけ弾く。
-     時間で長く弾かないこと。閉じずに残る画面（「保存しますか」をはさむものなど）で、
+   2.11.0 で登場の動きは戻したが、退場は空のままにして、この待ち時間も無くした。
+   **紙・小窓（シート／ダイアログ）は、いまもこの形（ms を渡さない）のまま。**
+   2.17.0 で、画面（OverlayScreen）の退場だけ、動きを戻した（引継書「画面遷移の決まり」）。
+   ・ms を渡したときだけ：closing を true にして退場のクラスへ切り替え、その動きの長さぶん
+     （FT_EXIT_RIGHT_MS / FT_EXIT_BOTTOM_MS。GLOBAL_CSS の --ft-enter-push / --ft-enter-modal と
+     必ず同じ値にすること）待ってから onClose を呼ぶ。待っているあいだ二重に押されても弾く
+     （busy を立てたままにする）。onClose を呼んだあとは busy / closing を戻す
+     （画面が消えるならまとめて消え、消えないなら元の位置へ戻る）
+   ・ms を渡さないとき：closing はいつも false（呼び出し側のクラスの切り替えは、そのまま残してある）。
+     同じひと押しから二重に届いたぶん（ボタンと暗がりなど）だけ、時間で長く弾かずに弾く。
+     時間で長く弾くと、閉じずに残る画面（「保存しますか」をはさむものなど）で、
      次の「閉じる」が効かなくなる
+   ・左端から払って戻る（useEdgeSwipeBack）ときは、この待ち時間を通さないこと。
+     指について動く分ですでに退場の動きができているので、ms なしの別の useClosing を渡す
+     （通すと、退場のクラスが指の動きの上から translate を奪い、位置が跳ねて見える）
    ・「戻る」などの「ひと呼吸」は TapButton（60ms）の役目。ここでは足さない */
-function useClosing(onClose) {
+/* 動きを止めているか（表示設定「画面の動き」オフ／端末の「視差効果を減らす」）。
+   止めているときは退場の動きが 0.01ms になるので、動きを待たず、すぐ閉じる */
+function motionIsOff() {
+    try {
+        return !!document.querySelector(".ft-still")
+            || (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    }
+    catch (e) {
+        return false;
+    }
+}
+function useClosing(onClose, ms = 0) {
     const cb = (0, react_1.useRef)(onClose);
     cb.current = onClose;
     const busy = (0, react_1.useRef)(false);
+    const [closing, setClosing] = (0, react_1.useState)(false);
+    const timerRef = (0, react_1.useRef)(null);
+    (0, react_1.useEffect)(() => () => { if (timerRef.current)
+        clearTimeout(timerRef.current); }, []);
     const startClose = (0, react_1.useCallback)((...args) => {
         if (busy.current)
             return;
         busy.current = true;
-        setTimeout(() => { busy.current = false; }, 0);
-        cb.current && cb.current(...args);
-    }, []);
-    return [false, startClose];
+        if (ms > 0 && !motionIsOff()) {
+            setClosing(true);
+            timerRef.current = setTimeout(() => {
+                /* 呼び出し先が画面を消さなかったとき（閉じるのを断った）に、
+                   画面の外へ出たまま残らないよう戻す。消えるときは同じ描き直しにまとまり、何も見えない。
+                   promise を返すもの（保存）は、終わるまで戻さない */
+                const done = () => { busy.current = false; setClosing(false); };
+                const r = cb.current && cb.current(...args);
+                if (r && typeof r.then === "function")
+                    r.then(done, done);
+                else
+                    done();
+            }, ms);
+        }
+        else {
+            setTimeout(() => { busy.current = false; }, 0);
+            cb.current && cb.current(...args);
+        }
+    }, [ms]);
+    return [closing, startClose];
 }
+/* **GLOBAL_CSS の --ft-enter-push / --ft-enter-modal と、必ず同じ値にすること。**
+   画面が閉じる動きの長さ（useClosing の ms）に使う */
+const FT_EXIT_RIGHT_MS = 300;
+const FT_EXIT_BOTTOM_MS = 340;
 /* 重なる画面が開いているあいだ、うしろの画面を動かないようにする。
    何枚か重なることがあるので、枚数を数えて最後の1枚が閉じたときだけ元に戻す。
    **戻し忘れると、以後どの画面も動かせなくなる。**
@@ -20450,10 +20488,14 @@ function OverlayScreen({ from = "right", closing, children, zIndex = 50 }) {
     useLockBackground();
     const inCls = from === "bottom" ? "anim-up" : "anim-right";
     const outCls = from === "bottom" ? "anim-down-out" : "anim-right-out";
+    /* 暗がりの退場は、画面ぜんたいの anim-fade-out（紙・小窓と共用、空のまま）を使わず、
+       専用のクラスにする。**共用にすると、紙・小窓の「待たずに閉じる」まで動きが付いてしまう**
+       （useClosing に ms を渡していないので、動く間もなく消え、ちらつきに見える） */
+    const scrimOutCls = from === "bottom" ? "anim-scrim-out-modal" : "anim-scrim-out-push";
     return (react_1.default.createElement("div", { className: "fixed inset-0", "data-ft-overlay": "", style: { zIndex } },
         /* 地の暗がり。左端から払って戻るときは useEdgeSwipeBack が指に合わせて薄くする。
            **data-ft-scrim を外さないこと。** 外すと、払い終えたあと画面だけ消えて暗がりが残る */
-        react_1.default.createElement("div", { "data-ft-scrim": "", className: "absolute inset-0 bg-black/25 " + (closing ? "anim-fade-out" : "anim-fade") }),
+        react_1.default.createElement("div", { "data-ft-scrim": "", className: "absolute inset-0 bg-black/25 " + (closing ? scrimOutCls : "anim-fade") }),
         react_1.default.createElement("div", { className: "absolute inset-0 " + (closing ? outCls : inCls) }, children)));
 }
 /* 画面左端を右へ払うと戻る。
@@ -20721,6 +20763,15 @@ function useSwipePages(onPrev, onNext) {
         let sx = 0, sy = 0, st = 0, on = false, maxY = 0;
         const start = (e) => {
             if (e.touches.length !== 1) {
+                on = false;
+                return;
+            }
+            /* **重なって出ている窓・紙・画面の上で始まった指は、送りに数えないこと（2.17.1〜）。**
+               拡大窓（PhotoViewer）や「別のリストへ移す」の紙は、札の中に作られていて、
+               DOM ではこの面の子孫。fixed で全面を覆っていても、touch はここまで上がってくる。
+               窓の中で絵を横へ払っただけで、うしろの日・週・月が動いていた */
+            const tg = e.target;
+            if (tg && tg.closest && tg.closest(".ft-sheet-wrap, [data-ft-overlay]")) {
                 on = false;
                 return;
             }
@@ -21497,8 +21548,8 @@ function FilterPill({ on, onClick, children, color }) {
 /* しぼりこみの欄。
    **探す・フォルダの条件・フォルダの手入れで、同じものを使うこと。**
    別々に書くと、少しずつ並びがずれていく。
-   上から ① キーワード ② 種類と印つき ③ タグ ④ 期間（左に名前、右に日付ふたつ） */
-function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, mark, onMark, from, to, onFrom, onTo, extra }) {
+   上から ① キーワード ② 種類 ③ タグ ④ 期間（左に名前、右に日付ふたつ） */
+function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, from, to, onFrom, onTo, extra }) {
     const N = useTypeNames();
     return (react_1.default.createElement(react_1.default.Fragment, null,
         q !== undefined && (react_1.default.createElement(TextInput, { value: q, onChange: (e) => onQ(e.target.value), placeholder: "\u30AD\u30FC\u30EF\u30FC\u30C9\u3067\u691C\u7D22", onKeyDown: (e) => { if (e.key === "Enter" && onEnter)
@@ -21512,9 +21563,6 @@ function FilterFields({ q, onQ, onEnter, types, onToggleType, tags, onOpenTags, 
                 react_1.default.createElement(lucide_react_1.Tag, { size: 15 }),
                 " \u30BF\u30B0\u3092\u9078\u3076",
                 tags.length ? `（${tags.length}）` : ""),
-            react_1.default.createElement(FilterPill, { on: !!mark, onClick: onMark },
-                react_1.default.createElement(lucide_react_1.Star, { size: 14 }),
-                " \u5370\u3064\u304D"),
             extra),
         tags.length > 0 && react_1.default.createElement(TagChips, { tags: tags }),
         react_1.default.createElement("div", { className: "flex items-center gap-1.5" },
@@ -22054,25 +22102,6 @@ function LinkedText({ text, className }) {
      **このとき setEditing / setIsNew を呼ばないこと。**
      呼ぶと入力欄が作り直され、打っている最中のカーソルが外れる
    ============================================================ */
-/* 大事な記録に付ける印を選ぶ */
-function MarkPicker({ value, onChange }) {
-    return (react_1.default.createElement("div", { className: "flex gap-2" },
-        react_1.default.createElement("button", { type: "button", onClick: () => onChange(null), className: "min-h-[46px] px-3.5 rounded-xl border fs-body font-bold ft-tap "
-                + (!value ? "border-th-800 bg-th-800 text-white" : "border-neutral-200 bg-white text-neutral-500") }, "\u306A\u3057"),
-        MARKS.map((m) => {
-            const on = value === m.key;
-            return (react_1.default.createElement("button", { key: m.key, type: "button", onClick: () => onChange(m.key), "aria-pressed": on, "aria-label": m.label, className: "min-h-[46px] min-w-[52px] rounded-xl border flex items-center justify-center ft-tap ft-tap-icon "
-                    + (on ? "border-th-800 bg-th-50" : "border-neutral-200 bg-white"), style: { color: m.color } },
-                react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") }, react_1.default.cloneElement(m.icon, { size: 20, fill: on ? m.color : "none" }))));
-        })));
-}
-/* 記録に付いた印を小さく見せる */
-function MarkDot({ mark, size = 15 }) {
-    const m = markOf(mark);
-    if (!m)
-        return null;
-    return react_1.default.createElement("span", { className: "shrink-0 inline-flex", style: { color: m.color } }, react_1.default.cloneElement(m.icon, { size, fill: m.color }));
-}
 /* ============================================================
    チェックリストの中身を作る欄
    ・それぞれ独立していて、順番を入れ替えられる
@@ -22584,11 +22613,46 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
             window.removeEventListener("pagehide", flush);
         };
     }, [onAutoDraft]);
-    const finish = () => { doneRef.current = true; onSave({ ...rec, updatedAt: new Date().toISOString() }, {}); };
+    /* 画面が下へ閉じる動き（2.17.0〜）。thunk（あとで実行する関数）を渡すと、動きが終わってから実行する。
+       ・保存して閉じる：保存はすぐ済ませ、閉じる部分だけを動きのあとへ回す（saveRecord の animateClose）
+       ・保存せずに閉じる：動きのあとで onCancel */
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_BOTTOM_MS);
+    const finish = () => {
+        if (closing)
+            return;
+        doneRef.current = true;
+        return onSave({ ...rec, updatedAt: new Date().toISOString() }, { animateClose: (fin) => requestClose(fin) });
+    };
+    /* 途中保存（2.17.0〜）。保存して、**画面は開いたままにする**。
+       ・保存は「保存」と同じ saveRecord（同じ id を上書きするので、何度押しても記録は増えない）
+       ・doneRef は立てない。開いたままなので、このあとの書き足しは自動下書きが見張る
+       ・保存ずみになったので、いまの中身は「書きかけ」ではない（dirty を戻す）。
+         このあと書き足すと set() が dirty を立て直し、閉じるとき確かめが出る
+       ・押したことは、ボタンの絵が「保存する」→「保存できた」に変わって伝える
+       ・**setEditing を呼ばないこと**（saveRecord の keepOpen は呼ばない作り）。入力欄が作り直される */
+    const [justSaved, setJustSaved] = (0, react_1.useState)(false);
+    const savedTimer = (0, react_1.useRef)(null);
+    (0, react_1.useEffect)(() => () => clearTimeout(savedTimer.current), []);
+    const interimSave = async () => {
+        if (closing)
+            return;
+        try {
+            await onSave({ ...recRef.current, updatedAt: new Date().toISOString() }, { keepOpen: true });
+        }
+        catch (e) {
+            setErr("保存できませんでした");
+            return;
+        }
+        setDirty(false);
+        setJustSaved(true);
+        clearTimeout(savedTimer.current);
+        savedTimer.current = setTimeout(() => setJustSaved(false), 1600);
+    };
     /* 書きかけのまま閉じようとしたら、いちど確かめる。
        **黙って閉じないこと。** 書いたものが消えたように見える */
     const [confirmLeave, setConfirmLeave] = (0, react_1.useState)(false);
-    const leave = () => { doneRef.current = true; onCancel(); };
+    const leave = () => { if (closing)
+        return; doneRef.current = true; requestClose(() => onCancel()); };
     const cancel = () => { if (dirty)
         setConfirmLeave(true);
     else
@@ -22600,7 +22664,6 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
             return !!(rec.title || "").trim() || (rec.items || []).length > 0;
         return !!(rec.text || "").trim() || (rec.images || []).length > 0;
     })();
-    const starred = !!rec.mark;
     /* 開始時刻を決めたら、終了時刻は1時間後を入れておく。
        すでに手で終了を決めているときは、そのぶんの長さを保って動かす */
     const setStart = (v) => {
@@ -22614,7 +22677,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
         const span = (before !== null && after !== null && after >= before) ? after - before : 60;
         set({ time: v, endTime: now === null ? rec.endTime : hhmm(now + span) });
     };
-    return (react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60 },
+    return (react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60, closing: closing },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-white flex flex-col" },
             react_1.default.createElement("div", { className: "px-3 pb-2 flex items-center gap-1 shrink-0", style: SAFE_TOP(18) },
                 react_1.default.createElement(TapButton, { onClick: cancel, "aria-label": "\u30AD\u30E3\u30F3\u30BB\u30EB", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 shrink-0" },
@@ -22627,9 +22690,12 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                         react_1.default.createElement(lucide_react_1.Undo2, { size: 20 })),
                     react_1.default.createElement("button", { type: "button", onClick: redo, disabled: !canRedo, "aria-label": "\u3084\u308A\u76F4\u3059", className: "w-10 h-10 flex items-center justify-center rounded-full ft-tap ft-tap-icon " + (canRedo ? "text-neutral-500 hover:bg-neutral-100" : "text-neutral-300") },
                         react_1.default.createElement(lucide_react_1.Redo2, { size: 20 }))),
-                react_1.default.createElement("button", { type: "button", onClick: () => set({ mark: starred ? null : "star" }), "aria-pressed": starred, "aria-label": "\u5927\u4E8B\u306A\u8A18\u9332\u306B\u3059\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-full ft-tap ft-tap-icon shrink-0", style: { color: starred ? "#F59E0B" : "#A3A3A3" } },
-                    react_1.default.createElement("span", { key: starred ? "on" : "off", className: "flex " + (starred ? "ft-mark" : "") },
-                        react_1.default.createElement(lucide_react_1.Star, { size: 25, fill: starred ? "#F59E0B" : "none" })))),
+                /* 途中保存（右上）。保存して、画面は閉じない。下の「保存」は保存して閉じる。
+                   絵は「保存する」→「保存できた」（SaveArrowIcon / SaveCheckIcon）。
+                   **星の印のボタンは廃止した（2.17.0〜）。ここはその場所** */
+                react_1.default.createElement("button", { type: "button", onClick: interimSave, disabled: !canSave || closing, "aria-label": "\u9014\u4E2D\u4FDD\u5B58", className: "min-h-[46px] px-2.5 flex items-center justify-center gap-1 rounded-full ft-tap ft-tap-icon shrink-0 " + (justSaved ? "" : "hover:bg-neutral-100"), style: { color: justSaved ? "#15803D" : "var(--th-800)", opacity: canSave ? 1 : 0.35 } },
+                    justSaved ? react_1.default.createElement(SaveCheckIcon, { size: 18 }) : react_1.default.createElement(SaveArrowIcon, { size: 18 }),
+                    react_1.default.createElement("span", { className: "fs-label font-bold whitespace-nowrap" }, justSaved ? "\u4FDD\u5B58\u6E08\u307F" : "\u9014\u4E2D\u4FDD\u5B58"))),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 pb-28 ft-col" },
                 err && react_1.default.createElement("p", { className: "fs-body-sm font-bold text-rose-700 mb-3" }, err),
                 (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: "タイトル", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 fs-title font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
@@ -23105,7 +23171,6 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     "/",
                     Number(r.endDate.slice(8, 10)))),
                 repeated && react_1.default.createElement(lucide_react_1.Repeat, { size: 12, className: "text-neutral-300 shrink-0" }),
-                r.mark && react_1.default.createElement(MarkDot, { mark: r.mark }),
                 react_1.default.createElement("span", { className: "flex-1" }),
                 !selectMode && (react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-1.5 -mt-1.5 shrink-0" },
                     onPin && !r.__repeat && (react_1.default.createElement(TapOnceButton, { onTap: () => onPin(r), "aria-label": r.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!r.pinned, 
@@ -23121,7 +23186,10 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     + (allDone ? "text-neutral-400" : "text-neutral-900") }, recordTitle(r, N))),
             r.type === "memo" && (r.text || "").trim() && (react_1.default.createElement(react_1.default.Fragment, null,
                 react_1.default.createElement(LongText, { text: r.text, open: expanded, long: memoLong, className: "fs-body leading-relaxed text-neutral-800" }),
-                react_1.default.createElement(LinkCards, { text: r.text }))),
+                react_1.default.createElement(LinkCards, { text: r.text }),
+                /* 「すべて表示／折りたたむ」は、本文・リンクカードの下、添付写真の上に置く（2.17.0〜）。
+                   以前は写真の下（カードの最下部）だった。**写真の下へ戻さないこと** */
+                memoLong && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")))),
             r.type !== "memo" && body && (react_1.default.createElement(react_1.default.Fragment, null,
                 react_1.default.createElement(LinkedText, { text: body, className: "fs-body leading-relaxed text-neutral-800 mb-1.5" }),
                 react_1.default.createElement(LinkCards, { text: body }))),
@@ -23155,8 +23223,9 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 r.repeat && r.repeat.freq !== "none" && (react_1.default.createElement("p", { className: "fs-caption text-neutral-400 mt-0.5 flex items-center gap-1" },
                     react_1.default.createElement(lucide_react_1.Repeat, { size: 12 }),
                     repeatLabel(r.repeat))))),
-            /* カード下部の「すべて表示／折りたたむ」。**折りたためる中身があるときだけ出す** */
-            hasFold && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")),
+            /* カード下部の「すべて表示／折りたたむ」。リストのメモ欄（本文の折りたたみ）用。
+               **折りたためる中身があるときだけ出す。** メモの本文ぶんは、上（写真の上）へ移した */
+            listBody && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")),
             normalizeTags(r.tags).length > 0 && react_1.default.createElement(TagChips, { tags: r.tags, className: "mt-2" }),
             /* 「探す」でキーワードを入れたときだけ出る。どこに当たったか */
             hits && hits.length > 0 && react_1.default.createElement(RecordHitBox, { hits: hits, words: hitWords })),
@@ -23182,6 +23251,7 @@ function PhotoViewer({ images, index, onClose }) {
     const [i, setI] = (0, react_1.useState)(Math.min(Math.max(0, index || 0), last));
     const [zoomed, setZoomed] = (0, react_1.useState)(false); // 拡大中は横に払えない、と見た目で伝えるため
     useLockBackground();
+    const rootRef = (0, react_1.useRef)(null); // 拡大窓ぜんたいの外わく（うしろへ指を通さない見張りを付ける）
     const wrapRef = (0, react_1.useRef)(null); // いちばん外（下へ払うとここが動く）
     const backRef = (0, react_1.useRef)(null); // 黒い地
     const chromeRef = (0, react_1.useRef)(null); // 上下の文字（払うと薄くなる）
@@ -23515,6 +23585,35 @@ function PhotoViewer({ images, index, onClose }) {
             el.removeEventListener("pointercancel", c);
         };
     }, []); // eslint-disable-line
+    /* うしろの画面へ、指を通さない（2.17.1〜）。
+       ・**この窓は、記録の札（RecordRow）の中に作られている。** 画面の見た目は fixed で全面を覆っていても、
+         DOM ではその札の子孫。だから touch / wheel は、札のまわりの箱まで泡のように上がっていき、
+         そこで待っている「日・週・月を払って送る」（useSwipePages。touch で受けている）や、
+         うしろの巻き物に届いてしまい、絵を横に払うと Today の日付が動いて窓が消えていた
+       ・上のポインターの受け取りは pointer だけを止めていた。**touch は別のイベント**なので、ここで止める
+       ・touchmove / wheel は、止めるだけでなく既定の動き（うしろの画面を送る）も止める。
+         ボタンの上から始まった指は既定の動きを止めない（click が届かなくなるのを避ける）
+       ・useLockBackground（body を留める）と二重の守り。留めるのは「巻き物」、これは「指の行き先」 */
+    (0, react_1.useEffect)(() => {
+        const el = rootRef.current;
+        if (!el)
+            return undefined;
+        const stop = (e) => { e.stopPropagation(); };
+        const lock = (e) => {
+            e.stopPropagation();
+            const t = e.target;
+            if (e.cancelable && !(t && t.closest && t.closest("button")))
+                e.preventDefault();
+        };
+        const stopTypes = ["touchstart", "touchend", "touchcancel", "mousedown", "mouseup", "dblclick", "contextmenu", "pointerdown", "pointerup", "pointermove", "pointercancel"];
+        const lockTypes = ["touchmove", "wheel"];
+        stopTypes.forEach((t) => el.addEventListener(t, stop, { passive: true }));
+        lockTypes.forEach((t) => el.addEventListener(t, lock, { passive: false }));
+        return () => {
+            stopTypes.forEach((t) => el.removeEventListener(t, stop));
+            lockTypes.forEach((t) => el.removeEventListener(t, lock));
+        };
+    }, []); // eslint-disable-line
     const goto = (n) => {
         const s = st.current;
         s.i = Math.max(0, Math.min(last, n));
@@ -23523,7 +23622,7 @@ function PhotoViewer({ images, index, onClose }) {
         setI(s.i);
         apply(true);
     };
-    return (react_1.default.createElement("div", { className: "ft-sheet-wrap anim-fade", style: { zIndex: 2147483400 }, onClick: (e) => e.stopPropagation() },
+    return (react_1.default.createElement("div", { ref: rootRef, className: "ft-sheet-wrap anim-fade", style: { zIndex: 2147483400 }, onClick: (e) => e.stopPropagation() },
         react_1.default.createElement("div", { ref: backRef, className: "absolute inset-0", style: { background: "#000", opacity: 1 } }),
         react_1.default.createElement("div", { ref: wrapRef, className: "absolute inset-0 overflow-hidden", style: { touchAction: "none" } },
             react_1.default.createElement("div", { ref: trackRef, className: "absolute inset-0 flex", style: { willChange: "transform" } }, list.map((src, k) => (react_1.default.createElement("div", { key: k, className: "relative w-full h-full shrink-0" },
@@ -24302,8 +24401,11 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
 }
 /* 日付をタップして開く、その日だけの画面 */
 function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
-    const [closing, close] = useClosing(onClose);
-    const { stripRef, screenRef } = useEdgeSwipeBack(close);
+    const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
+    /* 払って戻るときは、指について動く分がすでに退場の動き。ms なしの別口を渡す
+       （useClosing の説明を参照。通すと退場のクラスと指の動きがぶつかる） */
+    const [, closeInstant] = useClosing(onClose);
+    const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     /* **Today からまとめて消せるようにしないこと。** 消すのは探すでやる */
     const sel = useSelectMode(onDeleteMany);
     const dayList = (0, react_1.useMemo)(() => records.filter((r) => isDayRec(r) && coversDay(r, date)), [records, date]);
@@ -24334,7 +24436,6 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
     const [types, setTypes] = (0, react_1.useState)([]);
     const [tags, setTags] = (0, react_1.useState)([]);
     const [tagOpen, setTagOpen] = (0, react_1.useState)(false);
-    const [markOnly, setMarkOnly] = (0, react_1.useState)(false);
     const [from, setFrom] = (0, react_1.useState)("");
     const [to, setTo] = (0, react_1.useState)("");
     const [rangeOpen, setRangeOpen] = (0, react_1.useState)(false);
@@ -24376,20 +24477,18 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
        打っている途中の字で結果が入れ替わり、目が落ち着かない。
        「検索」を押したときの条件だけで探す */
     const [applied, setApplied] = (0, react_1.useState)(null);
-    const draft = { q, types, tags, markOnly, from, to };
-    const hasDraft = !!q.trim() || types.length > 0 || tags.length > 0 || markOnly || !!from || !!to;
+    const draft = { q, types, tags, from, to };
+    const hasDraft = !!q.trim() || types.length > 0 || tags.length > 0 || !!from || !!to;
     const hasCriteria = !!applied;
     const search = () => { setApplied(hasDraft ? { ...draft } : null); setOpen(false); };
     const found = (0, react_1.useMemo)(() => {
         if (!applied)
             return [];
-        const { q: aq, types: atypes, tags: atags, markOnly: amark, from: afrom, to: ato } = applied;
+        const { q: aq, types: atypes, tags: atags, from: afrom, to: ato } = applied;
         const words = aq.trim().toLowerCase().split(/[\s　]+/).filter(Boolean);
         const wanted = atags.map((t) => t.toLowerCase());
         return records.filter((r) => {
             if (atypes.length && !atypes.includes(r.type))
-                return false;
-            if (amark && !r.mark)
                 return false;
             if (afrom && (r.date || "") < afrom)
                 return false;
@@ -24412,7 +24511,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
     /* キーワードで探したときだけ、札ごとに「見つかった場所」を出す */
     const hitWords = (0, react_1.useMemo)(() => (applied ? searchWords(applied.q) : []), [applied]);
     const toggleType = (t) => setTypes((p) => p.includes(t) ? p.filter((x) => x !== t) : [...p, t]);
-    const clear = () => { setQ(""); setTypes([]); setTags([]); setMarkOnly(false); setFrom(""); setTo(""); setApplied(null); setOpen(true); };
+    const clear = () => { setQ(""); setTypes([]); setTags([]); setFrom(""); setTo(""); setApplied(null); setOpen(true); };
     /* いまの条件を、ひと目で読める短い文にする（たたんだ帯に出す） */
     const summary = (0, react_1.useMemo)(() => {
         const a = applied;
@@ -24425,8 +24524,6 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
             out.push(a.types.map((t) => N[t] || TYPE_LABELS[t]).join("・"));
         if (a.tags.length)
             out.push(a.tags.map((t) => "#" + t).join(" "));
-        if (a.markOnly)
-            out.push("印つき");
         if (a.from || a.to)
             out.push(`${a.from ? shortDate(a.from) : "はじめ"}〜${a.to ? shortDate(a.to) : "いま"}`);
         return out.join("・");
@@ -24453,7 +24550,7 @@ function FindScreen({ records, knownTags, onEdit, onToggleItem, onDeleteMany, on
                     react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 }))))),
         react_1.default.createElement("div", { className: "px-4 ft-col" },
             react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (open ? "" : "hidden") },
-                react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: search, types: types, onToggleType: toggleType, tags: tags, onOpenTags: () => setTagOpen(true), mark: markOnly, onMark: () => setMarkOnly((v) => !v), from: from, to: to, onFrom: setFrom, onTo: setTo }),
+                react_1.default.createElement(FilterFields, { q: q, onQ: setQ, onEnter: search, types: types, onToggleType: toggleType, tags: tags, onOpenTags: () => setTagOpen(true), from: from, to: to, onFrom: setFrom, onTo: setTo }),
                 react_1.default.createElement("div", { className: "flex gap-2" },
                     hasDraft && (react_1.default.createElement("button", { type: "button", onClick: clear, className: BTN_SECONDARY + " btn-h-lg px-4 fs-body shrink-0" }, "\u9078\u629E\u89E3\u9664")),
                     react_1.default.createElement("button", { type: "button", onClick: search, disabled: !hasDraft, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" },
@@ -25112,14 +25209,17 @@ function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
     const canRedo = redoStack.current.length > 0;
     /* どの計画のものか。**別の計画へ移せること**（作り直させない） */
     const [toPlan, setToPlan] = (0, react_1.useState)(planId || "");
-    const finish = () => onSave(step, toPlan);
+    /* 画面が下へ閉じる動き（2.17.0〜。RecordForm と同じ形）。動きが終わってから保存する／閉じる */
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_BOTTOM_MS);
+    const finish = () => requestClose(() => onSave(step, toPlan));
+    const leave = () => requestClose(() => onCancel());
     const cancel = () => { if (dirty)
         setConfirmLeave(true);
     else
-        onCancel(); };
+        leave(); };
     /* チェックリストの記録と同じ決まり：題があるか、中に1行でもあれば保存できる */
     const canSave = !!(step.title || "").trim() || items.length > 0;
-    return (react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60 },
+    return (react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60, closing: closing },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-white flex flex-col" },
             react_1.default.createElement("div", { className: "px-3 pb-2 flex items-center gap-1 shrink-0", style: SAFE_TOP(18) },
                 react_1.default.createElement(TapButton, { onClick: cancel, "aria-label": "\u30AD\u30E3\u30F3\u30BB\u30EB", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 shrink-0" },
@@ -25155,7 +25255,7 @@ function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
                 react_1.default.createElement("button", { type: "button", onClick: finish, disabled: !canSave, style: { flex: 1.4 }, className: BTN_PRIMARY + " btn-h-lg fs-body" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 17 }),
                     " \u4FDD\u5B58")),
-            confirmLeave && (react_1.default.createElement(ConfirmDialog, { title: "\u4FDD\u5B58\u305B\u305A\u306B\u9589\u3058\u307E\u3059\u304B", body: "\u66F8\u3044\u305F\u5185\u5BB9\u306F\u6B8B\u308A\u307E\u305B\u3093\u3002", danger: false, confirmLabel: "\u9589\u3058\u308B", onCancel: () => setConfirmLeave(false), onConfirm: () => { setConfirmLeave(false); onCancel(); } })),
+            confirmLeave && (react_1.default.createElement(ConfirmDialog, { title: "\u4FDD\u5B58\u305B\u305A\u306B\u9589\u3058\u307E\u3059\u304B", body: "\u66F8\u3044\u305F\u5185\u5BB9\u306F\u6B8B\u308A\u307E\u305B\u3093\u3002", danger: false, confirmLabel: "\u9589\u3058\u308B", onCancel: () => setConfirmLeave(false), onConfirm: () => { setConfirmLeave(false); leave(); } })),
             confirmDel && (react_1.default.createElement(ConfirmDialog, { title: "\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u6D88\u3059\u3068\u5143\u306B\u623B\u305B\u307E\u305B\u3093\u3002", onCancel: () => setConfirmDel(false), onConfirm: () => { setConfirmDel(false); onDelete(); } })))));
 }
 /* --- 計画をひらいた画面 ---
@@ -25165,8 +25265,9 @@ function StepForm({ initial, onSave, onCancel, onDelete, plans, planId }) {
    画面が増えるほど、書く気持ちが遠のく */
 function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAddRecord, onEditRecord, onToggleItem, onPin, onDeleteMany, order, onOrder, onMoveStep }) {
     const sel = useSelectMode(onDeleteMany);
-    const [closing, close] = useClosing(onClose);
-    const { stripRef, screenRef } = useEdgeSwipeBack(close);
+    const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
+    const [, closeInstant] = useClosing(onClose);
+    const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     const [delOpen, setDelOpen] = (0, react_1.useState)(false);
     const [settingsOpen, setSettingsOpen] = (0, react_1.useState)(false);
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
@@ -25381,7 +25482,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
     /* --- 自動の条件 --- */
     const start = (0, react_1.useMemo)(() => ({
         tags: normalizeTags(folder.tags), types: folder.types || [],
-        from: folder.from || "", to: folder.to || "", marked: !!folder.marked,
+        from: folder.from || "", to: folder.to || "",
     }), [folder]);
     const [cond, setCond] = (0, react_1.useState)(start);
     const [condTagOpen, setCondTagOpen] = (0, react_1.useState)(false);
@@ -25390,11 +25491,11 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
     const condOn = folderHasCond(cond);
     /* --- 手動で入れるぶん --- */
     const [picked, setPicked] = (0, react_1.useState)(() => new Set(folder.picked || []));
-    const [draft, setDraft] = (0, react_1.useState)({ q: "", types: [], tags: [], mark: false, from: "", to: "", mine: false });
+    const [draft, setDraft] = (0, react_1.useState)({ q: "", types: [], tags: [], from: "", to: "", mine: false });
     const [applied, setApplied] = (0, react_1.useState)(null); // 「検索する」を押して決まった条件
     const [fTagOpen, setFTagOpen] = (0, react_1.useState)(false);
     const setD = (patch) => setDraft((d) => ({ ...d, ...patch }));
-    const hasDraft = !!(draft.q.trim() || draft.types.length || draft.tags.length || draft.mark || draft.from || draft.to || draft.mine);
+    const hasDraft = !!(draft.q.trim() || draft.types.length || draft.tags.length || draft.from || draft.to || draft.mine);
     const hasCriteria = !!applied;
     /* 書きかけのまま閉じようとしたら、いちど確かめる */
     const dirty = (0, react_1.useMemo)(() => {
@@ -25424,8 +25525,6 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
             if (applied.mine && !picked.has(r.id))
                 return false;
             if (applied.types.length && !applied.types.includes(r.type))
-                return false;
-            if (applied.mark && !r.mark)
                 return false;
             if (applied.from && (r.date || "") < applied.from)
                 return false;
@@ -25458,7 +25557,7 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
         bodyRef.current.scrollTo({ top: 0, behavior: "smooth" }); };
     const search = () => { setApplied(hasDraft ? { ...draft } : null); setFOpen(false); toTop(); };
     const clear = () => {
-        setDraft({ q: "", types: [], tags: [], mark: false, from: "", to: "", mine: false });
+        setDraft({ q: "", types: [], tags: [], from: "", to: "", mine: false });
         setApplied(null);
         setFOpen(true);
     };
@@ -25477,7 +25576,6 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
         applied.q.trim() ? `「${applied.q.trim()}」` : "",
         applied.types.map((t) => N[t] || TYPE_LABELS[t]).join("・"),
         applied.tags.map((t) => "#" + t).join(" "),
-        applied.mark ? "印つき" : "",
         applied.mine ? "手動" : "",
         (applied.from || applied.to) ? `${applied.from ? shortDate(applied.from) : "はじめ"}〜${applied.to ? shortDate(applied.to) : "いま"}` : "",
     ].filter(Boolean).join("・");
@@ -25525,15 +25623,15 @@ function FolderSetupSheet({ folder, records, knownTags, initialTab, onCancel, on
                                 react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18 }))))),
                 react_1.default.createElement("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto overflow-x-hidden px-4 " + (tab === "manual" ? "pt-2 pb-3" : "py-3"), style: { touchAction: "pan-y" }, onPointerDown: onDown, onPointerUp: onUp }, tab === "auto" ? (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4" },
-                        react_1.default.createElement(FilterFields, { types: cond.types, onToggleType: toggleCondType, tags: cond.tags, onOpenTags: () => setCondTagOpen(true), mark: cond.marked, onMark: () => setC({ marked: !cond.marked }), from: cond.from, to: cond.to, onFrom: (v) => setC({ from: v }), onTo: (v) => setC({ to: v }) }),
-                        condOn && (react_1.default.createElement("button", { type: "button", onClick: () => setCond({ tags: [], types: [], from: "", to: "", marked: false }), className: BTN_SECONDARY + " w-full btn-h-lg fs-body" }, "\u6761\u4EF6\u3092\u3059\u3079\u3066\u5916\u3059"))),
+                        react_1.default.createElement(FilterFields, { types: cond.types, onToggleType: toggleCondType, tags: cond.tags, onOpenTags: () => setCondTagOpen(true), from: cond.from, to: cond.to, onFrom: (v) => setC({ from: v }), onTo: (v) => setC({ to: v }) }),
+                        condOn && (react_1.default.createElement("button", { type: "button", onClick: () => setCond({ tags: [], types: [], from: "", to: "" }), className: BTN_SECONDARY + " w-full btn-h-lg fs-body" }, "\u6761\u4EF6\u3092\u3059\u3079\u3066\u5916\u3059"))),
                     react_1.default.createElement("div", { className: "rounded-xl bg-neutral-100 px-3.5 py-2.5 flex items-center gap-2" },
                         react_1.default.createElement("span", { className: "fs-body-sm text-neutral-600 flex-1" }, "\u3053\u306E\u6761\u4EF6\u3067\u5165\u308B\u8A18\u9332"),
                         react_1.default.createElement("span", { className: "fs-subhead font-bold tabular-nums text-neutral-900" },
                             autoSet.size,
                             "\u4EF6")))) : (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement("div", { className: "rounded-2xl bg-white border border-neutral-200 p-2.5 space-y-2.5 mb-4 " + (fOpen ? "" : "hidden") },
-                        react_1.default.createElement(FilterFields, { q: draft.q, onQ: (v) => setD({ q: v }), onEnter: search, types: draft.types, onToggleType: toggleDType, tags: draft.tags, onOpenTags: () => setFTagOpen(true), mark: draft.mark, onMark: () => setD({ mark: !draft.mark }), from: draft.from, to: draft.to, onFrom: (v) => setD({ from: v }), onTo: (v) => setD({ to: v }), extra: (react_1.default.createElement(FilterPill, { on: draft.mine, onClick: () => setD({ mine: !draft.mine }) },
+                        react_1.default.createElement(FilterFields, { q: draft.q, onQ: (v) => setD({ q: v }), onEnter: search, types: draft.types, onToggleType: toggleDType, tags: draft.tags, onOpenTags: () => setFTagOpen(true), from: draft.from, to: draft.to, onFrom: (v) => setD({ from: v }), onTo: (v) => setD({ to: v }), extra: (react_1.default.createElement(FilterPill, { on: draft.mine, onClick: () => setD({ mine: !draft.mine }) },
                                 react_1.default.createElement(lucide_react_1.Check, { size: 14, strokeWidth: 3, className: "thick" }),
                                 " \u624B\u52D5")) }),
                         react_1.default.createElement("div", { className: "flex gap-2" },
@@ -25572,8 +25670,9 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
         onChange({ ...folder, picked: (folder.picked || []).filter((x) => !set.has(x)) });
         sel.stop();
     };
-    const [closing, close] = useClosing(onClose);
-    const { stripRef, screenRef } = useEdgeSwipeBack(close);
+    const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
+    const [, closeInstant] = useClosing(onClose);
+    const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     const [setup, setSetup] = (0, react_1.useState)(null); // 記録を入れる紙（"auto" / "manual"）
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
     const [renameOpen, setRenameOpen] = (0, react_1.useState)(false);
@@ -25827,8 +25926,9 @@ function SettingsScreen({ prefs, onSave, onClose }) {
     const [headBusy, setHeadBusy] = (0, react_1.useState)(false);
     const [headFile, setHeadFile] = (0, react_1.useState)(null); // 切り抜きを待っている写真
     const headAspect = useHeaderAspect(); // 見出しの帯と同じ形で切り抜く
-    const [closing, close] = useClosing(onClose);
-    const { stripRef, screenRef } = useEdgeSwipeBack(close);
+    const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
+    const [, closeInstant] = useClosing(onClose);
+    const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     /* **触ったそばから変えないこと。**
        試しに押しただけで元の設定が失われる。「保存」で決まる形にする */
     const [draft, setDraft] = (0, react_1.useState)(prefs);
@@ -25936,8 +26036,9 @@ function SettingsScreen({ prefs, onSave, onClose }) {
    片方だけ直すと、記録に古い名前が残って食い違う
    ============================================================ */
 function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onReorder, onClose }) {
-    const [closing, close] = useClosing(onClose);
-    const { stripRef, screenRef } = useEdgeSwipeBack(close);
+    const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
+    const [, closeInstant] = useClosing(onClose);
+    const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     const [draft, setDraft] = (0, react_1.useState)("");
     const [renaming, setRenaming] = (0, react_1.useState)(null);
     const [deleting, setDeleting] = (0, react_1.useState)(null);
@@ -26020,8 +26121,9 @@ async function buildBackup(data, withPhotos) {
 }
 function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backupAt, unsavedCount }) {
     const used = (0, react_1.useMemo)(() => usedBytes(data.records), [data.records]);
-    const [closing, close] = useClosing(onClose);
-    const { stripRef, screenRef } = useEdgeSwipeBack(close);
+    const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
+    const [, closeInstant] = useClosing(onClose);
+    const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     const [msg, tell] = useToast();
     const [pasteOpen, setPasteOpen] = (0, react_1.useState)(false);
     const [pasteText, setPasteText] = (0, react_1.useState)("");
@@ -26253,7 +26355,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
 const HELP_SECTIONS = [
     {
         title: "記録する",
-        body: "右下の＋から、メモ・リスト・スケジュールを書けます。\nメモには絵を4枚まで入れられます。\n右上の星を押すと印が付き、探す画面の「印つき」でまとめて見られます。",
+        body: "右下の＋から、メモ・リスト・スケジュールを書けます。\nメモには絵を4枚まで入れられます。\n書いている途中は、右上の「途中保存」で、画面を開いたまま保存できます。",
     },
     {
         title: "Today",
@@ -26277,8 +26379,9 @@ const HELP_SECTIONS = [
     },
 ];
 function HelpScreen({ onClose }) {
-    const [closing, close] = useClosing(onClose);
-    const { stripRef, screenRef } = useEdgeSwipeBack(close);
+    const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
+    const [, closeInstant] = useClosing(onClose);
+    const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     const [open, setOpen] = (0, react_1.useState)(null);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
@@ -26623,12 +26726,25 @@ button:active { transition-duration: 60ms; }
 @keyframes ft-enter-right { from { transform: translate3d(100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
 @keyframes ft-enter-up    { from { transform: translate3d(0, 100%, 0); } to { transform: translate3d(0, 0, 0); } }
 @keyframes ft-enter-fade  { from { opacity: 0; } to { opacity: 1; } }
+/* 退場は、登場をそのまま逆に。向きの決まりは同じ（右から入った画面は右へ、下から入った画面は下へ） */
+@keyframes ft-exit-right { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(100%, 0, 0); } }
+@keyframes ft-exit-down  { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, 100%, 0); } }
+@keyframes ft-exit-fade  { from { opacity: 1; } to { opacity: 0; } }
 .anim-right:not([data-ft-entered]) { animation: ft-enter-right var(--ft-enter-push) var(--ease-out) backwards; }
 .anim-up:not([data-ft-entered])    { animation: ft-enter-up var(--ft-enter-modal) var(--ease-out) backwards; }
 .anim-sheet:not([data-ft-entered]) { animation: ft-enter-up var(--ft-enter-sheet) var(--ease-out) backwards; }
 .anim-fade:not([data-ft-entered])  { animation: ft-enter-fade var(--ft-enter-fade) ease-out backwards; }
-.anim-right-out { }
-.anim-down-out  { }
+/* ---- 画面（OverlayScreen）の退場だけ、動きを付ける（2.17.0〜） ----
+   **紙・小窓（シート／ダイアログ）の退場は、下の anim-sheet-out / anim-fade-out のとおり、
+   これまでどおり空のまま。** useClosing に ms を渡していないので、そもそも動く間もなく閉じる。
+   ここを埋めるときは、useClosing の待ち時間（FT_EXIT_RIGHT_MS / FT_EXIT_BOTTOM_MS）と
+   長さを必ずそろえること（引継書「閉じるときの待ち時間」）。
+   fill-mode は forwards のままにすること。**登場の動きとはちがい forwards を禁じない。**
+   閉じかけの短いあいだだけ使う箱で、外れる前に位置を保つのが目的（外れたら箱ごと消える） */
+.anim-right-out        { animation: ft-exit-right var(--ft-enter-push) var(--ease-in) forwards; }
+.anim-down-out         { animation: ft-exit-down var(--ft-enter-modal) var(--ease-in) forwards; }
+.anim-scrim-out-push   { animation: ft-exit-fade var(--ft-enter-push) var(--ease-in) forwards; }
+.anim-scrim-out-modal  { animation: ft-exit-fade var(--ft-enter-modal) var(--ease-in) forwards; }
 .anim-sheet-out { }
 .anim-fade-out  { }
 .anim-pop       { }
@@ -27375,9 +27491,24 @@ function AppMain() {
         normalizeTags(rec.tags).forEach((t) => { if (!knownTags.some((k) => k.toLowerCase() === t.toLowerCase()))
             addTagToMaster(t); });
         if (!opts.keepOpen) {
-            setEditing(null);
-            clearDraft();
-            tell(exists ? "書き直しました" : "記録しました");
+            /* 閉じる動きを付けたいとき（opts.animateClose）は、保存はここで済ませたまま、
+               閉じる部分だけを動きのあとへ回す。**保存そのものを動きの後ろへ回さないこと**
+               （動いている間にアプリが背面へ回ると、保存が落ちる） */
+            const finalize = () => {
+                setEditing(null);
+                clearDraft();
+                tell(exists ? "書き直しました" : "記録しました");
+            };
+            if (typeof opts.animateClose === "function")
+                opts.animateClose(finalize);
+            else
+                finalize();
+        }
+        else {
+            /* 途中保存（画面は開いたまま）。保存ずみの中身と同じ書きかけは要らないので消す。
+               このあと書き足せば、また自動で書きかけが作られる。
+               **setEditing を呼ばないこと。** 入力欄が作り直され、打っている最中のカーソルが外れる */
+            clearDraftOf(new Set([rec.id]));
         }
     };
     const deleteRecord = (id) => {
@@ -27432,7 +27563,7 @@ function AppMain() {
             const real = {
                 ...emptyRecord("checklist", rec.date),
                 tags: rec.tags, title: rec.title, time: rec.time, comment: rec.comment,
-                planId: rec.planId, mark: rec.mark, fromRepeat: rec.id,
+                planId: rec.planId, fromRepeat: rec.id,
                 items: (rec.items || []).map((i) => ({ id: i.id, text: i.text, done: i.id === itemId })),
                 repeat: { freq: "none", days: [], until: "" },
                 /* **作った「いま」を並びの基準にしないこと。**
