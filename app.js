@@ -20016,8 +20016,15 @@ function useLockBackground() {
         return dx > 0 ? n.scrollLeft > 0 : n.scrollLeft + n.clientWidth < n.scrollWidth - 1;
     };
     const tgMove = (e) => {
-        if (!tg || !e.cancelable || !e.touches || !e.touches[0])
+        if (!tg || !e.touches || !e.touches[0])
             return;
+        /* **止められないとき（e.cancelable が false）も、引き戻しは行うこと。**
+           送りがもう始まってしまった指は preventDefault が効かない。そこで抜けると、
+           押さえているあいだ画面が持ち上がったままになる */
+        if (!e.cancelable) {
+            tgPin();
+            return;
+        }
         const p = e.touches[0];
         const dx = p.clientX - tg.x, dy = p.clientY - tg.y;
         tg.x = p.clientX;
@@ -20029,11 +20036,64 @@ function useLockBackground() {
         /* 紙の外で始まった指（紙が閉じた直後など）は止めない */
         if (!wrap || !wrap.isConnected)
             return;
+        /* **字を打つところから始まった指は、送り場をさかのぼらずに、その場で止めること（2.17.3〜）。**
+           2.17.3 の最初の直しでは、入力欄の親（.ft-sheet-body＝overflow-y-auto）まで見に行き、
+           そこに送る余地があると素通ししていた。iOS はキーボードが出ているあいだ、入力欄の上の指を
+           「ページを送る指」として扱うので、素通しした瞬間にページごと持ち上がっていた
+           （計画名・フォルダ名の欄から画面が持ち上がる件）。
+           1行の入力欄（input）は中を縦に送る必要がないので、つねに止める。
+           textarea だけは、**自分の中に送る余地があるときだけ**送らせる */
+        const field = tg.field;
+        if (field && !(field.tagName === "TEXTAREA" && canScroll(field, dx, dy))) {
+            e.preventDefault();
+            tgPin();
+            return;
+        }
         for (let n = t; n && n.nodeType === 1 && n !== wrap && n !== document.body && n !== root; n = n.parentElement) {
             if (canScroll(n, dx, dy))
                 return;
         }
         e.preventDefault();
+        tgPin();
+    };
+    /* 止めきれずに送られてしまったぶんを、その場で引き戻す（2.17.3〜）。
+       **useLockBackground の引き戻し（scroll を聞いてから戻す）だけに任せないこと。**
+       指を置いたまま送っているあいだ、iOS は scroll のあとの scrollTo をすぐ打ち消すので、
+       押さえている間じゅう画面が持ち上がったままに見える。ここで touchmove のたびに戻す。
+       ・紙の外わく自身が送られることもある（overflow: clip が使えない端末）ので、そこも 0 へ */
+    const tgPin = () => { if (tg) tgPinOf(tg); };
+    const tgPinOf = (g) => {
+        const w = g.wrap;
+        if (w && (w.scrollTop || w.scrollLeft)) {
+            w.scrollTop = 0;
+            w.scrollLeft = 0;
+        }
+        /* **紙の外がわの送り場も戻すこと（2.17.3〜）。**
+           紙は見た目こそ画面いっぱいの fixed だが、**DOM ではその紙を開いた画面の子孫**。
+           iOS は入力欄から送る箱を探すとき DOM をさかのぼるので、紙を通り越して
+           うしろの画面の送り場（.flex-1.overflow-y-auto）やページまで動かしてしまう。
+           指を置いた時点の位置を覚えておき、動いていたら戻す */
+        const outs = g.outs;
+        for (let i = 0; i < outs.length; i++) {
+            const o = outs[i];
+            if (o[0].scrollTop !== o[1])
+                o[0].scrollTop = o[1];
+            if (o[0].scrollLeft !== o[2])
+                o[0].scrollLeft = o[2];
+        }
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        if (Math.abs(y - g.sy) > 1)
+            window.scrollTo(0, g.sy);
+    };
+    /* 紙の外がわにある「動きうる箱」と、そのときの位置を控える。
+       **数は多くない**（紙を開いた画面の送り場くらい）ので、指が降りるたびに数えてよい */
+    const tgOuters = (wrap) => {
+        const out = [];
+        for (let n = wrap.parentElement; n && n.nodeType === 1 && n !== document.body && n !== root; n = n.parentElement) {
+            if (n.scrollHeight > n.clientHeight + 1 || n.scrollWidth > n.clientWidth + 1)
+                out.push([n, n.scrollTop, n.scrollLeft]);
+        }
+        return out;
     };
     const tgMoveBind = (on) => {
         if (on === tgMoveOn)
@@ -20049,10 +20109,32 @@ function useLockBackground() {
         const t = p && e.touches.length === 1 ? e.target : null;
         const wrap = t && t.closest ? t.closest(".ft-sheet-wrap") : null;
         /* **指が2本以上のときは見張らないこと。** 写真をつまんで大きさを変える操作を殺してしまう */
-        tg = wrap ? { x: p.clientX, y: p.clientY, t, wrap } : null;
+        tg = wrap ? {
+            x: p.clientX, y: p.clientY, t, wrap,
+            /* 字を打つところ（計画名・フォルダ名・さがす欄など）から始まった指か */
+            field: t.closest("input, textarea, [contenteditable='true']"),
+            /* 指を置いた時点の送り位置。ここへ引き戻す */
+            sy: window.scrollY || document.documentElement.scrollTop || 0,
+            outs: tgOuters(wrap),
+        } : null;
         tgMoveBind(!!tg);
     };
-    const tgEnd = () => { tg = null; tgMoveBind(false); };
+    /* 指を離したあとも、惰性で送られることがある。数こま見張って引き戻す（2.17.3〜） */
+    const tgEnd = () => {
+        const g = tg;
+        tgPin();
+        tgMoveBind(false);
+        if (g) {
+            let left = 8;
+            const again = () => {
+                tgPinOf(g);
+                if (--left > 0)
+                    requestAnimationFrame(again);
+            };
+            requestAnimationFrame(again);
+        }
+        tg = null;
+    };
     document.addEventListener("touchstart", tgStart, { passive: true, capture: true });
     document.addEventListener("touchend", tgEnd, { passive: true, capture: true });
     document.addEventListener("touchcancel", tgEnd, { passive: true, capture: true });
