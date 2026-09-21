@@ -19625,6 +19625,13 @@ const FT_EXIT_FADE_MS = 200;
    ============================================================ */
 /* **GLOBAL_CSS の --ft-collapse と、必ず同じ値にすること。** */
 const FT_COLLAPSE_MS = 260;
+/* 記録カード・イベントの札を押さえてから、色（沈み）を付けはじめるまで（2.18.1〜）。
+   **押した瞬間に色を付けないこと。** ふつうのタップ（100ms 前後）でも札が暗く光り、
+   「ひらく／たたむ」だけのつもりが、何か始まったように見えていた。
+   この時間を過ぎてまだ押さえていたら「長押しのつもり」とみなし、色を付けて、
+   長押しが決まる（480ms）まで CSS の .ft-hold.ft-pressing で少しずつ濃くする。
+   **app.css の .ft-hold.ft-pressing の transition（330ms ＝ 480 − この値）とそろえること** */
+const FT_HOLD_TINT_MS = 150;
 function Collapse({ open, keepMounted = false, className = "", children }) {
     const ref = (0, react_1.useRef)(null);
     const [mounted, setMounted] = (0, react_1.useState)(!!open);
@@ -23336,6 +23343,10 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             clearTimeout(press.current.t);
             press.current.t = null;
         }
+        if (press.current.h) {
+            clearTimeout(press.current.h);
+            press.current.h = null;
+        }
         setPressing(false);
     };
     (0, react_1.useEffect)(() => stopPress, []);
@@ -23350,9 +23361,11 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             press.current.fired = false;
             press.current.from = { x: e.clientX, y: e.clientY };
             stopPress();
-            setPressing(true);
+            /* 押した瞬間は色を付けない。押さえつづけたときだけ付ける（FT_HOLD_TINT_MS） */
+            press.current.h = setTimeout(() => { press.current.h = null; setPressing(true); }, FT_HOLD_TINT_MS);
             press.current.t = setTimeout(() => {
                 press.current.fired = true;
+                press.current.t = null;
                 setPressing(false);
                 try {
                     if (navigator.vibrate)
@@ -23380,7 +23393,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             }
         },
     };
-    return (react_1.default.createElement("div", { onClick: tap, ...pressProps, className: (selectMode ? "relative flex gap-1.5 pb-2.5 pl-4 pr-4 " + (selectable ? "ft-tap ft-tap-card cursor-pointer" : "") : CARD_SLOT), style: selectMode && !selectable ? { opacity: 0.55 } : undefined },
+    return (react_1.default.createElement("div", { onClick: tap, ...pressProps, className: (selectMode ? "relative flex gap-1.5 pb-2.5 pl-4 pr-4 " + (selectable ? "ft-tap ft-tap-card ft-hold cursor-pointer" : "") : CARD_SLOT), style: selectMode && !selectable ? { opacity: 0.55 } : undefined },
         !selectMode && (lineUp || lineDown) && (react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("span", { className: "absolute", "aria-hidden": "true", style: {
                     left: 7, width: 2, background: color.mid, opacity: 0.45,
@@ -23389,7 +23402,8 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             react_1.default.createElement("span", { className: "absolute rounded-full", "aria-hidden": "true", style: { left: 3, top: "50%", marginTop: -5, width: 10, height: 10, background: color.mid } }))),
         selectMode && (react_1.default.createElement("span", { className: "w-11 shrink-0 relative flex justify-center" }, selectable ? (react_1.default.createElement("span", { className: "absolute top-3 w-6 h-6 rounded-full border-2 flex items-center justify-center", style: selected ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4", background: "#FFFFFF" } }, selected && react_1.default.createElement("span", { key: "on", className: "flex text-white ft-check-in" },
             react_1.default.createElement(lucide_react_1.Check, { size: 15, strokeWidth: 3.5, className: "thick" })))) : (react_1.default.createElement("span", { className: "absolute top-3 w-6 h-6 rounded-full border-2 border-dashed", style: { borderColor: "#D4D4D4" } })))),
-        react_1.default.createElement("article", { onClick: toggleFold, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl border relative overflow-hidden ft-tap ft-tap-card "
+        /* **ft-hold を外さないこと（2.18.1〜）。** 外すと、タップしただけで札に色が付く（app.css） */
+        react_1.default.createElement("article", { onClick: toggleFold, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl border relative overflow-hidden ft-tap ft-tap-card ft-hold "
                 + (pressing ? "ft-pressing " : "")
                 + (selectMode
                     ? (selected ? "bg-th-50 border-th-800" : "bg-white border-dashed border-neutral-300")
@@ -25345,6 +25359,10 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
             clearTimeout(press.current.t);
             press.current.t = null;
         }
+        if (press.current.h) {
+            clearTimeout(press.current.h);
+            press.current.h = null;
+        }
         setPressing(false);
     };
     (0, react_1.useEffect)(() => stopPress, []);
@@ -25355,9 +25373,11 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
             press.current.fired = false;
             press.current.from = { x: e.clientX, y: e.clientY };
             stopPress();
-            setPressing(true);
+            /* 押した瞬間は色を付けない。押さえつづけたときだけ付ける（FT_HOLD_TINT_MS） */
+            press.current.h = setTimeout(() => { press.current.h = null; setPressing(true); }, FT_HOLD_TINT_MS);
             press.current.t = setTimeout(() => {
                 press.current.fired = true;
+                press.current.t = null;
                 setPressing(false);
                 try {
                     if (navigator.vibrate)
@@ -25390,7 +25410,7 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
         /* 余白は RecordRow の <article> と同じ px-4 py-3.5（左右16px・上下14px）。
            **中の段ごとに上下の余白を分けて持たせないこと。** 外の箱ひとつで持つ。
            （前に pt-3.5 と書いたが app.css に無いクラスで、上辺の余白が0になった） */
-        react_1.default.createElement("div", { ...pressProps, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl bg-white border relative overflow-hidden ft-tap ft-tap-card " + (pressing ? "ft-pressing " : ""), style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5", boxShadow: step.pinned && !allDone ? `inset 3px 0 0 ${color.mid}` : undefined } },
+        react_1.default.createElement("div", { ...pressProps, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl bg-white border relative overflow-hidden ft-tap ft-tap-card ft-hold " + (pressing ? "ft-pressing " : ""), style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5", boxShadow: step.pinned && !allDone ? `inset 3px 0 0 ${color.mid}` : undefined } },
             react_1.default.createElement("div", null,
                 /* 見出しの段：しるし・期限の札 …… 固定・編集。
                    **リスト記録カード（RecordRow）の上段と同じ並びにそろえる。** */
