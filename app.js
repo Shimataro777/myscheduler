@@ -23573,7 +23573,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             r.type === "schedule" && (r.body || "").trim() && (react_1.default.createElement("div", { className: "mt-1.5 mb-1.5 pl-1.5 border-l-2 border-neutral-200" },
                 react_1.default.createElement(LinkedText, { text: r.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
                 react_1.default.createElement(LinkCards, { text: r.body }))),
-            r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "fs-body-sm mb-1.5 flex items-center gap-1" },
+            r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "fs-body-sm mb-1.5 flex items-center gap-1 leading-[15px]" },
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14, className: "text-neutral-400 shrink-0" }),
                 isPlaceUrl(r.placeUrl || r.place)
                     ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-sky-700 min-w-0 break-words" }, r.placeUrl || r.place)
