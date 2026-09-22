@@ -17972,7 +17972,7 @@ function emptyRecord(type, date, scope) {
     /* **終日を別の項目として持たないこと。** time が空なら、それが終日。
        二か所で覚えると必ず食い違う（isAllDay ひとつで見る） */
     if (type === "schedule")
-        return { ...base, title: "", endDate: "", endTime: "", body: "", place: "", placeName: "", placeUrl: "" };
+        return { ...base, title: "", endDate: "", endTime: "", body: "", place: "", placeUrl: "" };
     return base;
 }
 /* 保存された記録を、いまの形にそろえる。
@@ -18048,7 +18048,7 @@ function migrateRecord(r) {
 function recordAllText(r) {
     if (!r)
         return "";
-    const parts = [r.title, r.text, r.comment, r.url, r.body, r.place, r.placeName, r.placeUrl, ...(r.tags || [])];
+    const parts = [r.title, r.text, r.comment, r.url, r.body, r.place, r.placeUrl, ...(r.tags || [])];
     if (Array.isArray(r.items))
         r.items.forEach((i) => parts.push(i.text));
     return parts.filter(Boolean).join("\n");
@@ -18075,7 +18075,6 @@ function recordHits(r, q) {
     (Array.isArray(r.items) ? r.items : []).forEach((i) => i && add("item", "チェック", i.text));
     add("body", "メモ", r.body);
     add("place", "場所", r.place);
-    add("placeName", "場所", r.placeName);
     if (r.placeUrl !== r.place)
         add("placeUrl", "場所", r.placeUrl);
     add("comment", "コメント", r.comment);
@@ -23103,10 +23102,8 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                                 react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
                                     react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) }))))),
                     react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }))),
-                /* ④場所（名前・URLなどの2行を、ひとつの白いカードにまとめる。⑤色・メモと同じ形） */
-                rec.type === "schedule" && (react_1.default.createElement(GroupCard, { className: "mb-3" },
-                    react_1.default.createElement("input", { value: rec.placeName || "", onChange: (e) => set({ placeName: e.target.value }), placeholder: "\u540D\u524D", className: "ft-group-input" }),
-                    react_1.default.createElement("input", { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u3001\u30D3\u30C7\u30AA\u901A\u8A71\u306A\u3069", inputMode: "url", className: "ft-group-input" }))),
+                /* ④場所（単独。ほかの単独項目と同じ、枠つきの1行の欄） */
+                rec.type === "schedule" && (react_1.default.createElement("input", { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u3001\u30D3\u30C7\u30AA\u901A\u8A71\u306A\u3069", inputMode: "url", className: inputCls + " mb-3" })),
                 /* ⑤色・メモ を、ひとつの白いカードにまとめる */
                 rec.type === "schedule" && (react_1.default.createElement(GroupCard, { className: "mb-3" },
                     react_1.default.createElement("div", { className: "flex items-center gap-2" },
@@ -23576,14 +23573,11 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             r.type === "schedule" && (r.body || "").trim() && (react_1.default.createElement("div", { className: "mt-1.5 mb-1.5 pl-1.5 border-l-2 border-neutral-200" },
                 react_1.default.createElement(LinkedText, { text: r.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
                 react_1.default.createElement(LinkCards, { text: r.body }))),
-            r.type === "schedule" && (r.placeName || r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "fs-body-sm mb-1.5 flex items-center gap-1" },
+            r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "fs-body-sm mb-1.5 flex items-center gap-1" },
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14, className: "text-neutral-400 shrink-0" }),
-                react_1.default.createElement("span", { className: "min-w-0 break-words" },
-                    (r.placeName || "").trim() && react_1.default.createElement("span", { className: "font-bold text-neutral-800" }, r.placeName),
-                    (r.placeName || "").trim() && (r.placeUrl || r.place) && react_1.default.createElement("span", { className: "text-neutral-300" }, "\u3000"),
-                    (r.placeUrl || r.place) && (isPlaceUrl(r.placeUrl || r.place)
-                        ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-sky-700" }, r.placeUrl || r.place)
-                        : react_1.default.createElement("a", { href: placeMapUrl(r.placeUrl || r.place), target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-neutral-800" }, r.placeUrl || r.place))))),
+                isPlaceUrl(r.placeUrl || r.place)
+                    ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-sky-700 min-w-0 break-words" }, r.placeUrl || r.place)
+                    : react_1.default.createElement("a", { href: placeMapUrl(r.placeUrl || r.place), target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-neutral-800 min-w-0 break-words" }, r.placeUrl || r.place))),
             (r.images || []).length > 0 && (react_1.default.createElement("div", { className: "grid gap-[3px] mt-3 mb-2 rounded-2xl overflow-hidden bg-neutral-100", style: {
                     gridTemplateColumns: r.images.length === 1 ? "1fr" : "1fr 1fr",
                     gridTemplateRows: r.images.length > 2 ? "1fr 1fr" : "1fr",
