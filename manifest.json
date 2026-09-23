@@ -1,0 +1,17 @@
+{
+  "name": "FGOガチャ記録",
+  "short_name": "ガチャ記録",
+  "description": "ガチャの結果を記録して、いつでも見返せる召喚のログ帳",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F2F3F7",
+  "theme_color": "#161E38",
+  "lang": "ja",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
