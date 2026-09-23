@@ -22436,6 +22436,13 @@ function isPlaceUrl(s) {
 function placeMapUrl(text) {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(text || "").trim())}`;
 }
+/* カードの余白やピンなどをタップしたときに、URL（<a>）の中から来たタップと
+   取り違えないための見分け役。**個々のリンクの stopPropagation 忘れに備える
+   二重の安全策。** これがあれば、カード側は「リンクから来たタップなら何もしない」
+   の一本だけ持てばよく、新しくリンクを足すたびにカード側を直す必要がなくなる */
+function isFromLink(e) {
+    return !!(e && e.target && e.target.closest && e.target.closest("a"));
+}
 function LinkedText({ text, className }) {
     if (!text)
         return null;
@@ -22454,7 +22461,7 @@ function LinkedText({ text, className }) {
     return (react_1.default.createElement("span", { className: "ft-text whitespace-pre-line break-words " + (className || "") }, parts.map((p, i) => p.url
         /* **住所だけ太字にしないこと。** そこだけ浮いて、本文が読みにくくなる。
            字体も大きさも太さも本文のまま、色だけで「押せる」と伝える */
-        ? react_1.default.createElement("a", { key: i, href: p.url, target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-sky-700" }, p.t)
+        ? react_1.default.createElement("a", { key: i, href: p.url, target: "_blank", rel: "noopener noreferrer", draggable: false, onClick: (e) => e.stopPropagation(), onPointerDown: (e) => e.stopPropagation(), className: "ft-link text-sky-700" }, p.t)
         : react_1.default.createElement(react_1.default.Fragment, { key: i }, p.t))));
 }
 /* ============================================================
@@ -23446,14 +23453,20 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
     const memoLong = r.type === "memo" && isLongText(r.text, MEMO_LONG_CHARS, MEMO_LONG_LINES);
     const listBody = r.type === "checklist" ? (r.body || "").trim() : "";
     const hasFold = memoLong || !!listBody;
-    /* えらべない札（フォルダで条件により入っているもの）は、押しても何も起きない */
-    const tap = () => { if (selectMode && selectable)
+    /* えらべない札（フォルダで条件により入っているもの）は、押しても何も起きない。
+       **リンク（<a>）から来たタップは、ここでは何もしないこと。**
+       個々のリンクは stopPropagation 済みなのでふつうはここまで来ないが、
+       万一取りこぼしても、カード側の開く/たたむ・選ぶが誤って動かないための
+       二重の安全策として isFromLink を見る */
+    const tap = (e) => { if (isFromLink(e))
+        return; if (selectMode && selectable)
         onSelect(r); };
     /* カード本体をタップしたら、開く/たたむを切り替える。
        **右上のボタンやチェックなどは、それぞれ e.stopPropagation() 済みなので、
        ここまで伝わってこない。** 選べる状態のときはここでは何もしない
        （そちらは上の tap がえらぶ役目を持っている） */
-    const toggleFold = () => { if (!selectMode && hasFold)
+    const toggleFold = (e) => { if (isFromLink(e))
+        return; if (!selectMode && hasFold)
         setExpanded((v) => !v); };
     /* **長押しで、えらぶ形に入れること。** 上の「選択」まで指を運ばせない */
     /* 押している間、札が沈んで色が変わる。**「いま何か始まる」と分かること。**
@@ -23576,8 +23589,8 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "fs-body-sm mb-1.5 flex items-center gap-1 leading-[15px]" },
                 react_1.default.createElement(lucide_react_1.MapPin, { size: 14, className: "text-neutral-400 shrink-0" }),
                 isPlaceUrl(r.placeUrl || r.place)
-                    ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-sky-700 min-w-0 break-words" }, r.placeUrl || r.place)
-                    : react_1.default.createElement("a", { href: placeMapUrl(r.placeUrl || r.place), target: "_blank", rel: "noopener noreferrer", draggable: false, className: "ft-link text-neutral-800 min-w-0 break-words" }, r.placeUrl || r.place))),
+                    ? react_1.default.createElement("a", { href: r.placeUrl || r.place, target: "_blank", rel: "noopener noreferrer", draggable: false, onClick: (e) => e.stopPropagation(), onPointerDown: (e) => e.stopPropagation(), className: "ft-link text-sky-700 min-w-0 break-words" }, r.placeUrl || r.place)
+                    : react_1.default.createElement("a", { href: placeMapUrl(r.placeUrl || r.place), target: "_blank", rel: "noopener noreferrer", draggable: false, onClick: (e) => e.stopPropagation(), onPointerDown: (e) => e.stopPropagation(), className: "ft-link text-neutral-800 min-w-0 break-words" }, r.placeUrl || r.place))),
             (r.images || []).length > 0 && (react_1.default.createElement("div", { className: "grid gap-[3px] mt-3 mb-2 rounded-2xl overflow-hidden bg-neutral-100", style: {
                     gridTemplateColumns: r.images.length === 1 ? "1fr" : "1fr 1fr",
                     gridTemplateRows: r.images.length > 2 ? "1fr 1fr" : "1fr",
