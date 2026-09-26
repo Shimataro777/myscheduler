@@ -18796,10 +18796,17 @@ async function syncDecoPhotos(getter) {
         console.error("ヘッダー・アイコンの控えを作れませんでした", e);
     }
 }
-/* 写真1枚のおよその重さ：長辺900px・webp0.72 で 40〜80KB ほど。
-   **これ以上大きくしないこと。** 端末の保存できる量（5MBほど）はすぐ埋まる */
+/* 記録の写真の大きさと画質（2.20.4〜）。長辺720px・画質0.6。
+   iPhone は webp を書き出せず JPEG になるので、1枚およそ40〜80KB。
+   2.20.3 までは 900px・0.72 で、iPhone では1枚 80〜270KB になっていた。
+   **これ以上大きくしないこと。** 端末の保存できる量とバックアップの重さにすぐ効く */
+const PHOTO_SIDE = 720;
+const PHOTO_Q = 0.6;
+/* ヘッダー・アイコンの画質（2.20.4〜）。大きさ（アイコン480px・帯1200px）は変えない。
+   **アイコンの大きさを下げないこと。** フォルダの札は携帯でも2列で、絵が幅160pxほどに出る */
+const DECO_Q = 0.65;
 /* ファイルでも、文字（data URL）でも受けられる */
-function shrinkImage(source, maxSide = 900) {
+function shrinkImage(source, maxSide = PHOTO_SIDE, quality = PHOTO_Q) {
     return new Promise((resolve, reject) => {
         const start = (dataUrl) => {
             const img = new Image();
@@ -18815,13 +18822,13 @@ function shrinkImage(source, maxSide = 900) {
                 ctx.drawImage(img, 0, 0, w, h);
                 let out = "";
                 try {
-                    out = cv.toDataURL("image/webp", 0.72);
+                    out = cv.toDataURL("image/webp", quality);
                 }
                 catch (e) {
                     out = "";
                 }
                 if (!out || out.length < 40 || out.indexOf("image/webp") < 0)
-                    out = cv.toDataURL("image/jpeg", 0.72);
+                    out = cv.toDataURL("image/jpeg", quality);
                 resolve(out);
             };
             img.src = dataUrl;
@@ -18934,13 +18941,13 @@ function cropImage(source, { aspect = 1, scale = 1, dx = 0, dy = 0, maxSide = 64
                 ctx.drawImage(img, (outW - w) / 2 + dx, (outH - h) / 2 + dy, w, h);
                 let out = "";
                 try {
-                    out = cv.toDataURL("image/webp", 0.8);
+                    out = cv.toDataURL("image/webp", DECO_Q);
                 }
                 catch (e) {
                     out = "";
                 }
                 if (!out || out.length < 40 || out.indexOf("image/webp") < 0)
-                    out = cv.toDataURL("image/jpeg", 0.82);
+                    out = cv.toDataURL("image/jpeg", DECO_Q);
                 resolve(out);
             };
             img.src = dataUrl;
@@ -18993,8 +19000,96 @@ async function askPersist() {
     catch (err) { /* 使えない端末は、そのまま */ }
     return false;
 }
-/* 写真1枚のおよその重さ（長辺900px・webp0.72）。目安を出すのに使う */
-const PHOTO_BYTES = 130 * 1024;
+/* 写真1枚のおよその重さ（長辺720px・画質0.6）。目安を出すのに使う */
+const PHOTO_BYTES = 70 * 1024;
+/* ============================================================
+   いまある写真を軽くする（2.20.4〜）
+   2.20.3 までに入れた写真は大きいまま残っているので、置き場の中で縮め直す。
+   ・番号（photo:番号）は変えない。記録・フォルダ・表示設定は書き換えない
+   ・記録の写真は長辺720px・0.6、ヘッダーとアイコンは大きさそのまま・0.65
+   ・**軽くならなかった絵は置き換えないこと。** 縮め直すたびに少しずつ荒れる
+   ・ヘッダーとアイコンの控え（decophotos）も同じ絵に置き換える。
+     **控えだけ古いまま残さないこと。** 控えの重さが端末の置き場（5MBほど）を食う
+   ============================================================ */
+async function slimPhotos(data, onStep) {
+    const recIds = collectPhotoRefs({ records: data.records });
+    const ids = [...collectPhotoRefs(data)];
+    const deco = await loadDecoPhotos();
+    const decoNext = { ...(deco || {}) };
+    let decoChanged = false;
+    let before = 0, after = 0, changed = 0;
+    for (let i = 0; i < ids.length; i += 1) {
+        const id = ids[i];
+        if (onStep)
+            onStep(i + 1, ids.length);
+        const src = await photoGet(id);
+        if (typeof src !== "string" || !src)
+            continue;
+        before += src.length;
+        let out = null;
+        try {
+            out = recIds.has(id) ? await shrinkImage(src, PHOTO_SIDE, PHOTO_Q) : await shrinkImage(src, 4096, DECO_Q);
+        }
+        catch (e) {
+            out = null;
+        }
+        if (!out || out.length >= src.length * 0.9) {
+            after += src.length;
+            continue;
+        }
+        const res = await photoPut(id, out);
+        if (res === null) {
+            /* 置き場に書けなかった。覚えだけ新しくしないよう戻す */
+            photoCache.set(id, src);
+            after += src.length;
+            continue;
+        }
+        after += out.length;
+        changed += 1;
+        if (Object.prototype.hasOwnProperty.call(decoNext, id)) {
+            decoNext[id] = out;
+            decoChanged = true;
+        }
+    }
+    if (decoChanged) {
+        decoPhotos = decoNext;
+        const r = await storageSet(DECO_PHOTO_KEY, JSON.stringify(decoNext));
+        if (r && r.ok === false)
+            console.error("ヘッダー・アイコンの控えを書き直せませんでした", r.message);
+    }
+    return { before, after, changed, total: ids.length };
+}
+/* ============================================================
+   バックアップの圧縮（2.20.4〜）
+   写真は文字（base64）で入っているので、gzip で2〜3割軽くなる。
+   ・書き出しは、使える端末では「.json.gz」。使えない端末は、これまでどおり「.json」
+   ・読み込みは、先頭2バイト（1f 8b）で見分ける。**拡張子で見分けないこと。**
+     iPhone の「ファイル」は .gz を押すと勝手に展開して .json にすることがある。どちらでも読めること
+   ・2.20.3 以前の本体は .json.gz を読めない。古い版へ戻すときは「文字でコピー」か、展開した .json を使う
+   ============================================================ */
+const gzipOk = () => typeof CompressionStream !== "undefined" && typeof Response !== "undefined"
+    && typeof Blob !== "undefined" && typeof Blob.prototype.stream === "function";
+async function packBackup(text, baseName) {
+    if (gzipOk()) {
+        try {
+            const st = new Blob([text], { type: "application/json" }).stream().pipeThrough(new CompressionStream("gzip"));
+            const blob = await new Response(st).blob();
+            return { blob: new Blob([blob], { type: "application/gzip" }), name: baseName + ".json.gz", type: "application/gzip", gz: true };
+        }
+        catch (e) { /* だめなら圧縮しないで出す */ }
+    }
+    return { blob: new Blob([text], { type: "application/json" }), name: baseName + ".json", type: "application/json", gz: false };
+}
+async function readBackupFile(f) {
+    const buf = new Uint8Array(await f.arrayBuffer());
+    if (buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+        if (typeof DecompressionStream === "undefined")
+            throw new Error("この端末では圧縮したバックアップを開けません");
+        const st = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+        return await new Response(st).text();
+    }
+    return new TextDecoder().decode(buf);
+}
 /* ============================================================
    バックアップに合言葉のカギをかける
    **中身をそのまま書き出したファイルは、開けば全部読める。**
@@ -25062,7 +25157,8 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
         setUrl("");
         setNg(false);
         setNat(null);
-        shrinkImage(file, 1600)
+        /* 切り抜きの元になるので、ここは画質を落とさないこと */
+        shrinkImage(file, 1600, 0.92)
             .then((d) => {
             if (!alive)
                 return;
@@ -26591,6 +26687,26 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
     const [pass2, setPass2] = (0, react_1.useState)("");
     const [askPass, setAskPass] = (0, react_1.useState)(null); // 読み込むときに合言葉を聞く
     const [room, setRoom] = (0, react_1.useState)(null); // 端末の空き具合
+    /* 写真を軽くする（2.20.4〜）。進みは「3/27」のように出す */
+    const [slimAsk, setSlimAsk] = (0, react_1.useState)(false);
+    const [slim, setSlim] = (0, react_1.useState)(null); // { i, n } 実行中
+    const runSlim = async () => {
+        setSlim({ i: 0, n: 0 });
+        try {
+            const r = await slimPhotos(data, (i, n) => setSlim({ i, n }));
+            storageRoom().then(setRoom);
+            if (!r.changed)
+                tell("これ以上は軽くなりませんでした");
+            else
+                tell(`写真を軽くしました（${fmtBytes(r.before)} → ${fmtBytes(r.after)}）`);
+        }
+        catch (e) {
+            tell("写真を軽くできませんでした");
+        }
+        finally {
+            setSlim(null);
+        }
+    };
     (0, react_1.useEffect)(() => { storageRoom().then(setRoom); }, []);
     /* **押した瞬間に disabled になるボタンで、CSSの :active に頼らないこと。**
        busy が同じ描画のうちに true になると、.ft-tap:disabled が transform を
@@ -26609,7 +26725,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
        .json は iPhone でも Android でも扱える */
     /* **日付を名前に入れないこと。** 出すたびに別の控えが増えて、
        写真のぶんだけ端末が重くなる。いつも同じ名前で、置き換えていく */
-    const fileName = `${APP_NAME}-backup${lock ? "-locked" : ""}.json`;
+    const baseName = `${APP_NAME}-backup${lock ? "-locked" : ""}`;
     const canPickFolder = typeof window !== "undefined" && !!window.showSaveFilePicker;
     const makeText = async () => {
         const text = await buildBackup(data, withPhotos);
@@ -26637,14 +26753,15 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
         setBusy(true);
         try {
             const text = await makeText();
+            const pack = await packBackup(text, baseName);
             if (how === "pick" && canPickFolder) {
                 try {
                     const h = await window.showSaveFilePicker({
-                        suggestedName: fileName,
-                        types: [{ description: "My手帳 のバックアップ", accept: { "application/json": [".json"] } }],
+                        suggestedName: pack.name,
+                        types: [{ description: "My手帳 のバックアップ", accept: pack.gz ? { "application/gzip": [".gz"] } : { "application/json": [".json"] } }],
                     });
                     const w = await h.createWritable();
-                    await w.write(new Blob([text], { type: "application/json" }));
+                    await w.write(pack.blob);
                     await w.close();
                     onBackedUp();
                     tell("保存しました");
@@ -26657,7 +26774,10 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
             }
             if (how === "share") {
                 try {
-                    const file = new File([text], fileName, { type: "application/json" });
+                    /* 圧縮したファイルを渡せない端末では、圧縮しないほうを渡す */
+                    let file = new File([pack.blob], pack.name, { type: pack.type });
+                    if (pack.gz && navigator.canShare && !navigator.canShare({ files: [file] }))
+                        file = new File([text], baseName + ".json", { type: "application/json" });
                     if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
                         /* title は渡さないこと。iPhoneが余分なテキストファイルまで作ってしまう */
                         await navigator.share({ files: [file] });
@@ -26671,10 +26791,10 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                 }
             }
             /* ふつうのダウンロード（どの端末でも最後はこれで残せる） */
-            const url = URL.createObjectURL(new Blob([text], { type: "application/json;charset=utf-8" }));
+            const url = URL.createObjectURL(pack.blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = fileName;
+            a.download = pack.name;
             document.body.appendChild(a);
             a.click();
             a.remove();
@@ -26689,11 +26809,14 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
             setBusy(false);
         }
     };
-    const readFile = (f) => {
-        const reader = new FileReader();
-        reader.onload = () => tryRestore(String(reader.result || ""));
-        reader.onerror = () => tell("読み込めませんでした");
-        reader.readAsText(f);
+    /* .json も .json.gz も読む。見分けは中身の先頭でする（readBackupFile） */
+    const readFile = async (f) => {
+        try {
+            tryRestore(await readBackupFile(f));
+        }
+        catch (e) {
+            tell(e && e.message && e.message.indexOf("圧縮") >= 0 ? e.message : "読み込めませんでした");
+        }
     };
     const tryRestore = (text) => {
         try {
@@ -26778,6 +26901,14 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         }, ...pressProps("copy"), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" + pressCls("copy") },
                         react_1.default.createElement(lucide_react_1.Copy, { size: 17 }),
                         " \u6587\u5B57\u3067\u30B3\u30D4\u30FC\u3059\u308B")),
+                used.photos > 0 && (react_1.default.createElement(react_1.default.Fragment, null,
+                    react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
+                        react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "写真を軽くする"),
+                        react_1.default.createElement(HelpTip, { label: "写真を軽くする", text: "前の版で入れた写真を小さくし直して、端末とバックアップを軽くします。見た目はほとんど変わりません。" })),
+                    react_1.default.createElement("div", { className: "mb-8" },
+                        react_1.default.createElement("button", { type: "button", onClick: () => setSlimAsk(true), disabled: !!slim, ...pressProps("slim"), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" + pressCls("slim") },
+                            slim ? react_1.default.createElement(Spinner, { size: 16 }) : react_1.default.createElement(lucide_react_1.Image, { size: 17 }),
+                            slim ? ` 軽くしています${slim.n ? `（${slim.i}/${slim.n}）` : ""}` : " 写真を軽くする")))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
                     react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "\u8AAD\u307F\u8FBC\u3080"),
                     react_1.default.createElement(HelpTip, { label: "\u8AAD\u307F\u8FBC\u3080", text: "\u3044\u307E\u306E\u8A18\u9332\u306F\u3059\u3079\u3066\u7F6E\u304D\u63DB\u308F\u308A\u307E\u3059\u3002" })),
@@ -26796,6 +26927,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         openLocked(askPass.obj, askPass.pass); } }))),
             pasteOpen && (react_1.default.createElement(SheetDialog, { title: "\u6587\u5B57\u304B\u3089\u8AAD\u307F\u8FBC\u3080", confirmLabel: "\u8AAD\u307F\u8FBC\u3080", disabled: !pasteText.trim(), onCancel: () => setPasteOpen(false), onConfirm: () => { setPasteOpen(false); tryRestore(pasteText); } },
                 react_1.default.createElement(TextArea, { value: pasteText, onChange: (e) => setPasteText(e.target.value), minRows: 5, placeholder: "\u66F8\u304D\u51FA\u3057\u305F\u4E2D\u8EAB\u3092\u3053\u3053\u306B\u8CBC\u308B" }))),
+            slimAsk && (react_1.default.createElement(ConfirmDialog, { title: "写真を軽くしますか", body: "いまある写真を小さくし直します。見た目はほとんど変わりませんが、元の大きさには戻せません。\n\n念のため、先にバックアップを書き出しておくと安心です。", danger: false, confirmLabel: "軽くする", onCancel: () => setSlimAsk(false), onConfirm: () => { setSlimAsk(false); runSlim(); } })),
             confirmRestore && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7\u3092\u8AAD\u307F\u8FBC\u307F\u307E\u3059\u304B", body: `記録 ${n(confirmRestore.records)}件・計画 ${n(confirmRestore.plans)}・フォルダ ${n(confirmRestore.folders)}\n\nいまの記録はすべて置き換わります。`, danger: true, confirmLabel: "\u8AAD\u307F\u8FBC\u3080", onCancel: () => setConfirmRestore(null), onConfirm: () => { const o = confirmRestore; setConfirmRestore(null); onRestore(o); tell("読み込みました"); } })),
             react_1.default.createElement(Toast, { msg: msg }))));
 }
