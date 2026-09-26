@@ -19003,63 +19003,6 @@ async function askPersist() {
 /* 写真1枚のおよその重さ（長辺720px・画質0.6）。目安を出すのに使う */
 const PHOTO_BYTES = 70 * 1024;
 /* ============================================================
-   いまある写真を軽くする（2.20.4〜）
-   2.20.3 までに入れた写真は大きいまま残っているので、置き場の中で縮め直す。
-   ・番号（photo:番号）は変えない。記録・フォルダ・表示設定は書き換えない
-   ・記録の写真は長辺720px・0.6、ヘッダーとアイコンは大きさそのまま・0.65
-   ・**軽くならなかった絵は置き換えないこと。** 縮め直すたびに少しずつ荒れる
-   ・ヘッダーとアイコンの控え（decophotos）も同じ絵に置き換える。
-     **控えだけ古いまま残さないこと。** 控えの重さが端末の置き場（5MBほど）を食う
-   ============================================================ */
-async function slimPhotos(data, onStep) {
-    const recIds = collectPhotoRefs({ records: data.records });
-    const ids = [...collectPhotoRefs(data)];
-    const deco = await loadDecoPhotos();
-    const decoNext = { ...(deco || {}) };
-    let decoChanged = false;
-    let before = 0, after = 0, changed = 0;
-    for (let i = 0; i < ids.length; i += 1) {
-        const id = ids[i];
-        if (onStep)
-            onStep(i + 1, ids.length);
-        const src = await photoGet(id);
-        if (typeof src !== "string" || !src)
-            continue;
-        before += src.length;
-        let out = null;
-        try {
-            out = recIds.has(id) ? await shrinkImage(src, PHOTO_SIDE, PHOTO_Q) : await shrinkImage(src, 4096, DECO_Q);
-        }
-        catch (e) {
-            out = null;
-        }
-        if (!out || out.length >= src.length * 0.9) {
-            after += src.length;
-            continue;
-        }
-        const res = await photoPut(id, out);
-        if (res === null) {
-            /* 置き場に書けなかった。覚えだけ新しくしないよう戻す */
-            photoCache.set(id, src);
-            after += src.length;
-            continue;
-        }
-        after += out.length;
-        changed += 1;
-        if (Object.prototype.hasOwnProperty.call(decoNext, id)) {
-            decoNext[id] = out;
-            decoChanged = true;
-        }
-    }
-    if (decoChanged) {
-        decoPhotos = decoNext;
-        const r = await storageSet(DECO_PHOTO_KEY, JSON.stringify(decoNext));
-        if (r && r.ok === false)
-            console.error("ヘッダー・アイコンの控えを書き直せませんでした", r.message);
-    }
-    return { before, after, changed, total: ids.length };
-}
-/* ============================================================
    バックアップの圧縮（2.20.4〜）
    写真は文字（base64）で入っているので、gzip で2〜3割軽くなる。
    ・書き出しは、使える端末では「.json.gz」。使えない端末は、これまでどおり「.json」
@@ -26687,27 +26630,23 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
     const [pass2, setPass2] = (0, react_1.useState)("");
     const [askPass, setAskPass] = (0, react_1.useState)(null); // 読み込むときに合言葉を聞く
     const [room, setRoom] = (0, react_1.useState)(null); // 端末の空き具合
-    /* 写真を軽くする（2.20.4〜）。進みは「3/27」のように出す */
-    const [slimAsk, setSlimAsk] = (0, react_1.useState)(false);
-    const [slim, setSlim] = (0, react_1.useState)(null); // { i, n } 実行中
-    const runSlim = async () => {
-        setSlim({ i: 0, n: 0 });
-        try {
-            const r = await slimPhotos(data, (i, n) => setSlim({ i, n }));
-            storageRoom().then(setRoom);
-            if (!r.changed)
-                tell("これ以上は軽くなりませんでした");
-            else
-                tell(`写真を軽くしました（${fmtBytes(r.before)} → ${fmtBytes(r.after)}）`);
-        }
-        catch (e) {
-            tell("写真を軽くできませんでした");
-        }
-        finally {
-            setSlim(null);
-        }
-    };
-    (0, react_1.useEffect)(() => { storageRoom().then(setRoom); }, []);
+    /* 写真もふくめて書き出したときのファイルの大きさ（2.20.4〜）。
+       **記録の文字だけの重さを出さないこと。** 重さのほとんどは写真なので、実際のファイルとかけ離れる。
+       本当に書き出すのと同じ道（buildBackup → packBackup）で作って測る。合言葉のロックは数に入れない */
+    const [fileSize, setFileSize] = (0, react_1.useState)(null);
+    (0, react_1.useEffect)(() => {
+        let alive = true;
+        setFileSize(null);
+        const t = setTimeout(async () => {
+            try {
+                const pack = await packBackup(await buildBackup(data, true), "size");
+                if (alive)
+                    setFileSize(pack.blob.size);
+            }
+            catch (e) { /* 測れなかったら出さない */ }
+        }, 0);
+        return () => { alive = false; clearTimeout(t); };
+    }, [data.records, data.plans, data.kinds, data.folders, data.tags, data.prefs]); // eslint-disable-line
     /* **押した瞬間に disabled になるボタンで、CSSの :active に頼らないこと。**
        busy が同じ描画のうちに true になると、.ft-tap:disabled が transform を
        打ち消してしまい、押した見た目がまったく出ない。指を触れた時点で
@@ -26864,7 +26803,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                             "\u5199\u771F ",
                             used.photos,
                             "\u679A"),
-                        react_1.default.createElement("span", { className: "fs-label text-neutral-500 tabular-nums" }, fmtBytes(used.all))),
+                        react_1.default.createElement("span", { className: "fs-label text-neutral-500 tabular-nums" }, fileSize === null ? "ファイル 計算中…" : `ファイル ${fmtBytes(fileSize)}`)),
                     backupAt && (react_1.default.createElement("p", { className: "fs-label text-neutral-400 mt-1.5" },
                         "\u524D\u56DE\u306E\u4FDD\u5B58\uFF1A",
                         fmtDate(backupAt.slice(0, 10))))),
@@ -26901,14 +26840,6 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         }, ...pressProps("copy"), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" + pressCls("copy") },
                         react_1.default.createElement(lucide_react_1.Copy, { size: 17 }),
                         " \u6587\u5B57\u3067\u30B3\u30D4\u30FC\u3059\u308B")),
-                used.photos > 0 && (react_1.default.createElement(react_1.default.Fragment, null,
-                    react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
-                        react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "写真を軽くする"),
-                        react_1.default.createElement(HelpTip, { label: "写真を軽くする", text: "前の版で入れた写真を小さくし直して、端末とバックアップを軽くします。見た目はほとんど変わりません。" })),
-                    react_1.default.createElement("div", { className: "mb-8" },
-                        react_1.default.createElement("button", { type: "button", onClick: () => setSlimAsk(true), disabled: !!slim, ...pressProps("slim"), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" + pressCls("slim") },
-                            slim ? react_1.default.createElement(Spinner, { size: 16 }) : react_1.default.createElement(lucide_react_1.Image, { size: 17 }),
-                            slim ? ` 軽くしています${slim.n ? `（${slim.i}/${slim.n}）` : ""}` : " 写真を軽くする")))),
                 react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
                     react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "\u8AAD\u307F\u8FBC\u3080"),
                     react_1.default.createElement(HelpTip, { label: "\u8AAD\u307F\u8FBC\u3080", text: "\u3044\u307E\u306E\u8A18\u9332\u306F\u3059\u3079\u3066\u7F6E\u304D\u63DB\u308F\u308A\u307E\u3059\u3002" })),
@@ -26927,7 +26858,6 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         openLocked(askPass.obj, askPass.pass); } }))),
             pasteOpen && (react_1.default.createElement(SheetDialog, { title: "\u6587\u5B57\u304B\u3089\u8AAD\u307F\u8FBC\u3080", confirmLabel: "\u8AAD\u307F\u8FBC\u3080", disabled: !pasteText.trim(), onCancel: () => setPasteOpen(false), onConfirm: () => { setPasteOpen(false); tryRestore(pasteText); } },
                 react_1.default.createElement(TextArea, { value: pasteText, onChange: (e) => setPasteText(e.target.value), minRows: 5, placeholder: "\u66F8\u304D\u51FA\u3057\u305F\u4E2D\u8EAB\u3092\u3053\u3053\u306B\u8CBC\u308B" }))),
-            slimAsk && (react_1.default.createElement(ConfirmDialog, { title: "写真を軽くしますか", body: "いまある写真を小さくし直します。見た目はほとんど変わりませんが、元の大きさには戻せません。\n\n念のため、先にバックアップを書き出しておくと安心です。", danger: false, confirmLabel: "軽くする", onCancel: () => setSlimAsk(false), onConfirm: () => { setSlimAsk(false); runSlim(); } })),
             confirmRestore && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7\u3092\u8AAD\u307F\u8FBC\u307F\u307E\u3059\u304B", body: `記録 ${n(confirmRestore.records)}件・計画 ${n(confirmRestore.plans)}・フォルダ ${n(confirmRestore.folders)}\n\nいまの記録はすべて置き換わります。`, danger: true, confirmLabel: "\u8AAD\u307F\u8FBC\u3080", onCancel: () => setConfirmRestore(null), onConfirm: () => { const o = confirmRestore; setConfirmRestore(null); onRestore(o); tell("読み込みました"); } })),
             react_1.default.createElement(Toast, { msg: msg }))));
 }
