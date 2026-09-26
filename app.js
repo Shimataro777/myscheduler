@@ -20863,7 +20863,8 @@ function OverlayScreen({ from = "right", closing, children, zIndex = 50 }) {
        専用のクラスにする。**共用にすると、紙・小窓の「待たずに閉じる」まで動きが付いてしまう**
        （useClosing に ms を渡していないので、動く間もなく消え、ちらつきに見える） */
     const scrimOutCls = from === "bottom" ? "anim-scrim-out-modal" : "anim-scrim-out-push";
-    return (react_1.default.createElement("div", { className: "fixed inset-0", "data-ft-overlay": "", style: { zIndex } },
+    /* data-ft-lift：メニューから移ってくる途中の画面（goFromMenu が入りきったかを見る） */
+    return (react_1.default.createElement("div", { className: "fixed inset-0", "data-ft-overlay": "", "data-ft-lift": zIndex === MENU_LIFT_Z ? "" : undefined, style: { zIndex } },
         /* 地の暗がり。左端から払って戻るときは useEdgeSwipeBack が指に合わせて薄くする。
            **data-ft-scrim を外さないこと。** 外すと、払い終えたあと画面だけ消えて暗がりが残る */
         react_1.default.createElement("div", { "data-ft-scrim": "", className: "absolute inset-0 bg-black/25 " + (closing ? scrimOutCls : "anim-fade") }),
@@ -22070,11 +22071,13 @@ function NeedBackupDot({ onPhoto }) {
 }
 const MENU_BTN = 56;
 const MENU_ICON = 32;
-function MenuButton() {
+/* guard：開く前に確かめたいことがある画面（表示設定の「保存していない変更」）だけ渡す。
+   guard(open) の形で呼ぶので、確かめ終わったら open() を呼ぶこと */
+function MenuButton({ guard } = {}) {
     const openMenu = react_1.default.useContext(MenuContext);
     if (!openMenu)
         return null;
-    return (react_1.default.createElement("button", { onClick: openMenu, "aria-label": "\u30E1\u30CB\u30E5\u30FC", className: "relative flex items-center justify-center rounded-xl text-neutral-700 ft-tap ft-tap-icon shrink-0", style: { minWidth: 48, minHeight: 48 } },
+    return (react_1.default.createElement("button", { onClick: guard ? () => guard(openMenu) : openMenu, "aria-label": "\u30E1\u30CB\u30E5\u30FC", className: "relative flex items-center justify-center rounded-xl text-neutral-700 ft-tap ft-tap-icon shrink-0", style: { minWidth: 48, minHeight: 48 } },
         react_1.default.createElement(lucide_react_1.Menu, { size: 24, strokeWidth: 2 }),
         react_1.default.createElement(NeedBackupDot, null)));
 }
@@ -22177,7 +22180,7 @@ function ScreenHeader({ title, right, sub }) {
                     react_1.default.createElement(NeedBackupDot, { onPhoto: !!photo })))))));
 }
 /* 重なって出る画面の見出し（戻る＋題＋三本線） */
-function OverlayHeader({ title, onBack, right, hideMenu }) {
+function OverlayHeader({ title, onBack, right, hideMenu, menuGuard }) {
     return (react_1.default.createElement("div", { className: "bg-white border-b border-neutral-100 px-2 flex items-center gap-1 shrink-0 relative", 
         /* **帯（左端を払うと戻る判定）より、かならず上の階層に置くこと。**
            万一すこしでも重なっても、見出しのほうが手前にあるので、
@@ -22189,7 +22192,7 @@ function OverlayHeader({ title, onBack, right, hideMenu }) {
         react_1.default.createElement("span", { className: "flex-1" }),
         react_1.default.createElement("div", { className: "relative flex items-center justify-end gap-0.5 shrink-0", style: { minWidth: 48 } },
             right,
-            !hideMenu && react_1.default.createElement(MenuButton, null))));
+            !hideMenu && react_1.default.createElement(MenuButton, { guard: menuGuard }))));
 }
 function MenuRow({ it }) {
     const [pressed, go] = useTapThen(it.onClick);
@@ -22204,13 +22207,22 @@ function MenuRow({ it }) {
             it.desc && react_1.default.createElement("span", { className: "block fs-label text-neutral-500 mt-0.5" }, it.desc)),
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" })));
 }
-/* メニューから画面へ移るとき（instant）の板。**その場で消すこと。**
+/* 【2.20.6〜 メニューから画面へ移るときは使っていない。下の MENU_UNDER_Z を見ること】
+   メニューから画面へ移るとき（instant）の板。**その場で消すこと。**
    板を右へ滑らせて消すと、移った先の画面も右から入ってくる（画面遷移の決まり）ので、
    ふたつが逆向きにすれ違って、どこへ行ったか分からなくなる。
    暗がりだけは今までどおり薄れさせる（新しい画面の暗がりと入れかわるので、明るさが跳ねない）。
    消えたあとも少しのあいだ残して、押されたぶんを受け止めるのは今までどおり */
 const SIDE_MENU_GONE = { opacity: 0, transition: "none", touchAction: "pan-y" };
-function SideMenu({ open, onClose, items, footer, instant }) {
+/* 移った先の画面の下へ、板を沈める（2.20.6〜）。
+   メニューの行を押したら、板は**その場に残したまま**この高さへ下げ、
+   右から入ってくる画面（MENU_LIFT_Z）に上からかぶせてもらう。
+   ・MENU_UNDER_Z は、ほかの全画面（OverlayScreen の 50）より上、移った先の画面より下
+   ・**板を右へ滑らせないこと**（入ってくる画面とすれ違う）。**その場で消さないこと**（パッと消えて見える）
+   ・かぶせ終わったら（AppMain の goFromMenu）、見えないところで外す */
+const MENU_UNDER_Z = 55;
+const MENU_LIFT_Z = 60;
+function SideMenu({ open, onClose, items, footer, instant, under }) {
     const [mounted, setMounted] = (0, react_1.useState)(open);
     const [shown, setShown] = (0, react_1.useState)(false);
     /* instant で閉じたことを覚えておく。**instant をそのまま見ないこと。**
@@ -22224,6 +22236,13 @@ function SideMenu({ open, onClose, items, footer, instant }) {
             setMounted(true);
             t = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
             return () => cancelAnimationFrame(t);
+        }
+        /* 移った先の画面の下に沈めていたとき（under）は、もう画面に隠れている。
+           **ここで滑らせたり薄れさせたりしないこと。** under のまま、すぐ外す */
+        if (under) {
+            setShown(false);
+            setMounted(false);
+            return undefined;
         }
         /* 画面へ移るときは、メニューが左へ滑って消える動きを見せない。
            ただし要素を即座に外すと、その位置にある別のものがタップを拾ってしまう。
@@ -22255,6 +22274,8 @@ function SideMenu({ open, onClose, items, footer, instant }) {
        **touch だけで受けないこと。** 環境によっては何も起きない */
     const dragNowRef = (0, react_1.useRef)(0);
     const onPointerDown = (e) => {
+        if (under)
+            return;
         dragRef.current = { x: e.clientX, y: e.clientY, w: e.currentTarget.offsetWidth, lock: null };
         dragNowRef.current = 0;
     };
@@ -22288,9 +22309,9 @@ function SideMenu({ open, onClose, items, footer, instant }) {
     };
     if (!mounted)
         return null;
-    return (react_1.default.createElement("div", { className: "fixed inset-0", style: { zIndex: 2147483200 } },
+    return (react_1.default.createElement("div", { className: "fixed inset-0", style: { zIndex: under ? MENU_UNDER_Z : 2147483200 } },
         react_1.default.createElement(BackgroundLock, null),
-        react_1.default.createElement("div", { onClick: onClose, className: "absolute inset-0 bg-black/35", style: {
+        react_1.default.createElement("div", { onClick: under ? undefined : onClose, className: "absolute inset-0 bg-black/35", style: {
                 opacity: shown ? (drag !== null ? Math.max(0, 1 - drag / 260) : 1) : 0,
                 transition: drag !== null ? "none" : "opacity 240ms cubic-bezier(0.16,1,0.3,1)",
             } }),
@@ -26414,7 +26435,7 @@ function useHeaderAspect() {
     }, []);
     return a;
 }
-function SettingsScreen({ prefs, onSave, onClose }) {
+function SettingsScreen({ prefs, onSave, onClose, zIndex }) {
     const headRef = (0, react_1.useRef)(null);
     const [headBusy, setHeadBusy] = (0, react_1.useState)(false);
     const [headFile, setHeadFile] = (0, react_1.useState)(null); // 切り抜きを待っている写真
@@ -26433,10 +26454,18 @@ function SettingsScreen({ prefs, onSave, onClose }) {
         setAskLeave(true);
     else
         close(); };
-    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
+    /* 三本線（2.20.6〜）。**保存していない変更があるまま、メニューを開かせないこと。**
+       メニューから別の画面へ移ると、この画面は閉じられて、変えた内容が黙って消える。
+       「戻る」と同じく確かめてから開く。開くと決めたら、変えた内容は元に戻す */
+    const [askMenu, setAskMenu] = (0, react_1.useState)(null); // 開くときに呼ぶもの
+    const menuGuard = (open) => { if (dirty)
+        setAskMenu(() => open);
+    else
+        open(); };
+    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            react_1.default.createElement(OverlayHeader, { title: "\u8868\u793A\u8A2D\u5B9A", onBack: leave, hideMenu: true }),
+            react_1.default.createElement(OverlayHeader, { title: "\u8868\u793A\u8A2D\u5B9A", onBack: leave, menuGuard: menuGuard }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u753B\u9762\u306E\u8272"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
@@ -26521,14 +26550,15 @@ function SettingsScreen({ prefs, onSave, onClose }) {
                 react_1.default.createElement("button", { type: "button", onClick: () => { onSave(draft); close(); }, disabled: !dirty, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 19 }),
                     " \u4FDD\u5B58")),
-            askLeave && (react_1.default.createElement(ConfirmDialog, { title: "\u4FDD\u5B58\u305B\u305A\u306B\u9589\u3058\u307E\u3059\u304B", body: "\u5909\u3048\u305F\u5185\u5BB9\u306F\u6B8B\u308A\u307E\u305B\u3093\u3002", confirmLabel: "\u9589\u3058\u308B", onCancel: () => setAskLeave(false), onConfirm: () => { setAskLeave(false); close(); } })))));
+            askLeave && (react_1.default.createElement(ConfirmDialog, { title: "\u4FDD\u5B58\u305B\u305A\u306B\u9589\u3058\u307E\u3059\u304B", body: "\u5909\u3048\u305F\u5185\u5BB9\u306F\u6B8B\u308A\u307E\u305B\u3093\u3002", confirmLabel: "\u9589\u3058\u308B", onCancel: () => setAskLeave(false), onConfirm: () => { setAskLeave(false); close(); } })),
+            askMenu && (react_1.default.createElement(ConfirmDialog, { title: "保存せずにメニューを開きますか", body: "変えた内容は残りません。", confirmLabel: "開く", onCancel: () => setAskMenu(null), onConfirm: () => { const open = askMenu; setAskMenu(null); setDraft(prefs); open(); } })))));
 }
 /* ============================================================
    タグの編集
    名前を変える・消すときは、一覧と記録の両方に同じことをすること。
    片方だけ直すと、記録に古い名前が残って食い違う
    ============================================================ */
-function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onReorder, onClose }) {
+function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onReorder, onClose, zIndex }) {
     const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
     const [, closeInstant] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
@@ -26540,10 +26570,10 @@ function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onR
     const rows = (0, react_1.useMemo)(() => tags.map((t) => ({ id: t })), [tags]);
     const { dragId, setRow, handleProps, rowStyle } = useReorder(rows, (v) => onReorder(v.map((x) => x.id)));
     const count = (t) => records.filter((r) => normalizeTags(r.tags).some((x) => x.toLowerCase() === t.toLowerCase())).length;
-    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
+    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            react_1.default.createElement(OverlayHeader, { title: "\u30BF\u30B0\u306E\u7DE8\u96C6", onBack: close, hideMenu: true }),
+            react_1.default.createElement(OverlayHeader, { title: "\u30BF\u30B0\u306E\u7DE8\u96C6", onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("div", { className: "flex gap-2 mb-4" },
                     react_1.default.createElement("div", { className: "flex-1 min-w-0" },
@@ -26612,7 +26642,7 @@ async function buildBackup(data, withPhotos) {
         prefs: (() => { const p = { ...data.prefs }; delete p.lastBackup; return p; })(),
     }, null, 2);
 }
-function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backupAt, unsavedCount }) {
+function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backupAt, unsavedCount, zIndex }) {
     const used = (0, react_1.useMemo)(() => usedBytes(data.records), [data.records]);
     const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
     const [, closeInstant] = useClosing(onClose);
@@ -26785,10 +26815,10 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
         }
     };
     const n = (x) => (Array.isArray(x) ? x.length : 0);
-    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
+    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            react_1.default.createElement(OverlayHeader, { title: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", onBack: close, hideMenu: true }),
+            react_1.default.createElement(OverlayHeader, { title: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft p-4 mb-7" },
                     react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
@@ -26894,15 +26924,15 @@ const HELP_SECTIONS = [
         body: "記録はこの端末の中だけにあり、外には送られません。\nブラウザの履歴を消したり端末を替えたりすると失われます。\nメニューの「バックアップ」から、ときどき書き出してください。",
     },
 ];
-function HelpScreen({ onClose }) {
+function HelpScreen({ onClose, zIndex }) {
     const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
     const [, closeInstant] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     const [open, setOpen] = (0, react_1.useState)(null);
-    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
+    return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            react_1.default.createElement(OverlayHeader, { title: "\u30D8\u30EB\u30D7", onBack: close, hideMenu: true }),
+            react_1.default.createElement(OverlayHeader, { title: "\u30D8\u30EB\u30D7", onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe space-y-2 ft-seq" }, HELP_SECTIONS.map((s, i) => (react_1.default.createElement("div", { key: s.title, className: "rounded-2xl bg-white border border-neutral-200 overflow-hidden" },
                 react_1.default.createElement("button", { type: "button", onClick: () => setOpen(open === i ? null : i), className: "w-full flex items-center gap-2 px-3.5 py-3 text-left min-h-[56px] ft-tap ft-tap-card hover:bg-neutral-50" },
                     react_1.default.createElement("span", { className: "flex-1 font-display fs-subhead text-neutral-900" }, s.title),
@@ -27743,6 +27773,12 @@ function AppMain() {
     const [tabReset, setTabReset] = (0, react_1.useState)({});
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
     const [menuInstant, setMenuInstant] = (0, react_1.useState)(false);
+    /* メニューから画面へ移るあいだ（2.20.6〜）。menuUnder＝板を移った先の画面の下へ沈めている。
+       menuLift＝右から入ってくる画面（"settings" など）。入りきるまで、ほかの全画面より上に出す */
+    const [menuUnder, setMenuUnder] = (0, react_1.useState)(false);
+    const [menuLift, setMenuLift] = (0, react_1.useState)(null);
+    const menuGoTimer = (0, react_1.useRef)(null);
+    (0, react_1.useEffect)(() => () => clearTimeout(menuGoTimer.current), []);
     const [typePick, setTypePick] = (0, react_1.useState)(false);
     const [scoped, setScoped] = (0, react_1.useState)(null); // 週・月ぜんたいに付ける記録を作るとき
     /* 画面が切り替わったら、前の画面の知らせは消す。
@@ -28329,44 +28365,92 @@ function AppMain() {
     /* 札の中から使う受け渡し（持ち越しなど）。
        画面をまたいで同じものを渡したいので、ここでひとつにまとめてある */
     const recordActions = (0, react_1.useMemo)(() => ({ records, onMoveItem: moveItem, onCreateAndMove: createAndMove }), [records]);
-    /* メニューから画面へ移るときは、いま出ている画面をすべて閉じること。
-       **画面を増やしたらここにも足すこと。** 閉じ忘れると下に残ったままになる */
-    const goFromMenu = (fn) => {
-        setMenuInstant(true);
-        setMenuOpen(false);
-        setEditing(null);
-        setDayOpen(null);
-        setPlanOpen(null);
-        setFolderOpen(null);
-        setSettingsOpen(false);
-        setTagScreenOpen(false);
-        setBackupOpen(false);
-        setHelpOpen(false);
-        /* **instant をここで false に戻さないこと。** React 19 では、このタイマーが
-           メニューを閉じる描き直しより先に走ることがあり、instant が一度も届かず、
-           メニューの板が滑って消える（移った先の画面とすれ違う）。戻すのは、次にメニューを開くとき */
-        setTimeout(() => { fn(); }, 0);
+    /* メニューから画面へ移る（2.20.6〜）。
+       1. 板はその場に残し、移った先の画面の下へ沈める（menuUnder）
+       2. 移った先の画面を、ほかの全画面より上（menuLift）に、右から入れる。板と、いま出ている画面にかぶさっていく
+       3. 入りきったら（FT_EXIT_RIGHT_MS）、隠れた板と、下に残った画面を閉じる
+       **いま出ている画面を先に閉じないこと。** 入ってくる途中の左側に、ひとつ下の画面（Today など）がのぞく。
+       **画面を増やしたら、下の open と close の両方に足すこと。** 閉じ忘れると下に残ったままになる */
+    const MENU_SCREENS = {
+        settings: { isOpen: settingsOpen, open: () => setSettingsOpen(true) },
+        tags: { isOpen: tagScreenOpen, open: () => setTagScreenOpen(true) },
+        backup: { isOpen: backupOpen, open: () => setBackupOpen(true) },
+        help: { isOpen: helpOpen, open: () => setHelpOpen(true) },
+    };
+    const goFromMenu = (key) => {
+        /* 移っている途中に、もう一度押されたぶんは受けない */
+        if (menuGoTimer.current)
+            return;
+        const target = MENU_SCREENS[key];
+        /* いま見ている画面を選んだ → 移らない。板をふつうに閉じるだけ */
+        if (target.isOpen) {
+            setMenuInstant(false);
+            setMenuOpen(false);
+            return;
+        }
+        setMenuUnder(true);
+        setMenuLift(key);
+        target.open();
+        /* **時間を決め打ちで待たないこと。** iPhone が重いと動きの始まりが遅れ、
+           入りきる前に下の板と画面が消えて、Today がのぞく。
+           入りきった印（data-ft-entered）が付くまで待つ。付かない端末のために上限も置く */
+        const started = Date.now();
+        const entered = () => !!document.querySelector("[data-ft-lift] > .anim-right[data-ft-entered]");
+        const finish = () => {
+            menuGoTimer.current = null;
+            setMenuOpen(false);
+            setEditing(null);
+            setDayOpen(null);
+            setPlanOpen(null);
+            setFolderOpen(null);
+            if (key !== "settings")
+                setSettingsOpen(false);
+            if (key !== "tags")
+                setTagScreenOpen(false);
+            if (key !== "backup")
+                setBackupOpen(false);
+            if (key !== "help")
+                setHelpOpen(false);
+            setMenuLift(null);
+        };
+        const wait = () => {
+            const t = Date.now() - started;
+            if (motionIsOff() || entered() || t > 1500) {
+                finish();
+                return;
+            }
+            menuGoTimer.current = setTimeout(wait, 50);
+        };
+        menuGoTimer.current = setTimeout(wait, motionIsOff() ? 0 : FT_EXIT_RIGHT_MS);
     };
     const theme = THEMES.find((t) => t.key === prefs.theme) || THEMES[0];
     (0, react_1.useEffect)(() => { tell(""); }, [editing, dayOpen, planOpen, folderOpen, settingsOpen, backupOpen, tagScreenOpen, helpOpen, tab]); // eslint-disable-line
     const planObj = plans.find((p) => p.id === planOpen) || null;
     const folderObj = folders.find((f) => f.id === folderOpen) || null;
     const menuItems = [
-        { label: "表示設定", desc: "色・文字の大きさ・動き", icon: react_1.default.createElement(lucide_react_1.Palette, { size: 19 }), onClick: () => goFromMenu(() => setSettingsOpen(true)) },
-        { label: "タグの編集", desc: "名前の変更・削除", icon: react_1.default.createElement(lucide_react_1.Tag, { size: 19 }), onClick: () => goFromMenu(() => setTagScreenOpen(true)) },
+        { label: "表示設定", desc: "色・文字の大きさ・動き", icon: react_1.default.createElement(lucide_react_1.Palette, { size: 19 }), onClick: () => goFromMenu("settings") },
+        { label: "タグの編集", desc: "名前の変更・削除", icon: react_1.default.createElement(lucide_react_1.Tag, { size: 19 }), onClick: () => goFromMenu("tags") },
         {
             label: "バックアップ",
             /* **字で「未書き出し」と書かないこと。** 件数はしるしの肩の数で分かる */
             desc: backupAt ? `前回の保存：${fmtDate(backupAt.slice(0, 10))}` : "まだ書き出していません",
             count: needBackup ? unsavedCount : 0,
-            icon: react_1.default.createElement(lucide_react_1.Download, { size: 19 }), onClick: () => goFromMenu(() => setBackupOpen(true)),
+            icon: react_1.default.createElement(lucide_react_1.Download, { size: 19 }), onClick: () => goFromMenu("backup"),
         },
-        { label: "ヘルプ", desc: "使いかた", icon: react_1.default.createElement(lucide_react_1.CircleHelp, { size: 19 }), onClick: () => goFromMenu(() => setHelpOpen(true)) },
+        { label: "ヘルプ", desc: "使いかた", icon: react_1.default.createElement(lucide_react_1.CircleHelp, { size: 19 }), onClick: () => goFromMenu("help") },
     ];
     return (react_1.default.createElement(PrefsContext.Provider, { value: prefs },
         react_1.default.createElement(ColorContext.Provider, { value: prefs.typeColor },
             react_1.default.createElement(TypeNameContext.Provider, { value: typeNames },
-                react_1.default.createElement(MenuContext.Provider, { value: () => { setMenuInstant(false); setMenuOpen(true); } },
+                react_1.default.createElement(MenuContext.Provider, { value: () => {
+                        /* 画面へ移っている途中は開かない（すぐ閉じられてしまう） */
+                        if (menuGoTimer.current)
+                            return;
+                        /* instant と under を戻すのは、ここ（次に開くとき）。移る途中で戻さないこと */
+                        setMenuInstant(false);
+                        setMenuUnder(false);
+                        setMenuOpen(true);
+                    } },
                     react_1.default.createElement(NeedBackupContext.Provider, { value: { need: needBackup, count: unsavedCount, backupAt } },
                         react_1.default.createElement(RecordActionsContext.Provider, { value: recordActions },
                             react_1.default.createElement("div", { className: "ft-shell bg-app font-sans text-neutral-900 ft-root "
@@ -28393,7 +28477,7 @@ function AppMain() {
                                             smoothTopCancel();
                                         setTab(k);
                                     } }),
-                                react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, onClose: () => setMenuOpen(false), items: menuItems, 
+                                react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, under: menuUnder, onClose: () => setMenuOpen(false), items: menuItems, 
                                     /* **ことわりを並べないこと。** バックアップの行でもう伝えている */
                                     footer: react_1.default.createElement("p", { className: "fs-body-sm font-bold text-neutral-500 tabular-nums" },
                                         "My\u624B\u5E33 v",
@@ -28435,9 +28519,9 @@ function AppMain() {
                                         setTypePick(true);
                                     }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
                                 folderObj && (react_1.default.createElement(FolderDetail, { folder: folderObj, records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onCreateTag: addTagToMaster, onClose: () => setFolderOpen(null), onChange: changeFolder, onDelete: deleteFolder, onAddRecord: (f) => { setInFolder(f.id); setTypePick(true); }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                                settingsOpen && react_1.default.createElement(SettingsScreen, { prefs: prefs, onSave: savePrefs, onClose: () => setSettingsOpen(false) }),
-                                tagScreenOpen && (react_1.default.createElement(TagManageScreen, { tags: knownTags, records: records, onMove: moveTag, onReorder: setTagMaster, onAdd: addTagToMaster, onRename: renameTag, onDelete: deleteTag, onClose: () => setTagScreenOpen(false) })),
-                                backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, onClose: () => setBackupOpen(false), onRestore: restore, needBackup: needBackup, backupAt: backupAt, unsavedCount: unsavedCount, onBackedUp: () => {
+                                settingsOpen && react_1.default.createElement(SettingsScreen, { prefs: prefs, onSave: savePrefs, onClose: () => setSettingsOpen(false), zIndex: menuLift === "settings" ? MENU_LIFT_Z : undefined }),
+                                tagScreenOpen && (react_1.default.createElement(TagManageScreen, { tags: knownTags, records: records, onMove: moveTag, onReorder: setTagMaster, onAdd: addTagToMaster, onRename: renameTag, onDelete: deleteTag, onClose: () => setTagScreenOpen(false), zIndex: menuLift === "tags" ? MENU_LIFT_Z : undefined })),
+                                backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, zIndex: menuLift === "backup" ? MENU_LIFT_Z : undefined, onClose: () => setBackupOpen(false), onRestore: restore, needBackup: needBackup, backupAt: backupAt, unsavedCount: unsavedCount, onBackedUp: () => {
                                         const now = new Date().toISOString();
                                         setBackupAt(now);
                                         storageSet(BACKUP_AT_KEY, now);
@@ -28445,7 +28529,7 @@ function AppMain() {
                                         /* 書き出したので、控えは空に戻す */
                                         putChangeLog({});
                                     } })),
-                                helpOpen && react_1.default.createElement(HelpScreen, { onClose: () => setHelpOpen(false) }),
+                                helpOpen && react_1.default.createElement(HelpScreen, { onClose: () => setHelpOpen(false), zIndex: menuLift === "help" ? MENU_LIFT_Z : undefined }),
                                 react_1.default.createElement(Toast, { msg: msg })))))))));
 }
 
