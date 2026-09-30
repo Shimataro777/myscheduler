@@ -19169,7 +19169,10 @@ function TextArea({ value, onChange, className, minRows, bare, ...rest }) {
     const base = bare
         ? "w-full bg-transparent ft-input leading-relaxed text-neutral-900 placeholder-neutral-400 focus:outline-none"
         : inputCls;
-    return react_1.default.createElement("textarea", { ref: ref, rows: 1, value: value, onChange: onChange, onInput: resize, style: style, className: base + " resize-none overflow-hidden " + (className || ""), ...rest });
+    /* **block を外さないこと（2.20.7〜）。** textarea は既定で inline-block なので、
+       行の下の空き（字の下がりぶん・約7px）が欄の下に付き、次の項目との間が 12px にならない。
+       また inline のままだと mb-3 と次の欄の mt-3 が重ならず、24px 以上あいてしまう */
+    return react_1.default.createElement("textarea", { ref: ref, rows: 1, value: value, onChange: onChange, onInput: resize, style: style, className: base + " block resize-none overflow-hidden " + (className || ""), ...rest });
 }
 /* 入力のひと区切り。
    **記録の入力画面では、項目名も説明も出さないこと。**
@@ -22960,7 +22963,7 @@ function WhenCollapse({ summary, open, onToggle, children }) {
         /* 開け閉めは Collapse でなめらかに（2.18.0〜）。閉じ終わったら中身は描かない（上の決まりのまま）。
            **上の余白は mt ではなく pt で取ること。** 伸びる箱の中の余白は、高さに含めて測る */
         react_1.default.createElement(Collapse, { open: open },
-            react_1.default.createElement("div", { className: "pt-2" }, children))));
+            react_1.default.createElement("div", { className: "pt-2 ft-when-body" }, children))));
 }
 /* ============================================================
    RecordForm ＝ 記録を書く画面
@@ -23597,7 +23600,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
         selectMode && (react_1.default.createElement("span", { className: "w-11 shrink-0 relative flex justify-center" }, selectable ? (react_1.default.createElement("span", { className: "absolute top-3 w-6 h-6 rounded-full border-2 flex items-center justify-center", style: selected ? { background: color.deep, borderColor: color.deep } : { borderColor: "#C4C4C4", background: "#FFFFFF" } }, selected && react_1.default.createElement("span", { key: "on", className: "flex text-white ft-check-in" },
             react_1.default.createElement(lucide_react_1.Check, { size: 15, strokeWidth: 3.5, className: "thick" })))) : (react_1.default.createElement("span", { className: "absolute top-3 w-6 h-6 rounded-full border-2 border-dashed", style: { borderColor: "#D4D4D4" } })))),
         /* **ft-hold を外さないこと（2.18.1〜）。** 外すと、タップしただけで札に色が付く（app.css） */
-        react_1.default.createElement("article", { onClick: toggleFold, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl border relative overflow-hidden ft-tap ft-tap-card ft-hold "
+        react_1.default.createElement("article", { onClick: toggleFold, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl border relative overflow-hidden ft-tap ft-tap-card ft-hold ft-rec-card "
                 + (pressing ? "ft-pressing " : "")
                 + (selectMode
                     ? (selected ? "bg-th-50 border-th-800" : "bg-white border-dashed border-neutral-300")
@@ -23634,15 +23637,15 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             r.type !== "memo" && recordTitle(r, N) && recordTitle(r, N) !== (N[r.type] || TYPE_LABELS[r.type]) && (react_1.default.createElement("p", { className: "fs-subhead font-bold leading-snug break-words mb-1 "
                     + (allDone ? "text-neutral-400" : "text-neutral-900") }, recordTitle(r, N))),
             r.type === "memo" && (r.text || "").trim() && (react_1.default.createElement(react_1.default.Fragment, null,
-                react_1.default.createElement(LongText, { text: r.text, open: expanded, long: memoLong, className: "fs-body leading-relaxed text-neutral-800" }),
+                react_1.default.createElement(LongText, { text: r.text, open: expanded, long: memoLong, className: "block fs-body leading-relaxed text-neutral-800" }),
                 react_1.default.createElement(LinkCards, { text: r.text }),
                 /* 「すべて表示／折りたたむ」は、本文・リンクカードの下、添付写真の上に置く（2.17.0〜）。
                    以前は写真の下（カードの最下部）だった。**写真の下へ戻さないこと** */
                 memoLong && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")))),
             r.type !== "memo" && body && (react_1.default.createElement(react_1.default.Fragment, null,
-                react_1.default.createElement(LinkedText, { text: body, className: "fs-body leading-relaxed text-neutral-800 mb-1.5" }),
+                react_1.default.createElement(LinkedText, { text: body, className: "block fs-body leading-relaxed text-neutral-800 mb-1.5" }),
                 react_1.default.createElement(LinkCards, { text: body }))),
-            r.type === "schedule" && (r.body || "").trim() && (react_1.default.createElement("div", { className: "mt-1.5 mb-1.5 pl-1.5 border-l-2 border-neutral-200" },
+            r.type === "schedule" && (r.body || "").trim() && (react_1.default.createElement("div", { className: "mt-2 mb-1.5 pl-1.5 border-l-2 border-neutral-200" },
                 react_1.default.createElement(LinkedText, { text: r.body, className: "fs-body-sm leading-relaxed text-neutral-600" }),
                 react_1.default.createElement(LinkCards, { text: r.body }))),
             r.type === "schedule" && (r.placeUrl || r.place) && (react_1.default.createElement("p", { className: "fs-body-sm mb-1.5 flex items-center gap-1 leading-[15px]" },
@@ -25607,7 +25610,7 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
         /* 余白は RecordRow の <article> と同じ px-4 py-3.5（左右16px・上下14px）。
            **中の段ごとに上下の余白を分けて持たせないこと。** 外の箱ひとつで持つ。
            （前に pt-3.5 と書いたが app.css に無いクラスで、上辺の余白が0になった） */
-        react_1.default.createElement("div", { ...pressProps, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl bg-white border relative overflow-hidden ft-tap ft-tap-card ft-hold " + (pressing ? "ft-pressing " : ""), style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5", boxShadow: step.pinned && !allDone ? `inset 3px 0 0 ${color.mid}` : undefined } },
+        react_1.default.createElement("div", { ...pressProps, className: "flex-1 min-w-0 px-4 py-3.5 rounded-2xl bg-white border relative overflow-hidden ft-tap ft-tap-card ft-hold ft-rec-card " + (pressing ? "ft-pressing " : ""), style: { borderColor: allDone ? "#E5E5E5" : step.pinned ? color.mid : "#E5E5E5", boxShadow: step.pinned && !allDone ? `inset 3px 0 0 ${color.mid}` : undefined } },
             react_1.default.createElement("div", null,
                 /* 見出しの段：しるし・期限の札 …… 固定・編集。
                    **リスト記録カード（RecordRow）の上段と同じ並びにそろえる。** */
@@ -26820,7 +26823,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
             react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
-                react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft p-4 mb-7" },
+                react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft p-4 mb-5" },
                     react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                         react_1.default.createElement("p", { className: "fs-body-sm font-bold text-neutral-900" }, "\u3044\u307E\u306E\u8A18\u9332"),
                         react_1.default.createElement(HelpTip, { label: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", text: "\u8A18\u9332\u306F\u3053\u306E\u7AEF\u672B\u306E\u4E2D\u3060\u3051\u306B\u3042\u308A\u307E\u3059\u3002\u5C65\u6B74\u3092\u6D88\u3057\u305F\u308A\u7AEF\u672B\u3092\u66FF\u3048\u308B\u3068\u5931\u308F\u308C\u307E\u3059\u3002" })),
@@ -26839,10 +26842,10 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         fmtDate(backupAt.slice(0, 10))))),
                 needBackup && (react_1.default.createElement("div", { className: "rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 mb-5" },
                     react_1.default.createElement("p", { className: "fs-body-sm font-bold text-amber-800" }, backupAt ? `前回の書き出しのあとに、${unsavedCount || 0}件書きかえがあります` : "まだ一度も書き出していません"))),
-                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
+                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                     react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "\u66F8\u304D\u51FA\u3059"),
                     react_1.default.createElement(HelpTip, { label: "\u66F8\u304D\u51FA\u3059", text: "\u300C\u5199\u771F\u3082\u3075\u304F\u3081\u308B\u300D\u3092\u5207\u308B\u3068\u8EFD\u304F\u306A\u308A\u307E\u3059\u304C\u3001\u623B\u3057\u3066\u3082\u5199\u771F\u306F\u51FA\u307E\u305B\u3093\u3002" })),
-                react_1.default.createElement(RowCard, { className: "mb-4" },
+                react_1.default.createElement(RowCard, { className: "mb-3" },
                     react_1.default.createElement(SheetRow, { label: "\u5199\u771F\u3082\u3075\u304F\u3081\u308B" },
                         react_1.default.createElement(Switch, { on: withPhotos, onChange: setWithPhotos, label: "\u5199\u771F\u3082\u3075\u304F\u3081\u308B" })),
                     react_1.default.createElement(SheetRow, { label: "\u5408\u8A00\u8449\u3067\u30ED\u30C3\u30AF\u3059\u308B", last: !lock, help: "\u30D5\u30A1\u30A4\u30EB\u306E\u4E2D\u8EAB\u304C\u8AAD\u3081\u306A\u304F\u306A\u308A\u307E\u3059\u3002\u5408\u8A00\u8449\u3092\u5FD8\u308C\u308B\u3068\u3001\u4E8C\u5EA6\u3068\u958B\u3051\u307E\u305B\u3093\u3002" },
@@ -26853,7 +26856,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                     lock && (react_1.default.createElement("div", { className: "px-4 pt-1 pb-4 space-y-2.5 ft-open" },
                         react_1.default.createElement(TextInput, { value: pass, onChange: (e) => setPass(e.target.value), type: "password", placeholder: "\u5408\u8A00\u8449\uFF084\u6587\u5B57\u4EE5\u4E0A\uFF09" }),
                         react_1.default.createElement(TextInput, { value: pass2, onChange: (e) => setPass2(e.target.value), type: "password", placeholder: "\u3082\u3046\u4E00\u5EA6" })))),
-                react_1.default.createElement("div", { className: "space-y-3 mb-8" },
+                react_1.default.createElement("div", { className: "space-y-3 mb-5" },
                     canPickFolder && (react_1.default.createElement("button", { type: "button", onClick: () => doExport("pick"), disabled: busy, ...pressProps("pick"), className: BTN_PRIMARY + " w-full btn-h-lg fs-subhead" + pressCls("pick") },
                         busy ? react_1.default.createElement(Spinner, { size: 16 }) : react_1.default.createElement(lucide_react_1.Download, { size: 18 }),
                         " \u4FDD\u5B58\u5148\u3092\u9078\u3093\u3067\u66F8\u304D\u51FA\u3059")),
@@ -26870,7 +26873,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         }, ...pressProps("copy"), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" + pressCls("copy") },
                         react_1.default.createElement(lucide_react_1.Copy, { size: 17 }),
                         " \u6587\u5B57\u3067\u30B3\u30D4\u30FC\u3059\u308B")),
-                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2.5" },
+                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                     react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "\u8AAD\u307F\u8FBC\u3080"),
                     react_1.default.createElement(HelpTip, { label: "\u8AAD\u307F\u8FBC\u3080", text: "\u3044\u307E\u306E\u8A18\u9332\u306F\u3059\u3079\u3066\u7F6E\u304D\u63DB\u308F\u308A\u307E\u3059\u3002" })),
                 react_1.default.createElement("input", { ref: fileRef, type: "file", className: "hidden", onChange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f)
@@ -27640,12 +27643,24 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
    ・ft-group-input … カードの中に置く、枠なしの入力欄（場所など）。
      カードの外で使う欄（TextInput）と違い、箱の中では二重の枠にしないため枠を消す
    ・ft-gap-tasknote … リスト・イベント画面で「やることを追加」の次に「メモ」を置くとき、
-     区切りがはっきり分かるよう、ふだんの余白（12px）にこの分だけ足す（目安2行ぶん） */
+     区切りがはっきり分かるよう、ふだんの余白（12px）に 52px（目安2行ぶん）を足した 64px にする。
+     **64px は上の欄の mb-3 と重なる（大きいほうだけ効く）前提の値。**
+     2.20.7 で TextArea を block にしたため、52px のままだと 12px ぶん詰まる */
 .ft-group-row { padding: 12px 16px; }
 .ft-group-row + .ft-group-row { border-top: 1px solid #E5E5E5; }
 .ft-group-input { width: 100%; background: transparent; border: 0; outline: none; font-size: max(16px, calc(15.5px * var(--ft-scale))); color: #171717; }
 .ft-group-input::placeholder { color: #A3A3A3; }
-.ft-gap-tasknote { margin-top: 52px; }
+.ft-gap-tasknote { margin-top: 64px; }
+/* 記録の入力画面の項目間は 12px（mb-3）ひとつにそろえる（2.20.7〜）。
+   ・ft-when-body … 「終日・開始・終了・繰り返し」を開いたときの中身の箱。
+     折りたたみ（.ft-collapse）は flow-root なので、中の最後の欄の mb-3 が箱の外へ漏れず、
+     外側の WhenCollapse の mb-3 と足し算になって 24px あいていた。最後の欄の下の余白だけ消す */
+.ft-when-body > :last-child { margin-bottom: 0; }
+/* 記録カード（RecordRow / StepCard の article）の最後の段の下の余白を消す（2.20.7〜）。
+   段ごとの mb-*（タイトル mb-1・本文 mb-1.5・場所 mb-1.5・写真 mb-2・進み具合 mb-1 など）は
+   「次の段との間」のためのもの。最後の段に残ると、カードの下の内側が py-3.5（14px）より
+   4〜8px 広がり、カードの種類ごとに下の余白がばらついていた */
+.ft-rec-card > :last-child { margin-bottom: 0; }
 `;
 /* ============================================================
    下のタブ
