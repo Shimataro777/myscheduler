@@ -24297,7 +24297,7 @@ function DayPanel({ date, records, onEdit, onToggleItem, onPin, onOpenDay }) {
 /* ============================================================
    1ヶ月ごとの画面（各日付のスケジュール）
    ============================================================ */
-function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPin, focusDate }) {
+function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPin, focusDate, onSelChange }) {
     const colorMap = react_1.default.useContext(ColorContext) || DEFAULT_TYPE_COLOR;
     const slotColor = useSchedColor();
     const firstDow = new Date(year, month - 1, 1).getDay();
@@ -24316,6 +24316,9 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
     /* 「表示する期間」ピッカーで日まで選んだときは、その日にフォーカスを合わせる */
     (0, react_1.useEffect)(() => { if (focusDate)
         setSel(focusDate); }, [focusDate]); // eslint-disable-line
+    /* 押している日を外（TodayScreen）へ伝える。右下の＋が、その日の記録を作れるようにするため（2.20.8〜） */
+    (0, react_1.useEffect)(() => { if (onSelChange)
+        onSelChange(sel); }, [sel]); // eslint-disable-line
     const byDate = (0, react_1.useMemo)(() => {
         const m = new Map();
         records.forEach((r) => {
@@ -24571,6 +24574,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
     const [hidden, setHidden] = (0, react_1.useState)([]); // 出さない記録の種類
     const [weekSel, setWeekSel] = (0, react_1.useState)(null); // 週の画面で押している日
     const [monthFocusDate, setMonthFocusDate] = (0, react_1.useState)(null); // 「表示する期間」で日まで選んだとき、月の画面でどこにフォーカスするか
+    const [monthSel, setMonthSel] = (0, react_1.useState)(null); // 月の画面で押している日（MonthView から受け取る）
     const sel = useSelectMode(onDeleteMany);
     (0, react_1.useEffect)(() => { if (onSelecting)
         onSelecting(sel.on); }, [sel.on]); // eslint-disable-line
@@ -24678,9 +24682,16 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
         setSpan(next.key);
     };
     const nextSpanLabel = SPANS[(SPANS.findIndex((s) => s.key === span) + 1) % SPANS.length].label;
-    /* いま見ている日を外へ伝える。右下の＋が、その日の記録を作れるようにするため */
+    /* いま見ている日を外へ伝える。右下の＋が、その日の記録を作れるようにするため。
+       **週・月では date をそのまま渡さないこと（2.20.8〜）。** date は「どの週・月を出すか」の
+       目印でしかなく、月を送ると 1日 になる。週・月では、下に開いている日（押している日）を渡す。
+       ・週 … 下の DayPanel と同じ日（押した日、なければ今日／週のはじめ）
+       ・月 … 押している日。どの日もえらんでいなければ date（その月の中の日） */
+    const addDate = span === "week" ? (weekSel || todayInWeek)
+        : span === "month" ? (monthSel || date)
+            : date;
     (0, react_1.useEffect)(() => { if (onViewDate)
-        onViewDate(date); }, [date]); // eslint-disable-line
+        onViewDate(addDate); }, [addDate]); // eslint-disable-line
     /* 日は「8月25日(火)」のように短く。年は小さく添えるほうが読みやすい */
     const label = span === "day" ? fmtDate(date)
         : span === "week" ? `${Number(weekStart.slice(5, 7))}/${Number(weekStart.slice(8, 10))} – ${Number(addDays(weekStart, 6).slice(5, 7))}/${Number(addDays(weekStart, 6).slice(8, 10))}`
@@ -24746,7 +24757,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 span === "week" && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(WeekView, { start: weekStart, records: records, onOpenDay: (d) => { setDate(d); setSpan("day"); }, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selected: weekSel, onSelect: setWeekSel }),
                     react_1.default.createElement(DayPanel, { date: weekSel || todayInWeek, records: records, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, onOpenDay: (d) => { setDate(d); setSpan("day"); } }))),
-                span === "month" && (react_1.default.createElement(MonthView, { year: y, month: mo, records: records, onToggleItem: onToggleItem, onEdit: onEdit, onPin: onPin, focusDate: monthFocusDate, onOpenDay: (d) => { setDate(d); setSpan("day"); } })))),
+                span === "month" && (react_1.default.createElement(MonthView, { year: y, month: mo, records: records, onToggleItem: onToggleItem, onEdit: onEdit, onPin: onPin, focusDate: monthFocusDate, onSelChange: setMonthSel, onOpenDay: (d) => { setDate(d); setSpan("day"); } })))),
         react_1.default.createElement(SelectBar, { sel: sel, list: dayList.filter((r) => !hidden.includes(r.type)) }),
         filterOpen && (react_1.default.createElement(SheetDialog, { title: "\u8868\u793A\u3059\u308B\u7A2E\u985E", onCancel: () => setFilterOpen(false), onConfirm: () => setFilterOpen(false), confirmLabel: "\u6C7A\u5B9A" },
             react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" }, TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: !hidden.includes(t), onClick: () => setHidden((v) => (v.includes(t) ? v.filter((x) => x !== t) : [...v, t])) },
