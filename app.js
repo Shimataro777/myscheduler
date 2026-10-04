@@ -24783,57 +24783,51 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
 }
 /* ============================================================
    チェックリストの項目を、別のチェックリストへ移し替える（持ち越し）
-   2.21.0〜：何件かまとめて移せる。
-   ・矢印を押した項目が、はじめから選ばれている。1件だけ移すときの手順は、いままでどおり
-   ・「ほかも選ぶ」で、同じリストのやり残しをえらび足す／外す（この紙の中で切り替える。別の紙を重ねない）
-   ・「やり残しをすべて移す」は、ひと押しで残りを全部足す近道
-   ・移し先（その日のリスト／新しく作るリスト）は、選んだ全部に共通
-   **済んだ項目は、えらぶ一覧に出さないこと。** 移すと印が外れる（持ち越しは「やり残し」を運ぶもの）。
-   矢印を押した項目そのものだけは、済んでいても出す（いままでどおり移せるように）
+   2.22.0〜：**ひとつの紙・ひとつの面で完結させる。** 画面を切り替えない、紙を重ねない。
+   上から順に「移すもの（チェックで選ぶ）」→「いつへ（日の札）」→「どのリストへ（押したら移る）」。
+   ・矢印を押した項目が、はじめから選ばれている。1件だけなら「日」「リスト」の2タップで終わる
+   ・日の札は、今日から7日ぶん＋「ほかの日」。ほかの日は、その場でカレンダーを開く（Collapse）
+   ・新しいリストは、名前を聞かずに「持ち越し」で作る（あとで鉛筆から変えられる）
+   ❌ 「移すものをえらぶ」「どの日」「その日のリスト」を別の面・別の紙に分けないこと（2.21.0 で分けたら分かりにくいと言われた）
+   ❌ 移し先を、全部のリストの一列に並べないこと。何十枚もたまると探せない。日でしぼってから出す
+   **済んだ項目は、えらぶ一覧に出さないこと。** 移すと印が外れる。矢印を押した項目だけは、済んでいても出す
    ============================================================ */
+const MOVE_NEW_LIST_NAME = "持ち越し";
 function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
     const ce = react_1.default.createElement;
     const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
     const close = () => requestClose(onCancel);
-    const [nameOpen, setNameOpen] = (0, react_1.useState)(false);
     const [jumpOpen, setJumpOpen] = (0, react_1.useState)(false);
     const N = useTypeNames();
-    const today = new Date();
-    const todayKey = ymd(today);
+    const todayKey = todayStr();
     /* --- 移すもの --- */
     const pool = (0, react_1.useMemo)(() => (from.items || []).filter((i) => !i.done || i.id === item.id), [from.items, item.id]);
-    const doneHidden = (from.items || []).filter((i) => i.done && i.id !== item.id).length;
     const [picked, setPicked] = (0, react_1.useState)(() => new Set([item.id]));
-    /* えらび直しは下書き（draft）でやる。「決定」で picked へ写し、戻る（‹）なら捨てる。
-       **0件のまま日の画面へ戻れないこと。** 移すものが無い状態をつくらない */
-    const [draft, setDraft] = (0, react_1.useState)(null);
-    const picking = draft !== null;
     const chosen = pool.filter((i) => picked.has(i.id));
-    const rest = pool.filter((i) => !picked.has(i.id));
-    const openPicking = () => setDraft(new Set(picked));
-    const togglePick = (id) => setDraft((prev) => {
-        const n = new Set(prev || []);
+    const allOn = pool.length > 0 && chosen.length === pool.length;
+    const togglePick = (id) => setPicked((prev) => {
+        const n = new Set(prev);
         if (n.has(id))
             n.delete(id);
         else
             n.add(id);
         return n;
     });
-    const draftAll = picking && pool.every((i) => draft.has(i.id));
-    /* --- 移し先 ---
-       **移し先を一列に並べないこと。** 何十枚もたまると、目当ての1枚が探せない。
-       まずカレンダーから日をえらび、つぎにその日のリストをえらぶ、の2段にする。
-       済んだリストも候補に出す（あとから足したくなることもある） */
+    const none = chosen.length === 0;
+    /* --- いつへ --- */
     const all = (0, react_1.useMemo)(() => records.filter((r) => r.type === "checklist" && isDayRec(r) && r.id !== from.id), [records, from.id]);
-    /* その日に何件あるか。カレンダーの日の下に小さな点で出す */
     const countBy = (0, react_1.useMemo)(() => {
         const m = new Map();
         all.forEach((r) => m.set(r.date || "", (m.get(r.date || "") || 0) + 1));
         return m;
     }, [all]);
-    const [day, setDay] = (0, react_1.useState)(null);
+    /* はじめに選んでおく日：過去のリストからなら今日、今日以降のリストからならその翌日 */
+    const [day, setDay] = (0, react_1.useState)(() => (from.date && from.date >= todayKey ? addDays(from.date, 1) : todayKey));
+    const week = Array.from({ length: 7 }, (_, i) => addDays(todayKey, i));
+    const inWeek = week.includes(day);
+    const [calOpen, setCalOpen] = (0, react_1.useState)(false);
     const [cursor, setCursor] = (0, react_1.useState)(() => {
-        const p = parseYmd(from.date) || today;
+        const p = parseYmd(day) || new Date();
         return { y: p.getFullYear(), mo: p.getMonth() + 1 };
     });
     const shiftMonth = (delta) => setCursor((c) => {
@@ -24852,100 +24846,87 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
     const lastDay = new Date(cursor.y, cursor.mo, 0).getDate();
     const cells = [...Array(firstDow).fill(null), ...Array.from({ length: lastDay }, (_, i) => i + 1)];
     const key = (d) => `${cursor.y}-${String(cursor.mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const targets = day ? all.filter((r) => (r.date || "") === day).sort(compareTimeline) : [];
-    const many = chosen.length > 1;
-    const title = picking ? "移すものをえらぶ" : (day ? fmtDate(day) : "どの日に移しますか");
-    const back = picking ? () => setDraft(null) : (day ? () => setDay(null) : null);
-    /* この紙は札（RecordRow）の中で描かれている。札の長押し（えらぶ形に入る）へ
-       指を上げないこと。一覧の行を押さえたまま考えていると、うしろの札がえらばれてしまう */
+    const dayName = (ds) => (ds === todayKey ? "今日" : ds === addDays(todayKey, 1) ? "明日" : "");
+    /* --- どのリストへ --- */
+    const targets = all.filter((r) => (r.date || "") === day).sort(compareTimeline);
+    const go = (fn) => { if (!none)
+        requestClose(fn); };
+    /* この紙は札（RecordRow）の中で描かれている。札の長押し（えらぶ形に入る）へ指を上げないこと */
     const stopPress = (e) => e.stopPropagation();
-    /* 選んだもののまとめ（日・リストをえらぶ画面の上） */
-    const summary = ce("div", { className: "px-4 pt-3 shrink-0" },
-        ce("div", { className: "rounded-xl bg-neutral-100 px-3 py-2.5" },
-            ce("div", { className: "flex items-center gap-2 mb-0.5" },
-                ce("p", { className: "flex-1 fs-caption font-bold text-neutral-500 tabular-nums" }, many ? `移すもの（${chosen.length}件）` : "移すもの"),
-                pool.length > 1 && (ce("button", { type: "button", onClick: openPicking, className: "flex items-center gap-1 -mr-1 px-2 py-1 rounded-lg fs-caption font-bold text-sky-700 ft-tap" },
-                    ce(lucide_react_1.ListChecks, { size: 14 }),
-                    many ? "えらび直す" : "ほかも選ぶ"))),
-            !many && ce("p", { className: "fs-body font-bold text-neutral-900 break-words" }, chosen[0] && chosen[0].text),
-            many && (ce("div", null,
-                chosen.slice(0, 3).map((i) => ce("p", { key: i.id, className: "fs-body-sm font-bold text-neutral-900 truncate" }, i.text)),
-                chosen.length > 3 && ce("p", { className: "fs-caption text-neutral-500 tabular-nums" }, `ほか ${chosen.length - 3}件`))),
-            rest.length > 0 && (ce("button", { type: "button", onClick: () => setPicked(new Set(pool.map((i) => i.id))), className: "flex items-center gap-1 mt-1.5 fs-body-sm font-bold text-sky-700 ft-tap" },
-                ce(lucide_react_1.Plus, { size: 15 }),
-                `やり残しをすべて移す（あと${rest.length}件）`))));
-    /* えらび直す一覧 */
-    const pickList = picking && (ce("div", null,
-        ce("div", { className: "flex items-center gap-2 mb-2" },
-            ce("span", { className: "flex-1 fs-label text-neutral-500 tabular-nums" }, `${draft.size}件をえらんでいます`),
-            ce("button", { type: "button", onClick: () => setDraft(draftAll ? new Set() : new Set(pool.map((i) => i.id))), className: "px-2 py-1 -mr-1 rounded-lg fs-body-sm font-bold text-sky-700 ft-tap" }, draftAll ? "すべて外す" : "すべてえらぶ")),
-        ce("div", { className: "space-y-1.5" }, pool.map((i) => {
-            const on = draft.has(i.id);
-            return (ce(TapOnceButton, { key: i.id, onTap: () => togglePick(i.id), "aria-pressed": on, className: "w-full flex items-start gap-2.5 rounded-xl border px-3 py-2.5 min-h-[46px] text-left ft-tap ft-tap-card "
-                    + (on ? "bg-th-50 border-th-800" : "bg-white border-neutral-200") },
-                ce("span", { className: "shrink-0 w-6 h-6 mt-0.5 rounded-full border-2 flex items-center justify-center", style: on ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4", background: "#FFFFFF" } }, on && ce("span", { key: "on", className: "flex text-white ft-check-in" },
-                    ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" }))),
-                ce("span", { className: "flex-1 min-w-0 fs-body leading-snug break-words " + (i.done ? "text-neutral-400 line-through" : "text-neutral-800") }, i.text)));
-        })),
-        doneHidden > 0 && ce("p", { className: "fs-caption text-neutral-400 mt-2 text-center tabular-nums" }, `済んだもの（${doneHidden}件）は出していません`)));
-    return (ce(react_1.default.Fragment, null,
-        ce("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close, onPointerDown: stopPress },
-            ce(BackgroundLock, null),
-            ce("div", { className: "absolute inset-0 bg-black/45" }),
-            ce("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
-                    + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
-                ce("div", { className: "flex items-center justify-between px-4 py-3 border-b border-neutral-200 shrink-0" },
-                    ce("span", { className: "flex items-center gap-1.5 min-w-0" },
-                        back && (ce("button", { type: "button", onClick: back, "aria-label": "\u3082\u3069\u308B", className: "w-9 h-9 -ml-1 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
-                            ce(lucide_react_1.ChevronLeft, { size: 20 }))),
-                        ce("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide truncate" }, title)),
-                    ce("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
-                        ce(lucide_react_1.X, { size: 24 }))),
-                !picking && summary,
-                ce("div", { className: "ft-sheet-body overflow-y-auto px-4 py-3" },
-                    pickList,
-                    !picking && !day && (ce(react_1.default.Fragment, null,
-                        ce(MonthNavHeader, { label: `${cursor.y}年 ${cursor.mo}月`, onPrev: () => shiftMonth(-1), onNext: () => shiftMonth(1), onJump: () => setJumpOpen(true), onToday: () => setCursor({ y: today.getFullYear(), mo: today.getMonth() + 1 }) }),
+    const label = (text, right) => ce("div", { className: "flex items-center gap-2 mb-1" },
+        ce("p", { className: "flex-1 fs-label font-bold text-neutral-500 tabular-nums" }, text),
+        right || null);
+    const dot = (n, on) => ce("span", { className: "rounded-full", "aria-hidden": "true", style: { width: 5, height: 5, background: n ? (on ? "#FFFFFF" : "#6FAFD2") : "transparent" } });
+    return (ce("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close, onPointerDown: stopPress },
+        ce(BackgroundLock, null),
+        ce("div", { className: "absolute inset-0 bg-black/45" }),
+        ce("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
+                + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
+            ce("div", { className: "flex items-center justify-between px-4 py-3 border-b border-neutral-200 shrink-0" },
+                ce("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide truncate" }, "\u5225\u306E\u30EA\u30B9\u30C8\u3078\u79FB\u3059"),
+                ce("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
+                    ce(lucide_react_1.X, { size: 24 }))),
+            ce("div", { className: "ft-sheet-body overflow-y-auto px-4 pt-3", style: SAFE_BOTTOM(16) },
+                /* ① 移すもの */
+                label(`移すもの（${chosen.length}件）`, pool.length > 1 && ce("button", { type: "button", onClick: () => setPicked(allOn ? new Set() : new Set(pool.map((i) => i.id))), className: "px-2 py-1 -mr-1 rounded-lg fs-body-sm font-bold text-sky-700 ft-tap" }, allOn ? "すべて外す" : "すべて選ぶ")),
+                ce("div", { className: "-mx-1" }, pool.map((i) => {
+                    const on = picked.has(i.id);
+                    return (ce(TapOnceButton, { key: i.id, onTap: () => togglePick(i.id), "aria-pressed": on, className: "w-full flex items-start gap-2.5 rounded-xl px-2 py-2 min-h-[44px] text-left ft-tap ft-tap-card " + (on ? "bg-th-50" : "") },
+                        ce("span", { className: "shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center", style: on ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4", background: "#FFFFFF" } }, on && ce("span", { key: "on", className: "flex text-white ft-check-in" },
+                            ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" }))),
+                        ce("span", { className: "flex-1 min-w-0 fs-body leading-snug break-words " + (i.done ? "text-neutral-400 line-through" : "text-neutral-800") }, i.text)));
+                })),
+                /* ② いつへ */
+                ce("div", { className: "mt-4" }, label("いつへ")),
+                ce("div", { className: "grid grid-cols-4 gap-1.5" },
+                    week.map((ds) => {
+                        const on = ds === day;
+                        const nm = dayName(ds);
+                        const dt = parseYmd(ds);
+                        return (ce("button", { key: ds, type: "button", onClick: () => { setDay(ds); setCalOpen(false); }, "aria-pressed": on, className: "min-h-[44px] rounded-xl border flex flex-col items-center justify-center gap-1 py-1.5 ft-tap "
+                                + (on ? "bg-th-950 border-th-950 text-white" : "bg-white border-neutral-200 text-neutral-800 hover:bg-neutral-50") },
+                            ce("span", { className: "fs-body-sm font-bold leading-none tabular-nums" }, nm || `${dt.getMonth() + 1}/${dt.getDate()}`),
+                            ce("span", { className: "fs-caption leading-none " + (on ? "" : weekColor(dt.getDay())) }, nm ? `${dt.getMonth() + 1}/${dt.getDate()}` : WEEK_LABELS[dt.getDay()]),
+                            dot(countBy.get(ds) || 0, on)));
+                    }),
+                    ce("button", { type: "button", onClick: () => setCalOpen((v) => !v), "aria-expanded": calOpen, className: "min-h-[44px] rounded-xl border flex flex-col items-center justify-center gap-1 py-1.5 ft-tap "
+                            + (!inWeek ? "bg-th-950 border-th-950 text-white" : (calOpen ? "bg-th-50 border-th-800 text-th-800" : "bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-50")) },
+                        ce(lucide_react_1.CalendarDays, { size: 16 }),
+                        ce("span", { className: "fs-caption font-bold leading-none tabular-nums" }, inWeek ? "ほかの日" : shortDate(day)))),
+                ce(Collapse, { open: calOpen },
+                    ce("div", { className: "pt-3" },
+                        ce(MonthNavHeader, { label: `${cursor.y}年 ${cursor.mo}月`, onPrev: () => shiftMonth(-1), onNext: () => shiftMonth(1), onJump: () => setJumpOpen(true), onToday: () => { const t = new Date(); setCursor({ y: t.getFullYear(), mo: t.getMonth() + 1 }); } }),
                         ce("div", { className: "grid grid-cols-7 gap-1 text-center fs-label font-bold mb-1" }, WEEK_LABELS.map((d, i) => ce("div", { key: d, className: weekColor(i) }, d))),
                         ce("div", { className: "grid grid-cols-7 gap-1" }, cells.map((d, i) => {
                             if (d === null)
                                 return ce("div", { key: "e" + i });
                             const ds = key(d);
-                            const n = countBy.get(ds) || 0;
-                            const isToday = ds === todayKey;
+                            const on = ds === day;
                             const dow = (firstDow + d - 1) % 7;
-                            return (ce("button", { key: ds, type: "button", onClick: () => setDay(ds), className: "aspect-square min-h-[42px] rounded-lg fs-subhead font-bold flex flex-col items-center justify-center border-2 ft-tap "
-                                    + (isToday ? "border-th-300 bg-th-50 " + weekColor(dow)
-                                        : "border-transparent " + weekColor(dow) + " hover:bg-neutral-100") },
+                            return (ce("button", { key: ds, type: "button", onClick: () => { setDay(ds); setCalOpen(false); }, className: "aspect-square min-h-[40px] rounded-lg fs-body font-bold flex flex-col items-center justify-center gap-1 border-2 ft-tap "
+                                    + (on ? "bg-th-950 border-th-950 text-white"
+                                        : (ds === todayKey ? "border-th-300 bg-th-50 " : "border-transparent hover:bg-neutral-100 ") + weekColor(dow)) },
                                 ce("span", { className: "leading-none" }, d),
-                                ce("span", { className: "rounded-full mt-1", "aria-hidden": "true", style: { width: 5, height: 5, background: n ? "#6FAFD2" : "transparent" } })));
-                        })),
-                        ce("p", { className: "fs-caption text-neutral-400 mt-2 text-center" }, "\u70B9\u306E\u3042\u308B\u65E5\u306B\u306F\u3001\u3059\u3067\u306B\u30EA\u30B9\u30C8\u304C\u3042\u308A\u307E\u3059"))),
-                    !picking && day && (ce("div", { className: "space-y-1.5 ft-seq" },
-                        targets.length === 0 && (ce("p", { className: "fs-body-sm text-neutral-500 py-6 text-center" },
-                            "\u3053\u306E\u65E5\u306B\u306F\u30EA\u30B9\u30C8\u304C\u3042\u308A\u307E\u305B\u3093\u3002",
-                            ce("br", null),
-                            "\u4E0B\u304B\u3089\u65B0\u3057\u304F\u4F5C\u308C\u307E\u3059\u3002")),
-                        targets.map((t) => (ce("button", { key: t.id, type: "button", onClick: () => requestClose(() => onMove(t.id, chosen)), className: "w-full flex items-center gap-2.5 rounded-xl border border-neutral-200 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
-                            ce("span", { className: "w-9 h-9 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
-                                ce(lucide_react_1.ListChecks, { size: 17 })),
-                            ce("span", { className: "flex-1 min-w-0" },
-                                ce("span", { className: "block fs-body font-bold text-neutral-900 truncate" }, t.title || N.checklist),
-                                ce("span", { className: "block fs-caption text-neutral-500 tabular-nums" },
-                                    doneRatio(t).done,
-                                    "/",
-                                    doneRatio(t).total,
-                                    many ? `（移すと ${doneRatio(t).total + chosen.length}件）` : "")),
-                            ce(lucide_react_1.ArrowRightLeft, { size: 16, className: "text-neutral-400 shrink-0" }))))))),
-                ce("div", { className: "shrink-0 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) }, picking
-                    ? (ce("button", { type: "button", onClick: () => { setPicked(draft); setDraft(null); }, disabled: draft.size === 0, className: BTN_PRIMARY + " w-full " + BTN_H + " fs-body tabular-nums" }, draft.size === 0 ? "1件以上えらんでください" : `決定（${draft.size}件）`))
-                    : (ce("button", { type: "button", onClick: () => setNameOpen(true), disabled: !day, className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body" },
-                        ce(lucide_react_1.Plus, { size: 15 }),
-                        " ",
-                        day ? `${fmtDate(day)} に新しく作る` : "まず日をえらんでください"))),
-                jumpOpen && (ce(MonthJumpSheet, { year: cursor.y, month: cursor.mo, years: jumpYears(cursor.y), zIndex: 2147483250, onClose: () => setJumpOpen(false), onConfirm: (y, mo) => { setCursor({ y, mo }); setJumpOpen(false); } })))),
-        nameOpen && (ce("div", { style: { display: "contents" }, onPointerDown: stopPress },
-            ce(NameDialog, { title: "\u65B0\u3057\u3044\u30EA\u30B9\u30C8", label: "\u30EA\u30B9\u30C8\u306E\u540D\u524D", placeholder: "\u6301\u3061\u8D8A\u3057", confirmLabel: many ? `作って${chosen.length}件移す` : "作って移す", onCancel: () => setNameOpen(false), onConfirm: (name) => { setNameOpen(false); onCreate(name, day, chosen); } })))));
+                                dot(countBy.get(ds) || 0, on)));
+                        })))),
+                /* ③ どのリストへ（押したら移る） */
+                ce("div", { className: "mt-4" }, label(`${fmtDate(day)} の、どのリストへ`)),
+                ce("div", { className: "space-y-1.5", style: none ? { opacity: 0.4 } : undefined },
+                    targets.map((t) => (ce("button", { key: t.id, type: "button", disabled: none, onClick: () => go(() => onMove(t.id, chosen)), className: "w-full flex items-center gap-2.5 rounded-xl border border-neutral-200 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
+                        ce("span", { className: "w-9 h-9 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
+                            ce(lucide_react_1.ListChecks, { size: 17 })),
+                        ce("span", { className: "flex-1 min-w-0" },
+                            ce("span", { className: "block fs-body font-bold text-neutral-900 truncate" }, t.title || N.checklist),
+                            ce("span", { className: "block fs-caption text-neutral-500 tabular-nums" }, `${doneRatio(t).done}/${doneRatio(t).total}`)),
+                        ce(lucide_react_1.ArrowRightLeft, { size: 16, className: "text-neutral-400 shrink-0" })))),
+                    ce("button", { type: "button", disabled: none, onClick: () => go(() => onCreate(MOVE_NEW_LIST_NAME, day, chosen)), className: "w-full flex items-center gap-2.5 rounded-xl border border-dashed border-neutral-300 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
+                        ce("span", { className: "w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-600 shrink-0" },
+                            ce(lucide_react_1.Plus, { size: 17 })),
+                        ce("span", { className: "flex-1 min-w-0" },
+                            ce("span", { className: "block fs-body font-bold text-neutral-900" }, "\u65B0\u3057\u3044\u30EA\u30B9\u30C8\u3092\u4F5C\u3063\u3066\u79FB\u3059"),
+                            ce("span", { className: "block fs-caption text-neutral-500" }, `名前は「${MOVE_NEW_LIST_NAME}」（あとで変えられます）`)))),
+                none && ce("p", { className: "fs-caption text-neutral-500 mt-2 text-center" }, "\u79FB\u3059\u3082\u306E\u30921\u4EF6\u4EE5\u4E0A\u3048\u3089\u3093\u3067\u304F\u3060\u3055\u3044")),
+            jumpOpen && (ce(MonthJumpSheet, { year: cursor.y, month: cursor.mo, years: jumpYears(cursor.y), zIndex: 2147483250, onClose: () => setJumpOpen(false), onConfirm: (y, mo) => { setCursor({ y, mo }); setJumpOpen(false); } })))));
 }
 /* 日付をタップして開く、その日だけの画面 */
 function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
@@ -26988,7 +26969,7 @@ const HELP_SECTIONS = [
     },
     {
         title: "リスト",
-        body: "チェックを入れると「3/5」のように進みが出ます。\n終わらなかったものは、右の矢印から別のリストへ移せます。\n移す画面の「ほかも選ぶ」で、やり残しをまとめて移すこともできます。\n繰り返しは、毎日・毎週・毎月から選べます。",
+        body: "チェックを入れると「3/5」のように進みが出ます。\n終わらなかったものは、右の矢印から別のリストへ移せます。\n移す画面でチェックを足せば、まとめて移すこともできます。\n繰り返しは、毎日・毎週・毎月から選べます。",
     },
     {
         title: "計画",
@@ -28311,7 +28292,7 @@ function AppMain() {
                 { ...fresh, items: carry },
             ];
         });
-        tell(n > 1 ? `新しいリストへ${n}件移しました` : "新しいリストへ移しました", n > 1 ? 2200 : 1700);
+        tell(`新しいリスト「${name}」へ${n > 1 ? n + "件" : ""}移しました`, 2200);
     };
     /* --- 計画 --- */
     /* **色を持たせないこと。** 計画も種類も、色は表示設定でひとつだけ決める */
