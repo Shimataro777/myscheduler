@@ -19710,17 +19710,18 @@ function Collapse({ open, keepMounted = false, className = "", children }) {
                 el.removeEventListener("transitionend", endRef.current);
                 endRef.current = null;
             }
+            /* **閉じ終わりは、高さ・薄さを外す前に display:none にすること（2.23.1〜）。**
+               先に外すと、描かない箱（keepMounted なし）は setMounted(false) が画面に届くまでの
+               1こま、もとの高さ・濃さで出てしまう（カレンダーなどが一瞬だけ見える） */
+            if (!open)
+                el.style.display = "none";
             clean();
-            if (!open) {
-                if (keepMounted)
-                    el.style.display = "none";
-                else
-                    setMounted(false);
-            }
+            if (!open && !keepMounted)
+                setMounted(false);
         };
         if (motionIsOff()) {
             clean();
-            el.style.display = open ? "" : (keepMounted ? "none" : "");
+            el.style.display = open ? "" : "none";
             if (!open && !keepMounted)
                 setMounted(false);
             return;
@@ -24826,6 +24827,30 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
     const week = Array.from({ length: 7 }, (_, i) => addDays(todayKey, i));
     const inWeek = week.includes(day);
     const [calOpen, setCalOpen] = (0, react_1.useState)(false);
+    const bodyRef = (0, react_1.useRef)(null);
+    const calRef = (0, react_1.useRef)(null);
+    /* 「ほかの日」でカレンダーを開くとき：
+       ・**いま選んでいる日の月から出すこと。** 日の札で月をまたいだあと（10/30 → 11/2 など）に、
+         前の月のカレンダーが出ていた
+       ・開いたカレンダーが紙の下に隠れていたら、見えるところまで送る（伸びきってから） */
+    const toggleCal = () => {
+        if (calOpen) {
+            setCalOpen(false);
+            return;
+        }
+        const p = parseYmd(day);
+        if (p)
+            setCursor({ y: p.getFullYear(), mo: p.getMonth() + 1 });
+        setCalOpen(true);
+        setTimeout(() => {
+            const box = bodyRef.current, cal = calRef.current;
+            if (!box || !cal)
+                return;
+            const over = cal.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom + 12;
+            if (over > 0)
+                box.scrollTo({ top: box.scrollTop + over, behavior: motionIsOff() ? "auto" : "smooth" });
+        }, FT_COLLAPSE_MS + 20);
+    };
     const [cursor, setCursor] = (0, react_1.useState)(() => {
         const p = parseYmd(day) || new Date();
         return { y: p.getFullYear(), mo: p.getMonth() + 1 };
@@ -24866,7 +24891,7 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
                 ce("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide truncate" }, "\u5225\u306E\u30EA\u30B9\u30C8\u3078\u79FB\u3059"),
                 ce("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
                     ce(lucide_react_1.X, { size: 24 }))),
-            ce("div", { className: "ft-sheet-body overflow-y-auto px-4 pt-3", style: SAFE_BOTTOM(16) },
+            ce("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto px-4 pt-3", style: SAFE_BOTTOM(16) },
                 /* ① 移すもの */
                 label(`移すもの（${chosen.length}件）`, pool.length > 1 && ce("button", { type: "button", onClick: () => setPicked(allOn ? new Set() : new Set(pool.map((i) => i.id))), className: "px-2 py-1 -mr-1 rounded-lg fs-body-sm font-bold text-sky-700 ft-tap" }, allOn ? "すべて外す" : "すべて選ぶ")),
                 ce("div", { className: "-mx-1" }, pool.map((i) => {
@@ -24889,12 +24914,12 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
                             ce("span", { className: "fs-caption leading-none " + (on ? "" : weekColor(dt.getDay())) }, nm ? `${dt.getMonth() + 1}/${dt.getDate()}` : WEEK_LABELS[dt.getDay()]),
                             dot(countBy.get(ds) || 0, on)));
                     }),
-                    ce("button", { type: "button", onClick: () => setCalOpen((v) => !v), "aria-expanded": calOpen, className: "min-h-[44px] rounded-xl border flex flex-col items-center justify-center gap-1 py-1.5 ft-tap "
+                    ce("button", { type: "button", onClick: toggleCal, "aria-expanded": calOpen, className: "min-h-[44px] rounded-xl border flex flex-col items-center justify-center gap-1 py-1.5 ft-tap "
                             + (!inWeek ? "bg-th-950 border-th-950 text-white" : (calOpen ? "bg-th-50 border-th-800 text-th-800" : "bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-50")) },
                         ce(lucide_react_1.CalendarDays, { size: 16 }),
                         ce("span", { className: "fs-caption font-bold leading-none tabular-nums" }, inWeek ? "ほかの日" : shortDate(day)))),
                 ce(Collapse, { open: calOpen },
-                    ce("div", { className: "pt-3" },
+                    ce("div", { ref: calRef, className: "pt-3" },
                         ce(MonthNavHeader, { label: `${cursor.y}年 ${cursor.mo}月`, onPrev: () => shiftMonth(-1), onNext: () => shiftMonth(1), onJump: () => setJumpOpen(true), onToday: () => { const t = new Date(); setCursor({ y: t.getFullYear(), mo: t.getMonth() + 1 }); } }),
                         ce("div", { className: "grid grid-cols-7 gap-1 text-center fs-label font-bold mb-1" }, WEEK_LABELS.map((d, i) => ce("div", { key: d, className: weekColor(i) }, d))),
                         ce("div", { className: "grid grid-cols-7 gap-1" }, cells.map((d, i) => {
