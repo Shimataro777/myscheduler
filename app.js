@@ -24860,7 +24860,7 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
     return (ce("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close, onPointerDown: stopPress },
         ce(BackgroundLock, null),
         ce("div", { className: "absolute inset-0 bg-black/45" }),
-        ce("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
+        ce("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box ft-sheet-move "
                 + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
             ce("div", { className: "flex items-center justify-between px-4 py-3 border-b border-neutral-200 shrink-0" },
                 ce("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide truncate" }, "\u5225\u306E\u30EA\u30B9\u30C8\u3078\u79FB\u3059"),
@@ -24912,19 +24912,20 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
                 /* ③ どのリストへ（押したら移る） */
                 ce("div", { className: "mt-4" }, label(`${fmtDate(day)} の、どのリストへ`)),
                 ce("div", { className: "space-y-1.5", style: none ? { opacity: 0.4 } : undefined },
+                    ce("button", { type: "button", disabled: none, onClick: () => go(() => onCreate(MOVE_NEW_LIST_NAME, day, chosen)), className: "w-full flex items-center gap-2.5 rounded-xl border border-dashed border-neutral-300 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
+                        ce("span", { className: "w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-600 shrink-0" },
+                            ce(lucide_react_1.Plus, { size: 17 })),
+                        ce("span", { className: "flex-1 min-w-0" },
+                            ce("span", { className: "block fs-body font-bold text-neutral-900" }, "\u65B0\u3057\u3044\u30EA\u30B9\u30C8\u3092\u4F5C\u3063\u3066\u79FB\u3059"),
+                            ce("span", { className: "block fs-caption text-neutral-500" }, `名前は「${MOVE_NEW_LIST_NAME}」（あとで変えられます）`))),
+                    targets.length === 0 && ce("p", { className: "fs-caption text-neutral-400 pt-1 text-center" }, "\u3053\u306E\u65E5\u306E\u30EA\u30B9\u30C8\u306F\u307E\u3060\u3042\u308A\u307E\u305B\u3093"),
                     targets.map((t) => (ce("button", { key: t.id, type: "button", disabled: none, onClick: () => go(() => onMove(t.id, chosen)), className: "w-full flex items-center gap-2.5 rounded-xl border border-neutral-200 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
                         ce("span", { className: "w-9 h-9 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
                             ce(lucide_react_1.ListChecks, { size: 17 })),
                         ce("span", { className: "flex-1 min-w-0" },
                             ce("span", { className: "block fs-body font-bold text-neutral-900 truncate" }, t.title || N.checklist),
                             ce("span", { className: "block fs-caption text-neutral-500 tabular-nums" }, `${doneRatio(t).done}/${doneRatio(t).total}`)),
-                        ce(lucide_react_1.ArrowRightLeft, { size: 16, className: "text-neutral-400 shrink-0" })))),
-                    ce("button", { type: "button", disabled: none, onClick: () => go(() => onCreate(MOVE_NEW_LIST_NAME, day, chosen)), className: "w-full flex items-center gap-2.5 rounded-xl border border-dashed border-neutral-300 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
-                        ce("span", { className: "w-9 h-9 rounded-xl bg-neutral-100 flex items-center justify-center text-neutral-600 shrink-0" },
-                            ce(lucide_react_1.Plus, { size: 17 })),
-                        ce("span", { className: "flex-1 min-w-0" },
-                            ce("span", { className: "block fs-body font-bold text-neutral-900" }, "\u65B0\u3057\u3044\u30EA\u30B9\u30C8\u3092\u4F5C\u3063\u3066\u79FB\u3059"),
-                            ce("span", { className: "block fs-caption text-neutral-500" }, `名前は「${MOVE_NEW_LIST_NAME}」（あとで変えられます）`)))),
+                        ce(lucide_react_1.ArrowRightLeft, { size: 16, className: "text-neutral-400 shrink-0" }))))),
                 none && ce("p", { className: "fs-caption text-neutral-500 mt-2 text-center" }, "\u79FB\u3059\u3082\u306E\u30921\u4EF6\u4EE5\u4E0A\u3048\u3089\u3093\u3067\u304F\u3060\u3055\u3044")),
             jumpOpen && (ce(MonthJumpSheet, { year: cursor.y, month: cursor.mo, years: jumpYears(cursor.y), zIndex: 2147483250, onClose: () => setJumpOpen(false), onConfirm: (y, mo) => { setCursor({ y, mo }); setJumpOpen(false); } })))));
 }
@@ -27554,6 +27555,10 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 /* 記録をさがす紙は、ほぼ画面いっぱい。**中身の量で高さを変えないこと。**
    どちらのタブを出しても、同じ大きさで開く */
 .ft-sheet-tall { height: 92%; max-height: 92%; }
+/* 「別のリストへ移す」の紙（2.23.0〜）。**日を切り替えても、紙の上端を動かさないこと。**
+   紙は下に留めてあるので、中身の量（その日のリストの数）で高さが変わると、
+   日の札ごと上下に跳ねる。はじめから決まった高さで開く */
+.ft-sheet-move { height: 82%; }
 /* **紙は、キーボードの上へ持ち上げること（2.11.26〜）。**
    iPhone はキーボードを出しても fixed の高さを変えない。外わくを上下 0 で留めたままだと、
    下からせり上がる紙（フォルダ名の入力など）がまるごとキーボードの裏に入り、打てなかった。
