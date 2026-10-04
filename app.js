@@ -23682,7 +23682,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             /* 「探す」でキーワードを入れたときだけ出る。どこに当たったか */
             hits && hits.length > 0 && react_1.default.createElement(RecordHitBox, { hits: hits, words: hitWords })),
         photo !== null && (react_1.default.createElement(PhotoViewer, { images: r.images || [], index: photo, onClose: () => setPhoto(null) })),
-        moving && acts && (react_1.default.createElement(MoveItemSheet, { item: moving, from: r, records: acts.records || [], onCancel: () => setMoving(null), onMove: (toId) => { acts.onMoveItem(r, moving, toId); setMoving(null); }, onCreate: (name, date) => { acts.onCreateAndMove(r, moving, name, date); setMoving(null); } }))));
+        moving && acts && (react_1.default.createElement(MoveItemSheet, { item: moving, from: r, records: acts.records || [], onCancel: () => setMoving(null), onMove: (toId, items) => { acts.onMoveItem(r, items, toId); setMoving(null); }, onCreate: (name, date, items) => { acts.onCreateAndMove(r, items, name, date); setMoving(null); } }))));
 }
 /* ============================================================
    拡大窓
@@ -24783,8 +24783,16 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
 }
 /* ============================================================
    チェックリストの項目を、別のチェックリストへ移し替える（持ち越し）
+   2.21.0〜：何件かまとめて移せる。
+   ・矢印を押した項目が、はじめから選ばれている。1件だけ移すときの手順は、いままでどおり
+   ・「ほかも選ぶ」で、同じリストのやり残しをえらび足す／外す（この紙の中で切り替える。別の紙を重ねない）
+   ・「やり残しをすべて移す」は、ひと押しで残りを全部足す近道
+   ・移し先（その日のリスト／新しく作るリスト）は、選んだ全部に共通
+   **済んだ項目は、えらぶ一覧に出さないこと。** 移すと印が外れる（持ち越しは「やり残し」を運ぶもの）。
+   矢印を押した項目そのものだけは、済んでいても出す（いままでどおり移せるように）
    ============================================================ */
 function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
+    const ce = react_1.default.createElement;
     const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
     const close = () => requestClose(onCancel);
     const [nameOpen, setNameOpen] = (0, react_1.useState)(false);
@@ -24792,7 +24800,28 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
     const N = useTypeNames();
     const today = new Date();
     const todayKey = ymd(today);
-    /* **移し先を一列に並べないこと。** 何十枚もたまると、目当ての1枚が探せない。
+    /* --- 移すもの --- */
+    const pool = (0, react_1.useMemo)(() => (from.items || []).filter((i) => !i.done || i.id === item.id), [from.items, item.id]);
+    const doneHidden = (from.items || []).filter((i) => i.done && i.id !== item.id).length;
+    const [picked, setPicked] = (0, react_1.useState)(() => new Set([item.id]));
+    /* えらび直しは下書き（draft）でやる。「決定」で picked へ写し、戻る（‹）なら捨てる。
+       **0件のまま日の画面へ戻れないこと。** 移すものが無い状態をつくらない */
+    const [draft, setDraft] = (0, react_1.useState)(null);
+    const picking = draft !== null;
+    const chosen = pool.filter((i) => picked.has(i.id));
+    const rest = pool.filter((i) => !picked.has(i.id));
+    const openPicking = () => setDraft(new Set(picked));
+    const togglePick = (id) => setDraft((prev) => {
+        const n = new Set(prev || []);
+        if (n.has(id))
+            n.delete(id);
+        else
+            n.add(id);
+        return n;
+    });
+    const draftAll = picking && pool.every((i) => draft.has(i.id));
+    /* --- 移し先 ---
+       **移し先を一列に並べないこと。** 何十枚もたまると、目当ての1枚が探せない。
        まずカレンダーから日をえらび、つぎにその日のリストをえらぶ、の2段にする。
        済んだリストも候補に出す（あとから足したくなることもある） */
     const all = (0, react_1.useMemo)(() => records.filter((r) => r.type === "checklist" && isDayRec(r) && r.id !== from.id), [records, from.id]);
@@ -24824,63 +24853,99 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
     const cells = [...Array(firstDow).fill(null), ...Array.from({ length: lastDay }, (_, i) => i + 1)];
     const key = (d) => `${cursor.y}-${String(cursor.mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const targets = day ? all.filter((r) => (r.date || "") === day).sort(compareTimeline) : [];
-    return (react_1.default.createElement(react_1.default.Fragment, null,
-        react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close },
-            react_1.default.createElement(BackgroundLock, null),
-            react_1.default.createElement("div", { className: "absolute inset-0 bg-black/45" }),
-            react_1.default.createElement("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
+    const many = chosen.length > 1;
+    const title = picking ? "移すものをえらぶ" : (day ? fmtDate(day) : "どの日に移しますか");
+    const back = picking ? () => setDraft(null) : (day ? () => setDay(null) : null);
+    /* この紙は札（RecordRow）の中で描かれている。札の長押し（えらぶ形に入る）へ
+       指を上げないこと。一覧の行を押さえたまま考えていると、うしろの札がえらばれてしまう */
+    const stopPress = (e) => e.stopPropagation();
+    /* 選んだもののまとめ（日・リストをえらぶ画面の上） */
+    const summary = ce("div", { className: "px-4 pt-3 shrink-0" },
+        ce("div", { className: "rounded-xl bg-neutral-100 px-3 py-2.5" },
+            ce("div", { className: "flex items-center gap-2 mb-0.5" },
+                ce("p", { className: "flex-1 fs-caption font-bold text-neutral-500 tabular-nums" }, many ? `移すもの（${chosen.length}件）` : "移すもの"),
+                pool.length > 1 && (ce("button", { type: "button", onClick: openPicking, className: "flex items-center gap-1 -mr-1 px-2 py-1 rounded-lg fs-caption font-bold text-sky-700 ft-tap" },
+                    ce(lucide_react_1.ListChecks, { size: 14 }),
+                    many ? "えらび直す" : "ほかも選ぶ"))),
+            !many && ce("p", { className: "fs-body font-bold text-neutral-900 break-words" }, chosen[0] && chosen[0].text),
+            many && (ce("div", null,
+                chosen.slice(0, 3).map((i) => ce("p", { key: i.id, className: "fs-body-sm font-bold text-neutral-900 truncate" }, i.text)),
+                chosen.length > 3 && ce("p", { className: "fs-caption text-neutral-500 tabular-nums" }, `ほか ${chosen.length - 3}件`))),
+            rest.length > 0 && (ce("button", { type: "button", onClick: () => setPicked(new Set(pool.map((i) => i.id))), className: "flex items-center gap-1 mt-1.5 fs-body-sm font-bold text-sky-700 ft-tap" },
+                ce(lucide_react_1.Plus, { size: 15 }),
+                `やり残しをすべて移す（あと${rest.length}件）`))));
+    /* えらび直す一覧 */
+    const pickList = picking && (ce("div", null,
+        ce("div", { className: "flex items-center gap-2 mb-2" },
+            ce("span", { className: "flex-1 fs-label text-neutral-500 tabular-nums" }, `${draft.size}件をえらんでいます`),
+            ce("button", { type: "button", onClick: () => setDraft(draftAll ? new Set() : new Set(pool.map((i) => i.id))), className: "px-2 py-1 -mr-1 rounded-lg fs-body-sm font-bold text-sky-700 ft-tap" }, draftAll ? "すべて外す" : "すべてえらぶ")),
+        ce("div", { className: "space-y-1.5" }, pool.map((i) => {
+            const on = draft.has(i.id);
+            return (ce(TapOnceButton, { key: i.id, onTap: () => togglePick(i.id), "aria-pressed": on, className: "w-full flex items-start gap-2.5 rounded-xl border px-3 py-2.5 min-h-[46px] text-left ft-tap ft-tap-card "
+                    + (on ? "bg-th-50 border-th-800" : "bg-white border-neutral-200") },
+                ce("span", { className: "shrink-0 w-6 h-6 mt-0.5 rounded-full border-2 flex items-center justify-center", style: on ? { background: "var(--th-800)", borderColor: "var(--th-800)" } : { borderColor: "#C4C4C4", background: "#FFFFFF" } }, on && ce("span", { key: "on", className: "flex text-white ft-check-in" },
+                    ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" }))),
+                ce("span", { className: "flex-1 min-w-0 fs-body leading-snug break-words " + (i.done ? "text-neutral-400 line-through" : "text-neutral-800") }, i.text)));
+        })),
+        doneHidden > 0 && ce("p", { className: "fs-caption text-neutral-400 mt-2 text-center tabular-nums" }, `済んだもの（${doneHidden}件）は出していません`)));
+    return (ce(react_1.default.Fragment, null,
+        ce("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close, onPointerDown: stopPress },
+            ce(BackgroundLock, null),
+            ce("div", { className: "absolute inset-0 bg-black/45" }),
+            ce("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
                     + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
-                react_1.default.createElement("div", { className: "flex items-center justify-between px-4 py-3 border-b border-neutral-200 shrink-0" },
-                    react_1.default.createElement("span", { className: "flex items-center gap-1.5 min-w-0" },
-                        day && (react_1.default.createElement("button", { type: "button", onClick: () => setDay(null), "aria-label": "\u65E5\u3092\u3048\u3089\u3073\u76F4\u3059", className: "w-9 h-9 -ml-1 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
-                            react_1.default.createElement(lucide_react_1.ChevronLeft, { size: 20 }))),
-                        react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide truncate" }, day ? fmtDate(day) : "どの日に移しますか")),
-                    react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
-                        react_1.default.createElement(lucide_react_1.X, { size: 24 }))),
-                react_1.default.createElement("div", { className: "px-4 pt-3 shrink-0" },
-                    react_1.default.createElement("div", { className: "rounded-xl bg-neutral-100 px-3 py-2.5" },
-                        react_1.default.createElement("p", { className: "fs-caption font-bold text-neutral-500 mb-0.5" }, "\u79FB\u3059\u3082\u306E"),
-                        react_1.default.createElement("p", { className: "fs-body font-bold text-neutral-900 break-words" }, item.text))),
-                react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-3" },
-                    !day && (react_1.default.createElement(react_1.default.Fragment, null,
-                        react_1.default.createElement(MonthNavHeader, { label: `${cursor.y}年 ${cursor.mo}月`, onPrev: () => shiftMonth(-1), onNext: () => shiftMonth(1), onJump: () => setJumpOpen(true), onToday: () => setCursor({ y: today.getFullYear(), mo: today.getMonth() + 1 }) }),
-                        react_1.default.createElement("div", { className: "grid grid-cols-7 gap-1 text-center fs-label font-bold mb-1" }, WEEK_LABELS.map((d, i) => react_1.default.createElement("div", { key: d, className: weekColor(i) }, d))),
-                        react_1.default.createElement("div", { className: "grid grid-cols-7 gap-1" }, cells.map((d, i) => {
+                ce("div", { className: "flex items-center justify-between px-4 py-3 border-b border-neutral-200 shrink-0" },
+                    ce("span", { className: "flex items-center gap-1.5 min-w-0" },
+                        back && (ce("button", { type: "button", onClick: back, "aria-label": "\u3082\u3069\u308B", className: "w-9 h-9 -ml-1 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
+                            ce(lucide_react_1.ChevronLeft, { size: 20 }))),
+                        ce("span", { className: "font-display fs-subhead text-neutral-900 tracking-wide truncate" }, title)),
+                    ce("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
+                        ce(lucide_react_1.X, { size: 24 }))),
+                !picking && summary,
+                ce("div", { className: "ft-sheet-body overflow-y-auto px-4 py-3" },
+                    pickList,
+                    !picking && !day && (ce(react_1.default.Fragment, null,
+                        ce(MonthNavHeader, { label: `${cursor.y}年 ${cursor.mo}月`, onPrev: () => shiftMonth(-1), onNext: () => shiftMonth(1), onJump: () => setJumpOpen(true), onToday: () => setCursor({ y: today.getFullYear(), mo: today.getMonth() + 1 }) }),
+                        ce("div", { className: "grid grid-cols-7 gap-1 text-center fs-label font-bold mb-1" }, WEEK_LABELS.map((d, i) => ce("div", { key: d, className: weekColor(i) }, d))),
+                        ce("div", { className: "grid grid-cols-7 gap-1" }, cells.map((d, i) => {
                             if (d === null)
-                                return react_1.default.createElement("div", { key: "e" + i });
+                                return ce("div", { key: "e" + i });
                             const ds = key(d);
                             const n = countBy.get(ds) || 0;
                             const isToday = ds === todayKey;
                             const dow = (firstDow + d - 1) % 7;
-                            return (react_1.default.createElement("button", { key: ds, type: "button", onClick: () => setDay(ds), className: "aspect-square min-h-[42px] rounded-lg fs-subhead font-bold flex flex-col items-center justify-center border-2 ft-tap "
+                            return (ce("button", { key: ds, type: "button", onClick: () => setDay(ds), className: "aspect-square min-h-[42px] rounded-lg fs-subhead font-bold flex flex-col items-center justify-center border-2 ft-tap "
                                     + (isToday ? "border-th-300 bg-th-50 " + weekColor(dow)
                                         : "border-transparent " + weekColor(dow) + " hover:bg-neutral-100") },
-                                react_1.default.createElement("span", { className: "leading-none" }, d),
-                                react_1.default.createElement("span", { className: "rounded-full mt-1", "aria-hidden": "true", style: { width: 5, height: 5, background: n ? "#6FAFD2" : "transparent" } })));
+                                ce("span", { className: "leading-none" }, d),
+                                ce("span", { className: "rounded-full mt-1", "aria-hidden": "true", style: { width: 5, height: 5, background: n ? "#6FAFD2" : "transparent" } })));
                         })),
-                        react_1.default.createElement("p", { className: "fs-caption text-neutral-400 mt-2 text-center" }, "\u70B9\u306E\u3042\u308B\u65E5\u306B\u306F\u3001\u3059\u3067\u306B\u30EA\u30B9\u30C8\u304C\u3042\u308A\u307E\u3059"))),
-                    day && (react_1.default.createElement("div", { className: "space-y-1.5 ft-seq" },
-                        targets.length === 0 && (react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 py-6 text-center" },
+                        ce("p", { className: "fs-caption text-neutral-400 mt-2 text-center" }, "\u70B9\u306E\u3042\u308B\u65E5\u306B\u306F\u3001\u3059\u3067\u306B\u30EA\u30B9\u30C8\u304C\u3042\u308A\u307E\u3059"))),
+                    !picking && day && (ce("div", { className: "space-y-1.5 ft-seq" },
+                        targets.length === 0 && (ce("p", { className: "fs-body-sm text-neutral-500 py-6 text-center" },
                             "\u3053\u306E\u65E5\u306B\u306F\u30EA\u30B9\u30C8\u304C\u3042\u308A\u307E\u305B\u3093\u3002",
-                            react_1.default.createElement("br", null),
+                            ce("br", null),
                             "\u4E0B\u304B\u3089\u65B0\u3057\u304F\u4F5C\u308C\u307E\u3059\u3002")),
-                        targets.map((t) => (react_1.default.createElement("button", { key: t.id, type: "button", onClick: () => requestClose(() => onMove(t.id)), className: "w-full flex items-center gap-2.5 rounded-xl border border-neutral-200 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
-                            react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
-                                react_1.default.createElement(lucide_react_1.ListChecks, { size: 17 })),
-                            react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                                react_1.default.createElement("span", { className: "block fs-body font-bold text-neutral-900 truncate" }, t.title || N.checklist),
-                                react_1.default.createElement("span", { className: "block fs-caption text-neutral-500 tabular-nums" },
+                        targets.map((t) => (ce("button", { key: t.id, type: "button", onClick: () => requestClose(() => onMove(t.id, chosen)), className: "w-full flex items-center gap-2.5 rounded-xl border border-neutral-200 bg-white px-3 min-h-[46px] text-left ft-tap ft-tap-card hover:bg-neutral-50" },
+                            ce("span", { className: "w-9 h-9 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center text-th-800 shrink-0" },
+                                ce(lucide_react_1.ListChecks, { size: 17 })),
+                            ce("span", { className: "flex-1 min-w-0" },
+                                ce("span", { className: "block fs-body font-bold text-neutral-900 truncate" }, t.title || N.checklist),
+                                ce("span", { className: "block fs-caption text-neutral-500 tabular-nums" },
                                     doneRatio(t).done,
                                     "/",
-                                    doneRatio(t).total)),
-                            react_1.default.createElement(lucide_react_1.ArrowRightLeft, { size: 16, className: "text-neutral-400 shrink-0" }))))))),
-                react_1.default.createElement("div", { className: "shrink-0 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) },
-                    react_1.default.createElement("button", { type: "button", onClick: () => setNameOpen(true), disabled: !day, className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body" },
-                        react_1.default.createElement(lucide_react_1.Plus, { size: 15 }),
+                                    doneRatio(t).total,
+                                    many ? `（移すと ${doneRatio(t).total + chosen.length}件）` : "")),
+                            ce(lucide_react_1.ArrowRightLeft, { size: 16, className: "text-neutral-400 shrink-0" }))))))),
+                ce("div", { className: "shrink-0 px-4 py-3 border-t border-neutral-200", style: SAFE_BOTTOM(12) }, picking
+                    ? (ce("button", { type: "button", onClick: () => { setPicked(draft); setDraft(null); }, disabled: draft.size === 0, className: BTN_PRIMARY + " w-full " + BTN_H + " fs-body tabular-nums" }, draft.size === 0 ? "1件以上えらんでください" : `決定（${draft.size}件）`))
+                    : (ce("button", { type: "button", onClick: () => setNameOpen(true), disabled: !day, className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body" },
+                        ce(lucide_react_1.Plus, { size: 15 }),
                         " ",
-                        day ? `${fmtDate(day)} に新しく作る` : "まず日をえらんでください")),
-                jumpOpen && (react_1.default.createElement(MonthJumpSheet, { year: cursor.y, month: cursor.mo, years: jumpYears(cursor.y), zIndex: 2147483250, onClose: () => setJumpOpen(false), onConfirm: (y, mo) => { setCursor({ y, mo }); setJumpOpen(false); } })))),
-        nameOpen && (react_1.default.createElement(NameDialog, { title: "\u65B0\u3057\u3044\u30EA\u30B9\u30C8", label: "\u30EA\u30B9\u30C8\u306E\u540D\u524D", placeholder: "\u6301\u3061\u8D8A\u3057", confirmLabel: "\u4F5C\u3063\u3066\u79FB\u3059", onCancel: () => setNameOpen(false), onConfirm: (name) => { setNameOpen(false); onCreate(name, day); } }))));
+                        day ? `${fmtDate(day)} に新しく作る` : "まず日をえらんでください"))),
+                jumpOpen && (ce(MonthJumpSheet, { year: cursor.y, month: cursor.mo, years: jumpYears(cursor.y), zIndex: 2147483250, onClose: () => setJumpOpen(false), onConfirm: (y, mo) => { setCursor({ y, mo }); setJumpOpen(false); } })))),
+        nameOpen && (ce("div", { style: { display: "contents" }, onPointerDown: stopPress },
+            ce(NameDialog, { title: "\u65B0\u3057\u3044\u30EA\u30B9\u30C8", label: "\u30EA\u30B9\u30C8\u306E\u540D\u524D", placeholder: "\u6301\u3061\u8D8A\u3057", confirmLabel: many ? `作って${chosen.length}件移す` : "作って移す", onCancel: () => setNameOpen(false), onConfirm: (name) => { setNameOpen(false); onCreate(name, day, chosen); } })))));
 }
 /* 日付をタップして開く、その日だけの画面 */
 function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDeleteMany, order, onOrder }) {
@@ -26923,7 +26988,7 @@ const HELP_SECTIONS = [
     },
     {
         title: "リスト",
-        body: "チェックを入れると「3/5」のように進みが出ます。\n終わらなかったものは、右の矢印から別のリストへ移せます。\n繰り返しは、毎日・毎週・毎月から選べます。",
+        body: "チェックを入れると「3/5」のように進みが出ます。\n終わらなかったものは、右の矢印から別のリストへ移せます。\n移す画面の「ほかも選ぶ」で、やり残しをまとめて移すこともできます。\n繰り返しは、毎日・毎週・毎月から選べます。",
     },
     {
         title: "計画",
@@ -28203,28 +28268,50 @@ function AppMain() {
             ? { ...r, items: (r.items || []).map((i) => (i.id === itemId ? { ...i, done: !i.done } : i)), checkedAt: new Date().toISOString() }
             : r));
     };
-    /* 項目を別のチェックリストへ移す（持ち越し） */
-    const moveItem = (from, item, toId) => {
-        setRecords((prev) => prev.map((r) => {
-            if (r.id === from.id)
-                return { ...r, items: r.items.filter((i) => i.id !== item.id), updatedAt: new Date().toISOString() };
-            if (r.id === toId)
-                return { ...r, items: [...(r.items || []), { ...item, id: uid(), done: false }], updatedAt: new Date().toISOString() };
-            return r;
-        }));
-        tell("移しました");
+    /* 項目を別のチェックリストへ移す（持ち越し）。2.21.0〜 何件かまとめて移せる。
+       items は1件（項目そのもの）でも配列でも受ける。
+       **移す中身は、ひとつ前の一覧（prev）の元リストから取り直すこと。** 紙を開いていたあいだの
+       古い写しを運ぶと、そのあいだに直した字が巻き戻る（6-②）。並びは元リストの順のまま */
+    const moveItem = (from, items, toId) => {
+        const ids = new Set((Array.isArray(items) ? items : [items]).map((i) => i.id));
+        const n = ids.size;
+        const to = records.find((r) => r.id === toId);
+        setRecords((prev) => {
+            const src = prev.find((r) => r.id === from.id);
+            const carry = ((src && src.items) || []).filter((i) => ids.has(i.id)).map((i) => ({ ...i, id: uid(), done: false }));
+            if (carry.length === 0)
+                return prev;
+            const now = new Date().toISOString();
+            return prev.map((r) => {
+                if (r.id === from.id)
+                    return { ...r, items: (r.items || []).filter((i) => !ids.has(i.id)), updatedAt: now };
+                if (r.id === toId)
+                    return { ...r, items: [...(r.items || []), ...carry], updatedAt: now };
+                return r;
+            });
+        });
+        tell(n > 1 ? `${n}件を「${(to && to.title) || "リスト"}」へ移しました` : "移しました", n > 1 ? 2200 : 1700);
     };
-    const createAndMove = (from, item, name, date) => {
+    const createAndMove = (from, items, name, date) => {
+        const ids = new Set((Array.isArray(items) ? items : [items]).map((i) => i.id));
+        const n = ids.size;
+        /* 新しいリストの id は、書きかえの外で1回だけ決める */
         const fresh = {
             ...emptyRecord("checklist", date || todayStr()),
             title: name, tags: from.tags, planId: from.planId,
-            items: [{ ...item, id: uid(), done: false }],
+            items: [],
         };
-        setRecords((prev) => [
-            ...prev.map((r) => (r.id === from.id ? { ...r, items: r.items.filter((i) => i.id !== item.id), updatedAt: new Date().toISOString() } : r)),
-            fresh,
-        ]);
-        tell("新しいリストへ移しました");
+        setRecords((prev) => {
+            const src = prev.find((r) => r.id === from.id);
+            const carry = ((src && src.items) || []).filter((i) => ids.has(i.id)).map((i) => ({ ...i, id: uid(), done: false }));
+            if (carry.length === 0)
+                return prev;
+            return [
+                ...prev.map((r) => (r.id === from.id ? { ...r, items: (r.items || []).filter((i) => !ids.has(i.id)), updatedAt: new Date().toISOString() } : r)),
+                { ...fresh, items: carry },
+            ];
+        });
+        tell(n > 1 ? `新しいリストへ${n}件移しました` : "新しいリストへ移しました", n > 1 ? 2200 : 1700);
     };
     /* --- 計画 --- */
     /* **色を持たせないこと。** 計画も種類も、色は表示設定でひとつだけ決める */
