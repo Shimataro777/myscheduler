@@ -20868,7 +20868,7 @@ function OverlayScreen({ from = "right", closing, children, zIndex = 50 }) {
        （useClosing に ms を渡していないので、動く間もなく消え、ちらつきに見える） */
     const scrimOutCls = from === "bottom" ? "anim-scrim-out-modal" : "anim-scrim-out-push";
     /* data-ft-lift：メニューから移ってくる途中の画面（goFromMenu が入りきったかを見る） */
-    return (react_1.default.createElement("div", { className: "fixed inset-0", "data-ft-overlay": "", "data-ft-lift": zIndex === MENU_LIFT_Z ? "" : undefined, style: { zIndex } },
+    return (react_1.default.createElement("div", { className: "fixed inset-0", "data-ft-overlay": "", "data-ft-lift": zIndex >= MENU_LIFT_Z ? String(zIndex) : undefined, style: { zIndex } },
         /* 地の暗がり。左端から払って戻るときは useEdgeSwipeBack が指に合わせて薄くする。
            **data-ft-scrim を外さないこと。** 外すと、払い終えたあと画面だけ消えて暗がりが残る */
         react_1.default.createElement("div", { "data-ft-scrim": "", className: "absolute inset-0 bg-black/25 " + (closing ? scrimOutCls : "anim-fade") }),
@@ -22225,6 +22225,7 @@ const SIDE_MENU_GONE = { opacity: 0, transition: "none", touchAction: "pan-y" };
    ・**板を右へ滑らせないこと**（入ってくる画面とすれ違う）。**その場で消さないこと**（パッと消えて見える）
    ・かぶせ終わったら（AppMain の goFromMenu）、見えないところで外す */
 const MENU_UNDER_Z = 55;
+/* メニューから開いた画面の高さの始まり。続けて移るたびに 1 つずつ上がる（2.24.1〜。AppMain の menuLift） */
 const MENU_LIFT_Z = 60;
 function SideMenu({ open, onClose, items, footer, instant, under }) {
     const [mounted, setMounted] = (0, react_1.useState)(open);
@@ -27876,9 +27877,14 @@ function AppMain() {
     const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
     const [menuInstant, setMenuInstant] = (0, react_1.useState)(false);
     /* メニューから画面へ移るあいだ（2.20.6〜）。menuUnder＝板を移った先の画面の下へ沈めている。
-       menuLift＝右から入ってくる画面（"settings" など）。入りきるまで、ほかの全画面より上に出す */
+       menuLift＝メニューから開いた画面と、その高さ（{ settings: 60, help: 61 } のような形）。
+       **入りきったあとも、その画面が閉じるまで高さを変えないこと（2.24.1〜）。**
+       2.20.6〜2.24.0 は入りきったところで 60 → 50 へ戻していた。iPhone は、見えている画面の
+       z-index が変わると層を作り直し、そのひとこま画面が消えて、うしろ（Today など）がのぞいた。
+       ・メニューから次の画面へ移るときは、いまの画面の高さはそのままにして、次の画面を **1 つ上** に出す
+       ・画面が閉じたら、ここから外す（下の useEffect）。全部閉じれば、次はまた 60 から */
     const [menuUnder, setMenuUnder] = (0, react_1.useState)(false);
-    const [menuLift, setMenuLift] = (0, react_1.useState)(null);
+    const [menuLift, setMenuLift] = (0, react_1.useState)({});
     const menuGoTimer = (0, react_1.useRef)(null);
     (0, react_1.useEffect)(() => () => clearTimeout(menuGoTimer.current), []);
     const [typePick, setTypePick] = (0, react_1.useState)(false);
@@ -28513,13 +28519,17 @@ function AppMain() {
             return;
         }
         setMenuUnder(true);
-        setMenuLift(key);
+        /* いま出ている画面より 1 つ上へ。**いま出ている画面の高さは変えないこと**（上の menuLift） */
+        const liftZ = Math.max(MENU_LIFT_Z - 1, ...Object.values(menuLift)) + 1;
+        setMenuLift((m) => ({ ...m, [key]: liftZ }));
         target.open();
         /* **時間を決め打ちで待たないこと。** iPhone が重いと動きの始まりが遅れ、
            入りきる前に下の板と画面が消えて、Today がのぞく。
            入りきった印（data-ft-entered）が付くまで待つ。付かない端末のために上限も置く */
         const started = Date.now();
-        const entered = () => !!document.querySelector("[data-ft-lift] > .anim-right[data-ft-entered]");
+        /* **入ってくる画面だけを見ること。** 前にメニューから開いた画面も data-ft-lift を持ったまま
+           （入りきった印も付いたまま）なので、高さで見分ける */
+        const entered = () => !!document.querySelector(`[data-ft-lift="${liftZ}"] > .anim-right[data-ft-entered]`);
         const finish = () => {
             menuGoTimer.current = null;
             setMenuOpen(false);
@@ -28535,7 +28545,8 @@ function AppMain() {
                 setBackupOpen(false);
             if (key !== "help")
                 setHelpOpen(false);
-            setMenuLift(null);
+            /* ❌ ここで menuLift を外さないこと（2.24.1〜）。見えている画面の高さが変わり、iPhone でちらつく。
+               閉じた画面の分は、下の useEffect が外す */
         };
         const wait = () => {
             const t = Date.now() - started;
@@ -28547,6 +28558,18 @@ function AppMain() {
         };
         menuGoTimer.current = setTimeout(wait, motionIsOff() ? 0 : FT_EXIT_RIGHT_MS);
     };
+    /* 閉じた画面を menuLift から外す（2.24.1〜）。閉じたあとなので、高さが変わっても見えない */
+    (0, react_1.useEffect)(() => {
+        const open = { settings: settingsOpen, tags: tagScreenOpen, backup: backupOpen, help: helpOpen };
+        const gone = Object.keys(menuLift).filter((k) => !open[k]);
+        if (gone.length === 0)
+            return;
+        setMenuLift((m) => {
+            const next = { ...m };
+            gone.forEach((k) => { if (!open[k]) delete next[k]; });
+            return next;
+        });
+    }, [settingsOpen, tagScreenOpen, backupOpen, helpOpen]); // eslint-disable-line
     const theme = THEMES.find((t) => t.key === prefs.theme) || THEMES[0];
     (0, react_1.useEffect)(() => { tell(""); }, [editing, dayOpen, planOpen, folderOpen, settingsOpen, backupOpen, tagScreenOpen, helpOpen, tab]); // eslint-disable-line
     const planObj = plans.find((p) => p.id === planOpen) || null;
@@ -28643,9 +28666,9 @@ function AppMain() {
                                         setTypePick(true);
                                     }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
                                 folderObj && (react_1.default.createElement(FolderDetail, { folder: folderObj, records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onCreateTag: addTagToMaster, onClose: () => setFolderOpen(null), onChange: changeFolder, onDelete: deleteFolder, onAddRecord: (f) => { setInFolder(f.id); setTypePick(true); }, onEditRecord: openEdit, onToggleItem: toggleItem, onPin: togglePin, onDeleteMany: deleteMany })),
-                                settingsOpen && react_1.default.createElement(SettingsScreen, { prefs: prefs, onSave: savePrefs, onClose: () => setSettingsOpen(false), zIndex: menuLift === "settings" ? MENU_LIFT_Z : undefined }),
-                                tagScreenOpen && (react_1.default.createElement(TagManageScreen, { tags: knownTags, records: records, onMove: moveTag, onReorder: setTagMaster, onAdd: addTagToMaster, onRename: renameTag, onDelete: deleteTag, onClose: () => setTagScreenOpen(false), zIndex: menuLift === "tags" ? MENU_LIFT_Z : undefined })),
-                                backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, zIndex: menuLift === "backup" ? MENU_LIFT_Z : undefined, onClose: () => setBackupOpen(false), onRestore: restore, needBackup: needBackup, backupAt: backupAt, unsavedCount: unsavedCount, onBackedUp: () => {
+                                settingsOpen && react_1.default.createElement(SettingsScreen, { prefs: prefs, onSave: savePrefs, onClose: () => setSettingsOpen(false), zIndex: menuLift["settings"] }),
+                                tagScreenOpen && (react_1.default.createElement(TagManageScreen, { tags: knownTags, records: records, onMove: moveTag, onReorder: setTagMaster, onAdd: addTagToMaster, onRename: renameTag, onDelete: deleteTag, onClose: () => setTagScreenOpen(false), zIndex: menuLift["tags"] })),
+                                backupOpen && (react_1.default.createElement(BackupScreen, { data: { records, plans, kinds, folders, tags: tagMaster, prefs }, zIndex: menuLift["backup"], onClose: () => setBackupOpen(false), onRestore: restore, needBackup: needBackup, backupAt: backupAt, unsavedCount: unsavedCount, onBackedUp: () => {
                                         const now = new Date().toISOString();
                                         setBackupAt(now);
                                         storageSet(BACKUP_AT_KEY, now);
@@ -28653,7 +28676,7 @@ function AppMain() {
                                         /* 書き出したので、控えは空に戻す */
                                         putChangeLog({});
                                     } })),
-                                helpOpen && react_1.default.createElement(HelpScreen, { onClose: () => setHelpOpen(false), zIndex: menuLift === "help" ? MENU_LIFT_Z : undefined }),
+                                helpOpen && react_1.default.createElement(HelpScreen, { onClose: () => setHelpOpen(false), zIndex: menuLift["help"] }),
                                 react_1.default.createElement(Toast, { msg: msg })))))))));
 }
 
