@@ -17963,8 +17963,10 @@ function emptyRecord(type, date, scope) {
     };
     /* メモは、字と絵をいっしょに持つ。絵は4枚まで。
        **繰り返しは持たせないこと**（くり返す意味がない） */
+    /* quoteId ＝ 引用しているメモの id（2.25.0〜）。引用していなければ空。
+       **中身は写さず、id だけを持つこと。** 写すと、もとを書き直しても古いまま残る */
     if (type === "memo")
-        return { ...base, text: "", images: [] };
+        return { ...base, text: "", images: [], quoteId: "" };
     /* body ＝ リストの下に添える覚え書き。**予定の body と同じ名前にすること。**
        名前を分けると、読むところ・書くところの両方で場合分けが増える */
     if (type === "checklist")
@@ -18028,6 +18030,8 @@ function migrateRecord(r) {
     }
     if (out.type === "memo") {
         out.images = (Array.isArray(r.images) ? r.images.filter((s) => typeof s === "string") : []).slice(0, MAX_IMAGES);
+        /* 引用（2.25.0〜）。古い記録には無いので空にそろえる。自分自身は引用させない */
+        out.quoteId = (typeof r.quoteId === "string" && r.quoteId && r.quoteId !== out.id) ? r.quoteId : "";
         if (carried)
             out.text = [String(r.text || "").trim(), carried].filter(Boolean).join("\n");
         delete out.url;
@@ -23196,6 +23200,8 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                 rec.type === "memo" && (react_1.default.createElement(TextArea, { bare: true, value: rec.text, onChange: (e) => set({ text: e.target.value }), minRows: 6, placeholder: "\u30E1\u30E2", className: "mb-3" })),
                 rec.type === "memo" && (react_1.default.createElement("div", { className: "mb-3" },
                     react_1.default.createElement(ImagesField, { images: rec.images, onChange: (v) => set({ images: v }), onError: setErr }))),
+                /* 引用しているメモ（2.25.0〜）。✕で引用だけを外せる（もとのメモは消えない） */
+                rec.type === "memo" && rec.quoteId && (react_1.default.createElement(QuoteCard, { id: rec.quoteId, onRemove: () => set({ quoteId: "" }), className: "mb-3" })),
                 /* ---- 計画を選択／タグを追加（どの画面でも、いちばん下に共通） ---- */
                 rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(PlanSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), plans: plans || [], placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" }))),
@@ -23495,6 +23501,144 @@ function PlanHitBox({ plan, hits, words }) {
                 h.body && (react_1.default.createElement(HitRow, { label: "\u30E1\u30E2" },
                     react_1.default.createElement(HitText, { text: h.step.body, words: words, snippet: 60 }))))))))));
 }
+/* ============================================================
+   引用（2.25.0〜）
+   メモは、ほかのメモをひとつ引用して書ける（quoteId ＝ 引用もとのメモの id）。
+
+   ・**中身は写さず、id だけを持つこと。** もとを書き直せば、引用の側も新しい中身で出る
+   ・もとが消えていたら「削除されたメモ」と出す。**引用した側まで消さないこと**
+     （そのとき思ったことは、もとが無くなっても残しておきたい）
+   ・引用は一段だけ見せる。もとがさらに引用していても、中までは開かない（入れ子が深くなる）
+   ・札を押すと、その場で全文と写真を開く／たたむ。**もとの入力画面へは飛ばさないこと。**
+     読み返すつもりで押して、うっかり昔のメモを書きかえてしまう
+   ・指を置いたときは止める（写真の札と同じ）。止めないと、長押しで「えらぶ」に入ってしまう
+   ============================================================ */
+const QUOTE_LONG_CHARS = 80;
+const QUOTE_LONG_LINES = 3;
+function quoteDateLabel(r) {
+    if (!r || !r.date)
+        return "";
+    const d = shortDate(r.date);
+    const y = String(r.date).slice(0, 4);
+    const head = y !== todayStr().slice(0, 4) ? `${y}/` : "";
+    return head + d + (r.time ? " " + r.time : "");
+}
+function QuoteCard({ id, selectMode, onRemove, className = "", icon, hideChain }) {
+    const acts = react_1.default.useContext(RecordActionsContext);
+    const color = useTypeColor("memo");
+    const [open, setOpen] = (0, react_1.useState)(false);
+    const [photo, setPhoto] = (0, react_1.useState)(null);
+    if (!id || !acts)
+        return null;
+    const q = acts.byId ? acts.byId.get(id) : (acts.records || []).find((x) => x.id === id);
+    const removeBtn = onRemove && (react_1.default.createElement(TapOnceButton, { onTap: onRemove, "aria-label": "\u5F15\u7528\u3092\u3084\u3081\u308B", className: "w-8 h-8 -mr-1.5 flex items-center justify-center rounded-full text-neutral-500 shrink-0 ft-tap ft-tap-icon", style: { marginTop: -6, marginBottom: -6 } },
+        react_1.default.createElement(lucide_react_1.X, { size: 16 })));
+    if (!q) {
+        return (react_1.default.createElement("div", { className: "rounded-xl border border-dashed border-neutral-300 px-3 py-2.5 flex items-center gap-1.5 " + className },
+            react_1.default.createElement(lucide_react_1.Quote, { size: 12, className: "text-neutral-400 shrink-0" }),
+            react_1.default.createElement("span", { className: "flex-1 fs-body-sm text-neutral-500" }, "\u5F15\u7528\u3057\u305F\u30E1\u30E2\u306F\u524A\u9664\u3055\u308C\u3066\u3044\u307E\u3059"),
+            removeBtn));
+    }
+    const text = String(q.text || "").trim();
+    const imgs = (q.images || []).slice(0, 4);
+    const long = isLongText(text, QUOTE_LONG_CHARS, QUOTE_LONG_LINES);
+    const canOpen = long || imgs.length > 0;
+    const stop = (e) => { if (!selectMode)
+        e.stopPropagation(); };
+    const toggle = (e) => {
+        if (isFromLink(e) || selectMode)
+            return;
+        e.stopPropagation();
+        if (canOpen)
+            setOpen((v) => !v);
+    };
+    return (react_1.default.createElement("div", { className: className },
+        react_1.default.createElement("div", { onClick: toggle, onPointerDown: stop, role: canOpen ? "button" : undefined, "aria-expanded": canOpen ? open : undefined, className: "rounded-xl border border-neutral-200 px-3 py-2.5 " + (canOpen && !selectMode ? "ft-tap ft-tap-card cursor-pointer" : ""), style: { boxShadow: `inset 3px 0 0 ${color.mid}` } },
+            react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-0.5" },
+                react_1.default.createElement("span", { className: "shrink-0 flex", style: { color: color.deep } }, icon || react_1.default.createElement(lucide_react_1.Quote, { size: 12 })),
+                react_1.default.createElement("span", { className: "fs-label font-bold tabular-nums", style: { color: color.deep } }, quoteDateLabel(q)),
+                react_1.default.createElement("span", { className: "flex-1" }),
+                removeBtn),
+            react_1.default.createElement("div", { className: "flex items-start gap-2.5" },
+                react_1.default.createElement("div", { className: "flex-1 min-w-0" },
+                    text
+                        ? react_1.default.createElement(LinkedText, { text: open || !long ? text : headOfText(text, QUOTE_LONG_CHARS, QUOTE_LONG_LINES), className: "block fs-body-sm leading-relaxed text-neutral-700" })
+                        : (!imgs.length && react_1.default.createElement("span", { className: "block fs-body-sm text-neutral-400" }, "\uFF08\u672C\u6587\u306A\u3057\uFF09")),
+                    q.quoteId && !hideChain && (react_1.default.createElement("span", { className: "block fs-caption text-neutral-400 mt-1" }, "\u3055\u3089\u306B\u524D\u306E\u30E1\u30E2\u3092\u5F15\u7528\u3057\u3066\u3044\u307E\u3059"))),
+                /* たたんでいるあいだは、1枚目の写真だけを小さく添える */
+                !open && imgs.length > 0 && (react_1.default.createElement("span", { className: "w-14 h-14 rounded-lg overflow-hidden shrink-0 relative bg-neutral-100" },
+                    react_1.default.createElement(Photo, { src: imgs[0], className: "block w-full h-full", style: { objectFit: "cover" } }),
+                    imgs.length > 1 && (react_1.default.createElement("span", { className: "absolute fs-micro font-bold text-white rounded-md px-1", style: { right: 2, bottom: 2, background: "rgba(0,0,0,.55)" } }, "+", imgs.length - 1))))),
+            open && imgs.length > 0 && (react_1.default.createElement("div", { className: "grid gap-[3px] mt-2 rounded-lg overflow-hidden bg-neutral-100", style: { gridTemplateColumns: imgs.length === 1 ? "1fr" : "1fr 1fr" } }, imgs.map((src, i) => (react_1.default.createElement("button", { key: i, type: "button", "aria-label": "\u62E1\u5927", onClick: (e) => { e.stopPropagation(); if (!selectMode)
+                    setPhoto(i); }, onPointerDown: stop, className: "block overflow-hidden ft-tap ft-tap-card", style: { aspectRatio: imgs.length === 1 ? "4 / 3" : "1 / 1" } },
+                react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } })))))),
+            canOpen && (react_1.default.createElement("span", { className: "block mt-1.5 fs-caption font-bold text-sky-700" }, open ? "\u6298\u308A\u305F\u305F\u3080" : "\u3059\u3079\u3066\u8868\u793A"))),
+        photo !== null && (react_1.default.createElement(PhotoViewer, { images: imgs, index: photo, onClose: () => setPhoto(null) }))));
+}
+/* ============================================================
+   引用された側から、引用したメモをたどる（2.26.0〜）
+
+   ・引用されたメモの札に「このメモを引用した記録 ○件」を出し、押すと下から紙が出る
+   ・紙には、引用したメモを新しい順に並べる。札は QuoteCard を使い、その場で開く／たたむ
+   ・引用したメモが、さらに引用されていれば「引用した記録 ○件」を押して奥へ進める。
+     左上の「＜」でひとつ前へ戻る（紙は出し直さない。同じ紙の中の移りなので動かさない）
+   ・**数は recordActions.quotedBy から毎回数えること。** 記録の中に数を持たせない
+   ・この紙は札（RecordRow）の中で描かれる。MoveItemSheet と同じく、指を札まで上げないこと
+   ============================================================ */
+function QuotedByLink({ n, onOpen, selectMode, small }) {
+    if (!n)
+        return null;
+    return (react_1.default.createElement("button", { type: "button", onClick: (e) => { if (selectMode)
+            return; e.stopPropagation(); onOpen(); }, onPointerDown: (e) => { if (!selectMode)
+            e.stopPropagation(); }, className: "-ml-1 px-1 min-h-[36px] flex items-center gap-1 rounded-lg ft-tap text-sky-700 " + (small ? "fs-caption font-bold" : "fs-body-sm font-bold") },
+        react_1.default.createElement(lucide_react_1.Quote, { size: small ? 12 : 14 }),
+        react_1.default.createElement("span", null, small ? `\u5F15\u7528\u3057\u305F\u8A18\u9332 ${n}\u4EF6` : `\u3053\u306E\u30E1\u30E2\u3092\u5F15\u7528\u3057\u305F\u8A18\u9332 ${n}\u4EF6`),
+        react_1.default.createElement(lucide_react_1.ChevronRight, { size: small ? 14 : 16 })));
+}
+function QuotedBySheet({ id, onClose }) {
+    const ce = react_1.default.createElement;
+    const acts = react_1.default.useContext(RecordActionsContext);
+    const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
+    const close = () => requestClose(onClose);
+    const [stack, setStack] = (0, react_1.useState)([id]);
+    const bodyRef = (0, react_1.useRef)(null);
+    const cur = stack[stack.length - 1];
+    const src = acts && acts.byId ? acts.byId.get(cur) : null;
+    const list = (acts && acts.quotedBy && acts.quotedBy.get(cur)) || [];
+    const memoIcon = typeIcon("memo", 12);
+    const go = (next) => {
+        setStack(next);
+        if (bodyRef.current)
+            bodyRef.current.scrollTop = 0;
+    };
+    const stopPress = (e) => e.stopPropagation();
+    return (ce("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: (e) => { e.stopPropagation(); close(); }, onPointerDown: stopPress },
+        ce(BackgroundLock, null),
+        ce("div", { className: "absolute inset-0 bg-black/45" }),
+        ce("div", { className: "relative w-full max-w-md bg-white rounded-t-2xl border-t border-neutral-100 shadow-lg flex flex-col ft-sheet-box "
+                + (closing ? "anim-sheet-out" : "anim-sheet"), onClick: (e) => e.stopPropagation() },
+            ce("div", { className: "flex items-center gap-1 px-2 py-1.5 border-b border-neutral-200 shrink-0" },
+                stack.length > 1
+                    ? ce("button", { type: "button", onClick: () => go(stack.slice(0, -1)), "aria-label": "\u623B\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
+                        ce(lucide_react_1.ChevronLeft, { size: 24 }))
+                    : ce("span", { className: "w-2" }),
+                ce("span", { className: "flex-1 min-w-0 font-display fs-subhead text-neutral-900 tracking-wide truncate" }, "\u5F15\u7528\u3057\u305F\u8A18\u9332"),
+                ce("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[44px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100 ft-tap ft-tap-icon" },
+                    ce(lucide_react_1.X, { size: 24 }))),
+            ce("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto px-4 pt-3", style: SAFE_BOTTOM(16) },
+                /* もとのメモ（いま見ているもの）。どのメモを引用した記録なのかを、上に添える */
+                ce("p", { className: "fs-label font-bold text-neutral-500 mb-1" }, "\u3082\u3068\u306E\u30E1\u30E2"),
+                ce(QuoteCard, { key: "src-" + cur, id: cur, icon: memoIcon, hideChain: true, className: "mb-4" }),
+                ce("p", { className: "fs-label font-bold text-neutral-500 mb-1 tabular-nums" }, `\u3053\u306E\u30E1\u30E2\u3092\u5F15\u7528\u3057\u305F\u8A18\u9332\uFF08${list.length}\u4EF6\uFF09`),
+                list.length === 0 && ce("p", { className: "fs-body-sm text-neutral-400 py-4 text-center" }, "\u5F15\u7528\u3057\u305F\u8A18\u9332\u306F\u3042\u308A\u307E\u305B\u3093"),
+                ce("div", { className: "space-y-3" }, list.map((r) => {
+                    const n = ((acts && acts.quotedBy && acts.quotedBy.get(r.id)) || []).length;
+                    return (ce("div", { key: r.id },
+                        ce(QuoteCard, { id: r.id, icon: memoIcon, hideChain: true }),
+                        n > 0 && ce(QuotedByLink, { n: n, small: true, onOpen: () => go([...stack, r.id]) })));
+                })),
+                !src && ce("p", { className: "fs-caption text-neutral-400 mt-3 text-center" }, "\u3082\u3068\u306E\u30E1\u30E2\u306F\u524A\u9664\u3055\u308C\u3066\u3044\u307E\u3059")))));
+}
 function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable = true, selected, onSelect, onLongSelect, lineUp, lineDown, onPin, showDate, hits, hitWords }) {
     const N = useTypeNames();
     /* 予定は、えらんだ「わく」の色を使う（無ければ表示設定の色）。
@@ -23504,6 +23648,9 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
     const [moving, setMoving] = (0, react_1.useState)(null);
     const [photo, setPhoto] = (0, react_1.useState)(null); // 大きく見ている写真の番号
     const acts = react_1.default.useContext(RecordActionsContext);
+    /* このメモを引用した記録（2.26.0〜）。数は索引から毎回数える */
+    const [quotedOpen, setQuotedOpen] = (0, react_1.useState)(false);
+    const quotedN = r.type === "memo" && !r.__repeat && acts && acts.quotedBy ? (acts.quotedBy.get(r.id) || []).length : 0;
     const ratio = r.type === "checklist" ? doneRatio(r) : null;
     const allDone = ratio && ratio.total > 0 && ratio.done === ratio.total;
     const t = timeLabel(r);
@@ -23634,6 +23781,9 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                             : { background: "#F3F3F5", color: "#9A9AA0" } },
                         react_1.default.createElement("span", { key: r.pinned ? "on" : "off", className: "flex " + (r.pinned ? "ft-mark" : "") },
                             react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: r.pinned ? "currentColor" : "none" })))),
+                    /* 引用して書く（2.25.0〜）。メモだけ。編集と同じく画面が開くボタンなので、同じ形にそろえる */
+                    r.type === "memo" && !r.__repeat && acts && acts.onQuote && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); acts.onQuote(r); }, onPointerDown: (e) => e.stopPropagation(), "aria-label": "\u5F15\u7528\u3057\u3066\u66F8\u304F", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
+                        react_1.default.createElement(lucide_react_1.Quote, { size: 16 }))),
                     react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onEdit(r); }, onPointerDown: (e) => e.stopPropagation(), "aria-label": "\u7DE8\u96C6", className: "w-8 h-8 flex items-center justify-center rounded-full text-neutral-500 hover:text-th-800 ft-tap ft-tap-icon", style: { background: "#F3F3F5" } },
                         react_1.default.createElement(lucide_react_1.Pencil, { size: 16 }))))),
             r.type !== "memo" && recordTitle(r, N) && recordTitle(r, N) !== (N[r.type] || TYPE_LABELS[r.type]) && (react_1.default.createElement("p", { className: "fs-subhead font-bold leading-snug break-words mb-1 "
@@ -23662,6 +23812,11 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 } }, r.images.slice(0, 4).map((src, i) => (react_1.default.createElement("button", { key: i, type: "button", "aria-label": "\u62E1\u5927", onClick: (e) => { e.stopPropagation(); if (!selectMode)
                     setPhoto(i); }, onPointerDown: (e) => e.stopPropagation(), className: "block overflow-hidden ft-tap ft-tap-card", style: r.images.length === 3 && i === 0 ? { gridRow: "span 2" } : undefined },
                 react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } })))))),
+            /* 引用しているメモ（2.25.0〜）。自分の本文・写真のあと、タグの前 */
+            r.type === "memo" && r.quoteId && (react_1.default.createElement(QuoteCard, { id: r.quoteId, selectMode: selectMode, className: "mt-3 mb-2" })),
+            /* このメモを引用した記録（2.26.0〜）。押すと下から紙が出て、たどれる */
+            quotedN > 0 && (react_1.default.createElement("div", { className: "mt-1", style: { marginBottom: -8 } },
+                react_1.default.createElement(QuotedByLink, { n: quotedN, selectMode: selectMode, onOpen: () => setQuotedOpen(true) }))),
             ratio && (react_1.default.createElement("div", { className: "mb-1" },
                 ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1" },
                     react_1.default.createElement(ProgressLine, { done: ratio.done, total: ratio.total, items: r.items, color: color, strong: allDone }))),
@@ -23684,6 +23839,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             /* 「探す」でキーワードを入れたときだけ出る。どこに当たったか */
             hits && hits.length > 0 && react_1.default.createElement(RecordHitBox, { hits: hits, words: hitWords })),
         photo !== null && (react_1.default.createElement(PhotoViewer, { images: r.images || [], index: photo, onClose: () => setPhoto(null) })),
+        quotedOpen && (react_1.default.createElement(QuotedBySheet, { id: r.id, onClose: () => setQuotedOpen(false) })),
         moving && acts && (react_1.default.createElement(MoveItemSheet, { item: moving, from: r, records: acts.records || [], onCancel: () => setMoving(null), onMove: (toId, items) => { acts.onMoveItem(r, items, toId); setMoving(null); }, onCreate: (name, date, items) => { acts.onCreateAndMove(r, items, name, date); setMoving(null); } }))));
 }
 /* ============================================================
@@ -28494,7 +28650,34 @@ function AppMain() {
     };
     /* 札の中から使う受け渡し（持ち越しなど）。
        画面をまたいで同じものを渡したいので、ここでひとつにまとめてある */
-    const recordActions = (0, react_1.useMemo)(() => ({ records, onMoveItem: moveItem, onCreateAndMove: createAndMove }), [records]);
+    /* 引用して書く（2.25.0〜）。**今日のメモとして作ること。**
+       「前のメモを読んで、いまどう思ったか」を残すためのものなので、もとの日付には付けない */
+    const startQuote = (src) => {
+        if (!src || src.type !== "memo")
+            return;
+        const base = emptyRecord("memo", todayStr());
+        base.quoteId = src.id;
+        setEditing(base);
+    };
+    /* byId ＝ 引用の札が、もとのメモを引くための索引 */
+    /* quotedBy ＝ 引用された側から、引用したメモをたどるための索引（2.26.0〜）。
+       id → 引用したメモの配列（新しい順）。**記録には書かないこと。** 毎回ここで数え直す
+       （書くと、引用した側を消したときに数が残る） */
+    const recordActions = (0, react_1.useMemo)(() => {
+        const quotedBy = new Map();
+        records.forEach((r) => {
+            if (r.type !== "memo" || !r.quoteId)
+                return;
+            const a = quotedBy.get(r.quoteId);
+            if (a)
+                a.push(r);
+            else
+                quotedBy.set(r.quoteId, [r]);
+        });
+        const key = (r) => `${r.date || ""} ${r.time || ""} ${r.createdAt || ""}`;
+        quotedBy.forEach((a) => a.sort((x, y) => (key(x) < key(y) ? 1 : key(x) > key(y) ? -1 : 0)));
+        return { records, byId: new Map(records.map((r) => [r.id, r])), quotedBy, onMoveItem: moveItem, onCreateAndMove: createAndMove, onQuote: startQuote };
+    }, [records]);
     /* メニューから画面へ移る（2.20.6〜）。
        1. 板はその場に残し、移った先の画面の下へ沈める（menuUnder）
        2. 移った先の画面を、ほかの全画面より上（menuLift）に、右から入れる。板と、いま出ている画面にかぶさっていく
@@ -28755,6 +28938,8 @@ exports.Undo2 = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentC
 exports.Redo2 = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "m15 14 5-5-5-5" }, "child": [] }, { "tag": "path", "attr": { "d": "M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" }, "child": [] }]);
 exports.SlidersHorizontal = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "line", "attr": { "x1": "21", "x2": "14", "y1": "4", "y2": "4" }, "child": [] }, { "tag": "line", "attr": { "x1": "10", "x2": "3", "y1": "4", "y2": "4" }, "child": [] }, { "tag": "line", "attr": { "x1": "21", "x2": "12", "y1": "12", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "8", "x2": "3", "y1": "12", "y2": "12" }, "child": [] }, { "tag": "line", "attr": { "x1": "21", "x2": "16", "y1": "20", "y2": "20" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "x2": "3", "y1": "20", "y2": "20" }, "child": [] }, { "tag": "line", "attr": { "x1": "14", "x2": "14", "y1": "2", "y2": "6" }, "child": [] }, { "tag": "line", "attr": { "x1": "8", "x2": "8", "y1": "10", "y2": "14" }, "child": [] }, { "tag": "line", "attr": { "x1": "16", "x2": "16", "y1": "18", "y2": "22" }, "child": [] }]);
 exports.Type = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "polyline", "attr": { "points": "4 7 4 4 20 4 20 7" }, "child": [] }, { "tag": "line", "attr": { "x1": "9", "x2": "15", "y1": "20", "y2": "20" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "x2": "12", "y1": "4", "y2": "20" }, "child": [] }]);
+/* 引用（2.25.0〜） */
+exports.Quote = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z" }, "child": [] }, { "tag": "path", "attr": { "d": "M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z" }, "child": [] }]);
 exports.Sun = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "4" }, "child": [] }, { "tag": "path", "attr": { "d": "M12 2v2" }, "child": [] }, { "tag": "path", "attr": { "d": "M12 20v2" }, "child": [] }, { "tag": "path", "attr": { "d": "m4.93 4.93 1.41 1.41" }, "child": [] }, { "tag": "path", "attr": { "d": "m17.66 17.66 1.41 1.41" }, "child": [] }, { "tag": "path", "attr": { "d": "M2 12h2" }, "child": [] }, { "tag": "path", "attr": { "d": "M20 12h2" }, "child": [] }, { "tag": "path", "attr": { "d": "m6.34 17.66-1.41 1.41" }, "child": [] }, { "tag": "path", "attr": { "d": "m19.07 4.93-1.41 1.41" }, "child": [] }]);
 
 };
