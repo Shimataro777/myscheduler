@@ -17281,6 +17281,88 @@ const APP_NAME = "My手帳";
 const APP_VERSION = (typeof window !== "undefined" && window.__MT_VERSION) || "1.0.0";
 const KEY = (name) => `hibi-${name}`;
 /* ============================================================
+   最新バージョンに更新（2.27.0〜）。中身は 引継書.md 6-⑲
+   1. 公開中の index.html をサーバーから直に取り、window.__MT_VERSION を読んで比べる
+   2. 同じなら「最新です」で終わり
+   3. ちがえば、その版の Service Worker（sw.js?v=新しい版）を登録し、
+      新しい本体が端末に置かれる（activated）のを待つ
+   4. 書き込みの列（storageSet）が空くのを待ってから、読み込み直す
+   ・記録（IndexedDB / localStorage）には**触らないこと**。入れ替えるのは本体だけ
+   ・**index.html を取るとき、?_ （毎回ちがう数）と cache: "no-store" の両方を付けること。**
+     付けないと Service Worker の控え（mt-app-版数）から古い index.html が返り、
+     いつまでも「最新です」になる。古い sw.js が動いている端末でもすり抜けられるよう、両方付ける
+   ============================================================ */
+const UPDATE_FETCH_MS = 10000; /* 版数を取りに行って、これだけ待っても来なければあきらめる */
+const UPDATE_INSTALL_MS = 20000; /* 新しい本体を端末に置き終わるのを、これだけ待つ（過ぎたら読み込み直す） */
+async function fetchLatestVersion() {
+    const url = new URL("./index.html", window.location.href);
+    url.searchParams.set("_", String(Date.now()));
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const t = ctrl ? setTimeout(() => ctrl.abort(), UPDATE_FETCH_MS) : null;
+    try {
+        const res = await fetch(url.href, { cache: "no-store", signal: ctrl ? ctrl.signal : undefined });
+        if (!res.ok)
+            throw new Error("HTTP " + res.status);
+        const m = (await res.text()).match(/window\.__MT_VERSION\s*=\s*["']([^"']+)["']/);
+        if (!m)
+            throw new Error("version not found");
+        return m[1];
+    }
+    finally {
+        if (t)
+            clearTimeout(t);
+    }
+}
+/* 新しい版の Service Worker を入れ、入りきる（activated）まで待つ。
+   入れられなかった・待ちきれなかったときも、読み込み直せば画面は新しい版になる
+   （sw.js の openPage は画面を「最新を先に」取るため）。なので、ここは失敗しても先へ進む */
+async function installVersion(version) {
+    if (!("serviceWorker" in navigator)) {
+        /* Service Worker の無い環境：ブラウザの一時置き場だけ取り直しておく */
+        await Promise.all([`./app.js?v=${version}`, `./app.css?v=${version}`]
+            .map((u) => fetch(u, { cache: "reload" }).catch(() => { })));
+        return;
+    }
+    try {
+        const reg = await navigator.serviceWorker.register("./sw.js?v=" + encodeURIComponent(version), { scope: "./", updateViaCache: "none" });
+        await new Promise((resolve) => {
+            const timer = setTimeout(resolve, UPDATE_INSTALL_MS);
+            const done = () => { clearTimeout(timer); resolve(); };
+            const watch = (sw) => {
+                if (!sw)
+                    return false;
+                if (sw.state === "activated" || sw.state === "redundant") {
+                    done();
+                    return true;
+                }
+                sw.addEventListener("statechange", () => {
+                    if (sw.state === "activated" || sw.state === "redundant")
+                        done();
+                });
+                return true;
+            };
+            /* 入れている途中 → 待っている → もう動いている、の順に見る */
+            const sw = reg.installing || reg.waiting;
+            if (sw) {
+                watch(sw);
+                return;
+            }
+            if (reg.active && new URL(reg.active.scriptURL).searchParams.get("v") === version) {
+                done();
+                return;
+            }
+            reg.addEventListener("updatefound", () => watch(reg.installing));
+        });
+    }
+    catch (e) { /* 登録できなくても、読み込み直せば新しい版の画面になる */ }
+}
+/* 書きかけの保存（storageSet の列）が終わるまで待つ。**待たずに読み込み直さないこと。**
+   押した直後のチェックなどが、置き場に着く前に消える */
+async function waitPendingWrites(ms = 3000) {
+    const all = Promise.all([...writeChain.values()]).catch(() => { });
+    await Promise.race([all, new Promise((r) => setTimeout(r, ms))]);
+}
+/* ============================================================
    保存まわり
    ・まず専用ストレージ、だめなら端末の localStorage へ、と二段構え
      （片方が使えない環境でも記録が消えないようにするため）
@@ -22204,10 +22286,11 @@ function OverlayHeader({ title, onBack, right, hideMenu, menuGuard }) {
 }
 function MenuRow({ it }) {
     const [pressed, go] = useTapThen(it.onClick);
-    return (react_1.default.createElement("button", { onClick: go, className: "w-full flex items-center gap-3 px-5 py-4 text-left min-h-[60px] ft-tap ft-tap-card "
+    /* busy ＝ その行の仕事（更新の確認など）の最中。しるしをくるくるに替え、押しても受けない */
+    return (react_1.default.createElement("button", { onClick: it.busy ? undefined : go, "aria-busy": it.busy ? "true" : undefined, className: "w-full flex items-center gap-3 px-5 py-4 text-left min-h-[60px] ft-tap ft-tap-card "
             + (pressed ? "bg-neutral-200 ft-tap-pressed" : "hover:bg-neutral-50") },
         react_1.default.createElement("span", { className: "relative w-10 h-10 rounded-xl bg-th-50 border border-th-200 flex items-center justify-center shrink-0 text-th-800" },
-            it.icon,
+            it.busy ? react_1.default.createElement(Spinner, { size: 19 }) : it.icon,
             it.count > 0 && react_1.default.createElement(CountBadge, { n: it.count })),
         react_1.default.createElement("span", { className: "flex-1 min-w-0" },
             react_1.default.createElement("span", { className: "flex items-center gap-1.5" },
@@ -28078,6 +28161,39 @@ function AppMain() {
             clearDraft();
     };
     const [msg, tell] = useToast();
+    /* 最新バージョンに更新（2.27.0〜。引継書 6-⑲）。
+       updating ＝ null（何もしていない）／ "check"（確かめている）／ 版数の文字（その版へ入れ替えている）。
+       **メニューは閉じないこと。** 行の下の字で、いまどこまで進んだかを見せる */
+    const [updating, setUpdating] = (0, react_1.useState)(null);
+    const updatingRef = (0, react_1.useRef)(false);
+    const checkUpdate = async () => {
+        if (updatingRef.current)
+            return;
+        updatingRef.current = true;
+        setUpdating("check");
+        let latest;
+        try {
+            latest = await fetchLatestVersion();
+        }
+        catch (e) {
+            updatingRef.current = false;
+            setUpdating(null);
+            /* 字を長くしないこと。知らせの箱は画面の半分の幅で折り返す */
+            tell("通信できませんでした", 2200);
+            return;
+        }
+        if (latest === APP_VERSION) {
+            updatingRef.current = false;
+            setUpdating(null);
+            tell(`最新のバージョンです（v${APP_VERSION}）`, 2200);
+            return;
+        }
+        setUpdating(latest);
+        await installVersion(latest);
+        await waitPendingWrites();
+        /* **updatingRef を戻さないこと。** 読み込み直すまでのあいだに、もう一度押されても受けない */
+        window.location.reload();
+    };
     /* --- 読み込み --- */
     (0, react_1.useEffect)(() => {
         let alive = true;
@@ -28768,6 +28884,14 @@ function AppMain() {
             icon: react_1.default.createElement(lucide_react_1.Download, { size: 19 }), onClick: () => goFromMenu("backup"),
         },
         { label: "ヘルプ", desc: "使いかた", icon: react_1.default.createElement(lucide_react_1.CircleHelp, { size: 19 }), onClick: () => goFromMenu("help") },
+        /* 画面へは移らない。押した行の下の字が「確認しています…」→「v○ に更新中…」と変わる。
+           **名前を「最新バージョンに更新」と長くしないこと。** メニューの板は狭く、右の ＞ に重なる */
+        {
+            label: "最新版に更新",
+            desc: updating === "check" ? "確認しています…" : updating ? `v${updating} に更新中…` : `今は v${APP_VERSION}`,
+            busy: !!updating,
+            icon: react_1.default.createElement(lucide_react_1.RefreshCw, { size: 19 }), onClick: checkUpdate,
+        },
     ];
     return (react_1.default.createElement(PrefsContext.Provider, { value: prefs },
         react_1.default.createElement(ColorContext.Provider, { value: prefs.typeColor },
@@ -28923,6 +29047,7 @@ exports.Target = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "current
 exports.Folder = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" }, "child": [] }]);
 exports.FolderPlus = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M12 10v6" }, "child": [] }, { "tag": "path", "attr": { "d": "M9 13h6" }, "child": [] }, { "tag": "path", "attr": { "d": "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" }, "child": [] }]);
 exports.ArrowRightLeft = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "m16 3 4 4-4 4" }, "child": [] }, { "tag": "path", "attr": { "d": "M20 7H4" }, "child": [] }, { "tag": "path", "attr": { "d": "m8 21-4-4 4-4" }, "child": [] }, { "tag": "path", "attr": { "d": "M4 17h16" }, "child": [] }]);
+exports.RefreshCw = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" }, "child": [] }, { "tag": "path", "attr": { "d": "M21 3v5h-5" }, "child": [] }, { "tag": "path", "attr": { "d": "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" }, "child": [] }, { "tag": "path", "attr": { "d": "M8 16H3v5" }, "child": [] }]);
 exports.Palette = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "circle", "attr": { "cx": "13.5", "cy": "6.5", "r": ".5", "fill": "currentColor" }, "child": [] }, { "tag": "circle", "attr": { "cx": "17.5", "cy": "10.5", "r": ".5", "fill": "currentColor" }, "child": [] }, { "tag": "circle", "attr": { "cx": "8.5", "cy": "7.5", "r": ".5", "fill": "currentColor" }, "child": [] }, { "tag": "circle", "attr": { "cx": "6.5", "cy": "12.5", "r": ".5", "fill": "currentColor" }, "child": [] }, { "tag": "path", "attr": { "d": "M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" }, "child": [] }]);
 exports.CalendarClock = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5" }, "child": [] }, { "tag": "path", "attr": { "d": "M16 2v4" }, "child": [] }, { "tag": "path", "attr": { "d": "M8 2v4" }, "child": [] }, { "tag": "path", "attr": { "d": "M3 10h5" }, "child": [] }, { "tag": "path", "attr": { "d": "M17.5 17.5 16 16.3V14" }, "child": [] }, { "tag": "circle", "attr": { "cx": "16", "cy": "16", "r": "6" }, "child": [] }]);
 exports.GripVertical = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "circle", "attr": { "cx": "9", "cy": "12", "r": "1" }, "child": [] }, { "tag": "circle", "attr": { "cx": "9", "cy": "5", "r": "1" }, "child": [] }, { "tag": "circle", "attr": { "cx": "9", "cy": "19", "r": "1" }, "child": [] }, { "tag": "circle", "attr": { "cx": "15", "cy": "12", "r": "1" }, "child": [] }, { "tag": "circle", "attr": { "cx": "15", "cy": "5", "r": "1" }, "child": [] }, { "tag": "circle", "attr": { "cx": "15", "cy": "19", "r": "1" }, "child": [] }]);

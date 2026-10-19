@@ -50,6 +50,10 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
+  /* 「最新バージョンに更新」（2.27.0〜）が版数を確かめるための取りに行き。
+     cache: "no-store" で来たものは控えを使わず、控えに入れもしない（そのままサーバーへ）。
+     **ここを外さないこと。** 外すと控えの古い index.html が返り、いつまでも「最新です」になる */
+  if (req.cache === "no-store") return;
   const url = new URL(req.url);
 
   if (url.origin === self.location.origin) {
