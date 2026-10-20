@@ -19226,14 +19226,40 @@ function TextInput(props) { return react_1.default.createElement("input", { ...p
    どちらが勝つか分からなくなるので、はじめから付けない形にしてある */
 function TextArea({ value, onChange, className, minRows, bare, ...rest }) {
     const ref = (0, react_1.useRef)(null);
+    /* いまの高さを、どの中身で測ったか。同じ中身で二度測らない（2.28.0〜） */
+    const sizedFor = (0, react_1.useRef)(null);
     /* 中身に合わせて高さを測り直す。
        測るときに一度 height を auto に戻すが、そのあいだ欄が縮むため、
        何もしないとまわりの巻き物（スクロール位置）が動いてしまう。
-       測る前に位置を覚えておき、直後に戻すこと */
+       測る前に位置を覚えておき、直後に戻すこと。
+
+       **2.28.0〜：1文字打つごとの重さを減らした**（打つ・変換を確定するときの「カクッ」の一因）。
+       2.27.0 までは、1文字ごとに「打った瞬間（onInput）」と「描き直したあと（useEffect）」の2回、
+       毎回いったん縮めて測り直していた。縮めるたびに画面ぜんたいの組み直しが起き、
+       useEffect は「描いたあと」に動くので、外から中身が変わったときは古い高さで1こま描かれていた。
+       ・同じ中身なら測らない（sizedFor）
+       ・書き足して欄からはみ出したときは、縮めずにそのまま伸ばす（伸ばすだけなら、まわりの位置は動かない）
+       ・縮めて測るのは、文字が減った・改行が減ったときと、はじめの1回だけ
+       ・中身が外から変わったとき（下書きの復元・挿入など）は、描く前（useLayoutEffect）に合わせる */
     const resize = () => {
         const el = ref.current;
         if (!el)
             return;
+        const v = el.value;
+        const prev = sizedFor.current;
+        if (prev === v)
+            return;
+        sizedFor.current = v;
+        const lines = (t) => { let c = 0; for (let i = 0; i < t.length; i++)
+            if (t.charCodeAt(i) === 10)
+                c++; return c; };
+        const mayShrink = prev == null || v.length < prev.length || lines(v) < lines(prev);
+        if (!mayShrink) {
+            const sh = el.scrollHeight;
+            if (sh > el.clientHeight)
+                el.style.height = sh + "px";
+            return;
+        }
         const holders = [];
         for (let p = el.parentElement; p; p = p.parentElement) {
             if (p.scrollHeight > p.clientHeight + 1)
@@ -19247,7 +19273,7 @@ function TextArea({ value, onChange, className, minRows, bare, ...rest }) {
         if (typeof window !== "undefined" && window.scrollY !== winY)
             window.scrollTo(0, winY);
     };
-    (0, react_1.useEffect)(() => { resize(); }, [value]);
+    (0, react_1.useLayoutEffect)(() => { resize(); }, [value]);
     const style = minRows ? { minHeight: `${minRows * 1.7 + 1.5}em` } : undefined;
     /* rows={1} は必ず付けること。
        textarea は何も指定しないと「2行ぶん」の高さから始まり、
@@ -20146,14 +20172,157 @@ function useLockBackground() {
         document.body.appendChild(p);
         return p;
     };
-    const insertText = (el, v) => {
+    /* 打ちかけの文字を、決めた位置（at）へ差しこむ（2.28.0〜。それまでは末尾へ足すだけだった） */
+    const insertTextAt = (el, v, at) => {
         try {
             const proto = el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
             const set = Object.getOwnPropertyDescriptor(proto, "value").set;
-            set.call(el, (el.value || "") + v);
+            const cur = el.value || "";
+            set.call(el, cur.slice(0, at) + v + cur.slice(at));
             el.dispatchEvent(new Event("input", { bubbles: true }));
         }
         catch (e) { }
+    };
+    /* ---- 押したところにカーソルを置く（2.28.0〜） ----
+       2.27.0 までは、まだ入っていない欄を押すと、カーソルはいつも「文字の最後」に置かれていた
+       （見えない入力欄を経由するので、どこを押したかを iPhone が知らないため）。
+       文の途中を直そうとして押しても最後へ飛ぶ ──「カーソルの位置が変にずれる」の正体。
+       そこで、押した瞬間（touchend）に、同じ字形・同じ幅の見えない写し（mirror）を作って、
+       押した点がどの文字のあいだかを数える。写しは測ったらすぐ消す。
+       ・測れなかったとき・中身が空のときは null（これまでどおり最後へ置く）
+       ・lineBottom は「押した行の下端」（欄の上端から）。持ち上げは、欄の下端ではなくこの行を
+         キーボードの上へ出す（背の高い欄の上のほうを押したとき、押した行が上へ消えないように）。
+         最後の行を押したときは、欄の下端と同じになる（これまでと同じ動き） */
+    const MIRROR_PROPS = ["direction", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderStyle",
+        "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "fontStyle", "fontVariant", "fontWeight", "fontStretch",
+        "fontSize", "lineHeight", "fontFamily", "fontFeatureSettings", "fontKerning", "textAlign", "textTransform", "textIndent",
+        "letterSpacing", "wordSpacing", "tabSize", "wordBreak", "overflowWrap", "lineBreak"];
+    const caretAt = (el, cx, cy) => {
+        let m = null;
+        try {
+            const v = el.value || "";
+            const n = v.length;
+            if (!n || !el.isConnected)
+                return null;
+            const r = el.getBoundingClientRect();
+            const cs = getComputedStyle(el);
+            const isTA = el.tagName === "TEXTAREA";
+            m = document.createElement("div");
+            MIRROR_PROPS.forEach((k) => { try {
+                m.style[k] = cs[k];
+            }
+            catch (e) { } });
+            Object.assign(m.style, { position: "fixed", left: "0px", top: "0px", width: (el.offsetWidth || r.width) + "px", height: "auto",
+                boxSizing: "border-box", margin: "0", overflow: "hidden", visibility: "hidden", pointerEvents: "none", zIndex: "-1",
+                transform: "none", whiteSpace: isTA ? "pre-wrap" : "pre" });
+            const tn = document.createTextNode(v);
+            m.appendChild(tn);
+            document.body.appendChild(m);
+            const mr = m.getBoundingClientRect();
+            const lx = cx - r.left + (el.scrollLeft || 0);
+            const ly = cy - r.top + (el.scrollTop || 0);
+            const lh = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 16) * 1.5;
+            const rg = document.createRange();
+            const box = (i) => {
+                if (v[i] === "\n")
+                    return null;
+                rg.setStart(tn, i);
+                rg.setEnd(tn, i + 1);
+                const b = rg.getClientRects()[0];
+                return b && (b.width || b.height) ? b : null;
+            };
+            const mid = (b) => (b.top + b.bottom) / 2 - mr.top;
+            /* 改行でない文字の位置だけを並べ、押した行（またはその次の行）の最初の文字を二分探索で探す */
+            const idx = [];
+            for (let i = 0; i < n; i++)
+                if (v[i] !== "\n")
+                    idx.push(i);
+            let lo = 0, hi = idx.length;
+            while (lo < hi) {
+                const k = (lo + hi) >> 1;
+                const b = box(idx[k]);
+                if (b && mid(b) + lh / 2 > ly)
+                    hi = k;
+                else
+                    lo = k + 1;
+            }
+            const scrollY0 = el.scrollTop || 0;
+            const padB = (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+            if (lo >= idx.length)
+                return { pos: n, lineBottom: null, padB };
+            const j = idx[lo];
+            const bj = box(j);
+            if (!bj)
+                return null;
+            const cj = mid(bj);
+            /* 押したのが空の行（改行だけの行）のとき：その行の頭へ */
+            let q = 0;
+            while (j - q - 1 >= 0 && v[j - q - 1] === "\n")
+                q++;
+            const up = Math.max(0, Math.min(q, Math.round((cj - ly) / lh)));
+            if (up > 0)
+                return { pos: j - up, lineBottom: cj - up * lh + lh / 2 - scrollY0, padB };
+            /* 同じ行の中で、押した点より右に中心がある最初の文字の前 */
+            let pos = n;
+            for (let i = j; i < n; i++) {
+                if (v[i] === "\n") {
+                    pos = i;
+                    break;
+                }
+                const b = box(i);
+                if (!b)
+                    continue;
+                if (Math.abs(mid(b) - cj) > lh / 2) {
+                    pos = i;
+                    break;
+                }
+                if (lx < (b.left + b.right) / 2 - mr.left) {
+                    pos = i;
+                    break;
+                }
+            }
+            return { pos, lineBottom: cj + lh / 2 - scrollY0, padB };
+        }
+        catch (e) {
+            return null;
+        }
+        finally {
+            if (m && m.parentNode)
+                m.parentNode.removeChild(m);
+        }
+    };
+    /* 押した欄の下端（持ち上げの目安）。押した行がわかっていれば、その行まで（caretAt の説明） */
+    const fieldBottom = (p) => {
+        const r = p.el.getBoundingClientRect();
+        const c = p.caret;
+        if (!c || c.lineBottom == null)
+            return r.bottom;
+        return Math.min(r.bottom, r.top + c.lineBottom + c.padB);
+    };
+    /* ---- 左端の帯（data-ft-edge、左端スワイプで戻る）の下にある入力欄（2.28.0〜） ----
+       重なる画面の左端 36px（見出しより下）には、スワイプで戻るための透明な帯が、入力欄の上に重なっている。
+       入力欄の左はし（行の頭）を押すと、指は帯に当たる。帯のままにしておくと、
+       ・まだ入っていない欄：見えない入力欄の流れ（下の faEnd）を通らず、端末が欄へじかにフォーカスする
+         （＝ iPhone が画面ぜんたいを押し上げる、いちばん避けたい形）か、何も起きない
+       ・打っている欄：行の頭にカーソルを置けない
+       そこで、帯の上のタップは、その下にある入力欄のタップとして扱う。払う操作（戻る）は今までどおり帯のもの */
+    const EDGE_SEL = "[data-ft-edge]";
+    const fieldUnder = (t, x, y) => {
+        if (!t || !t.closest)
+            return null;
+        const direct = t.closest("input, textarea");
+        if (direct)
+            return direct;
+        if (!t.closest(EDGE_SEL) || !document.elementsFromPoint)
+            return null;
+        const list = document.elementsFromPoint(x, y);
+        for (let i = 0; i < list.length; i++) {
+            const nd = list[i];
+            if (nd.closest && nd.closest(EDGE_SEL))
+                continue;
+            return nd.closest ? nd.closest("input, textarea") : null;
+        }
+        return null;
     };
     /* ---- 紙：紙の箱を transform で上げ下げ ---- */
     const liftedBoxes = new Set();
@@ -20512,10 +20681,13 @@ function useLockBackground() {
             catch (e) {
                 p.el.focus();
             }
+            /* 押したところ（p.caret）があればそこへ、無ければこれまでどおり文字の最後へ（2.28.0〜） */
+            const len0 = (p.el.value || "").length;
+            const at = p.caret ? Math.max(0, Math.min(p.caret.pos, len0)) : len0;
             if (v)
-                insertText(p.el, v);
+                insertTextAt(p.el, v, at);
             try {
-                const n = (p.el.value || "").length;
+                const n = at + (v ? v.length : 0);
                 p.el.setSelectionRange(n, n);
             }
             catch (e) { }
@@ -20560,7 +20732,7 @@ function useLockBackground() {
             rememberKb(rawKb());
         if (p.ctx === "overlay" && rawKb() >= 60)
             setFix(true);
-        const need = noKb ? 0 : Math.ceil(el.getBoundingClientRect().bottom + GAP - kbTopNow());
+        const need = noKb ? 0 : Math.ceil(fieldBottom(p) + GAP - kbTopNow());
         let moved = false;
         if (need > 0) {
             if (p.ctx === "sheet") {
@@ -20601,8 +20773,15 @@ function useLockBackground() {
             return;
         }
         const t = e.target;
-        const el = t && t.closest ? t.closest("input, textarea") : null;
-        fa = (el && isTyping(el) && !isProxy(el) && document.activeElement !== el) ? { x: p.clientX, y: p.clientY, at: Date.now(), el, moved: false } : null;
+        const el = fieldUnder(t, p.clientX, p.clientY);
+        if (!el || !isTyping(el) || isProxy(el)) {
+            fa = null;
+            return;
+        }
+        /* 左端の帯の上から押したか（fieldUnder の説明）。打っている欄でも、帯の上ならこちらでカーソルを動かす */
+        const viaEdge = !(t.closest && t.closest("input, textarea"));
+        const already = document.activeElement === el;
+        fa = (!already || viaEdge) ? { x: p.clientX, y: p.clientY, at: Date.now(), el, moved: false, already } : null;
     };
     const faMove = (e) => {
         const p = e.touches && e.touches[0];
@@ -20615,9 +20794,26 @@ function useLockBackground() {
         if (!s0 || s0.moved || Date.now() - s0.at > 600 || (e.touches && e.touches.length))
             return;
         const el = s0.el;
+        const pt = (e.changedTouches && e.changedTouches[0]) || { clientX: s0.x, clientY: s0.y };
+        if (s0.already) {
+            /* 打っている欄の左はし（帯の上）を押した：カーソルだけを、押したところへ */
+            if (!el.isConnected || document.activeElement !== el || !coarse())
+                return;
+            e.preventDefault();
+            const c = caretAt(el, pt.clientX, pt.clientY);
+            if (c) {
+                try {
+                    el.setSelectionRange(c.pos, c.pos);
+                }
+                catch (err) { }
+            }
+            return;
+        }
         if (!el.isConnected || !isTyping(el) || document.activeElement === el || !coarse())
             return;
         e.preventDefault();
+        /* 押したところを、欄が動きだす前に測っておく（caretAt の説明） */
+        const caret = caretAt(el, pt.clientX, pt.clientY);
         if (pending)
             finishPending(false);
         const c = ctxOf(el);
@@ -20633,7 +20829,7 @@ function useLockBackground() {
         catch (err) {
             proxy.focus();
         }
-        pending = { el, proxy, ctx: c, sc: null, at: Date.now(), started: false, timer: 0, fallback: 0 };
+        pending = { el, proxy, ctx: c, sc: null, caret, at: Date.now(), started: false, timer: 0, fallback: 0 };
         /* キーボードがもう出ている（別の欄から移ってきた）ときは、すぐ持ち上げへ */
         if (rawKb() >= 60)
             startSlide();
@@ -25206,7 +25402,7 @@ function DayScreen({ date, records, onClose, onEdit, onToggleItem, onPin, onDele
     const dayList = (0, react_1.useMemo)(() => records.filter((r) => isDayRec(r) && coversDay(r, date)), [records, date]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
+            react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: fmtDateFull(date), onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col ft-pb-safe" },
                 dayList.length > 0 && (react_1.default.createElement("div", { className: "flex items-center gap-2 mb-1" },
@@ -26178,7 +26374,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
            2.18.0〜2.18.3 は薄い灰（bg-canvas）にしていたが、画面ぜんたいが暗く沈んで見えた。
            札の境目は、札そのものの細いふち（card-soft）で足りる。**この画面だけ灰に戻さないこと** */
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
+            react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, hideMenu: true, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { ref: stepSwipeRef, className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
@@ -26547,7 +26743,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
     }, [list]);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
+            react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: folder.name || "（名前なし）", onBack: close, hideMenu: true, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
@@ -26790,7 +26986,7 @@ function SettingsScreen({ prefs, onSave, onClose, zIndex }) {
         open(); };
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
+            react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u8868\u793A\u8A2D\u5B9A", onBack: leave, menuGuard: menuGuard }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u753B\u9762\u306E\u8272"),
@@ -26898,7 +27094,7 @@ function TagManageScreen({ tags, records, onAdd, onRename, onDelete, onMove, onR
     const count = (t) => records.filter((r) => normalizeTags(r.tags).some((x) => x.toLowerCase() === t.toLowerCase())).length;
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
+            react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30BF\u30B0\u306E\u7DE8\u96C6", onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("div", { className: "flex gap-2 mb-4" },
@@ -27143,7 +27339,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
     const n = (x) => (Array.isArray(x) ? x.length : 0);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
+            react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
                 react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft p-4 mb-5" },
@@ -27257,7 +27453,7 @@ function HelpScreen({ onClose, zIndex }) {
     const [open, setOpen] = (0, react_1.useState)(null);
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
-            react_1.default.createElement("div", { ref: stripRef, className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
+            react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30D8\u30EB\u30D7", onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe space-y-2 ft-seq" }, HELP_SECTIONS.map((s, i) => (react_1.default.createElement("div", { key: s.title, className: "rounded-2xl bg-white border border-neutral-200 overflow-hidden" },
                 react_1.default.createElement("button", { type: "button", onClick: () => setOpen(open === i ? null : i), className: "w-full flex items-center gap-2 px-3.5 py-3 text-left min-h-[56px] ft-tap ft-tap-card hover:bg-neutral-50" },
