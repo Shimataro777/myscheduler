@@ -27164,6 +27164,132 @@ async function buildBackup(data, withPhotos) {
         prefs: (() => { const p = { ...data.prefs }; delete p.lastBackup; return p; })(),
     }, null, 2);
 }
+/* ============================================================
+   Googleドライブとの同期（2.29.0〜）
+   エンジンは gsync.js（index.html から app.js より先に読む。window.GSync）。
+   ここは、このアプリの保存まわりとつなぐ糊と、バックアップ画面のカード。
+   ・同期する物 … 記録・計画・種類・フォルダ・タグ・表示設定（写真は別ファイルでドライブへ）
+   ・同期しない物 … lastBackup・sortOrder・folderSortOrder・recordOrder（この端末のもの）、書きかけの下書き
+   **新しく保存する物（キー）を増やしたら、buildSyncSnapshot と applySyncSnapshot（AppMain）の両方に足すこと。**
+   足し忘れると、その物だけ端末ごとにバラバラのままになる
+   ============================================================ */
+const SYNC_PREF_LOCAL = ["lastBackup", "sortOrder", "folderSortOrder", "recordOrder"];
+const syncBridge = { getState: null, apply: null, onBackedUp: null };
+function buildSyncSnapshot(s) {
+    const prefs = { ...(s.prefs || {}) };
+    for (const k of SYNC_PREF_LOCAL)
+        prefs[k] = undefined;
+    return { records: s.records || [], plans: s.plans || [], kinds: s.kinds || [], folders: s.folders || [], tags: s.tags || [], prefs };
+}
+async function photoHas(id) {
+    if (photoCache.has(id))
+        return true;
+    const n = await photoTx("readonly", (st) => st.count(id));
+    return typeof n === "number" && n > 0;
+}
+/* 毎日の控え（hibi-backup-日付.json）。「送る・保存する」と同じ形式なので、「ファイルから読み込む」でそのまま戻せる */
+async function buildDriveBackupText() {
+    const s = syncBridge.getState && syncBridge.getState();
+    return s ? await buildBackup(s, true) : "";
+}
+let googleSyncInst = null;
+function getGoogleSync() {
+    if (googleSyncInst)
+        return googleSyncInst;
+    if (typeof window === "undefined" || typeof document === "undefined" || !window.GSync || !window.__MT_VERSION || typeof fetch !== "function")
+        return null;
+    let ls = null;
+    try {
+        ls = window.localStorage;
+        ls.getItem("mt-gsync-cfg");
+    }
+    catch (e) {
+        return null;
+    }
+    const G = window.GSync;
+    googleSyncInst = G.createGoogleSync({
+        schema: G.MYTECHO_SCHEMA,
+        names: { folder: "MyTecho-Sync", data: "mytecho-sync.json", backup: "hibi-backup-", backupExt: ".json" },
+        storagePrefix: "mt-gsync",
+        fetch: (u, i) => fetch(u, i), ls, kv: G.createKV(ls, "mytecho-sync-meta", "mt-gsync-kv-"), doc: document, win: window,
+        defaultClientId: window.__MT_GOOGLE_CLIENT_ID || "",
+        getSnapshot: async () => buildSyncSnapshot((syncBridge.getState && syncBridge.getState()) || {}),
+        applySnapshot: async (m) => { if (syncBridge.apply)
+            await syncBridge.apply(m); },
+        listPhotoRefs: (snap) => Array.from(collectPhotoRefs(snap)),
+        photoHas, photoGet, photoPut,
+        buildBackupText: buildDriveBackupText,
+        onBackedUp: () => { if (syncBridge.onBackedUp)
+            syncBridge.onBackedUp(); },
+    });
+    return googleSyncInst;
+}
+const NO_SYNC = Object.freeze({ phase: "off", message: "", enabled: false, email: "", lastSyncAt: 0, autoBackup: true, hasClientId: false, ready: false });
+function agoText(t) {
+    if (!t)
+        return "";
+    const m = Math.max(0, Math.round((Date.now() - t) / 60000));
+    if (m < 1)
+        return "たった今";
+    if (m < 60)
+        return `${m}分前`;
+    const h = Math.round(m / 60);
+    return h < 24 ? `${h}時間前` : `${Math.round(h / 24)}日前`;
+}
+/* バックアップ画面の上に置く、Google連携のカード。クライアントID（index.html）が無いときは出さない */
+function GoogleSyncCard() {
+    const sync = getGoogleSync();
+    const st = react_1.default.useSyncExternalStore((fn) => (sync ? sync.subscribe(fn) : () => { }), () => (sync ? sync.getStatus() : NO_SYNC), () => NO_SYNC);
+    const [askOff, setAskOff] = (0, react_1.useState)(false);
+    const [note, setNote] = (0, react_1.useState)("");
+    const [, tick] = (0, react_1.useState)(0);
+    (0, react_1.useEffect)(() => { if (sync && st.hasClientId)
+        sync.preload(); }, [sync, st.hasClientId]);
+    (0, react_1.useEffect)(() => { const t = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(t); }, []);
+    if (!sync || !st.hasClientId)
+        return null;
+    const connect = () => {
+        setNote("");
+        /* **ここで await を挟まないこと。** ログインのポップアップは、指の操作の流れの中でしか開かない */
+        if (!st.ready) {
+            sync.preload();
+            setNote("準備中です。もう一度押してください。");
+            return;
+        }
+        sync.connect();
+    };
+    const busy = st.phase === "syncing";
+    const phaseText = st.phase === "syncing" ? "同期しています…"
+        : st.phase === "needsAuth" ? (st.message || "再ログインが必要です")
+            : st.phase === "offline" || st.phase === "error" ? st.message
+                : st.lastSyncAt ? `同期済み（${agoText(st.lastSyncAt)}）` : "準備できました";
+    const phaseColor = st.phase === "error" ? "text-rose-700" : st.phase === "needsAuth" || st.phase === "offline" ? "text-amber-700" : "text-neutral-500";
+    const h = react_1.default.createElement;
+    return (h("div", { "data-gsync-card": "", className: "rounded-2xl bg-white card-soft p-4 mb-5" },
+        h("div", { className: "flex items-center gap-1.5 mb-2" },
+            h(lucide_react_1.RefreshCw, { size: 16, className: "text-neutral-700 shrink-0" }),
+            h("p", { className: "fs-body-sm font-bold text-neutral-900 flex-1" }, "Googleドライブと同期"),
+            st.enabled && busy && h(Spinner, { size: 16 })),
+        !st.enabled && (h(react_1.default.Fragment, null,
+            h("p", { className: "fs-label text-neutral-500 leading-relaxed mb-3" }, "記録・写真・設定をGoogleドライブに自動で保存し、同じアカウントの端末どうしで同期します。"),
+            h("button", { type: "button", onClick: connect, className: BTN_PRIMARY + " w-full btn-h-lg fs-subhead" }, "Google連携"),
+            st.message && h("p", { className: "fs-label text-rose-700 mt-2" }, st.message))),
+        st.enabled && (h(react_1.default.Fragment, null,
+            h("p", { className: "fs-label text-neutral-500 break-all" }, st.email ? `アカウント：${st.email}` : "アカウント確認中…"),
+            h("p", { className: "fs-body-sm font-bold mt-1 " + phaseColor }, phaseText),
+            h("div", { className: "grid grid-cols-2 gap-2 mt-3" },
+                h("button", { type: "button", disabled: busy, onClick: () => { setNote(""); sync.syncManual(); }, style: busy ? { opacity: 0.6 } : undefined, className: BTN_PRIMARY + " btn-h fs-body-sm" }, st.phase === "needsAuth" ? "ログインする" : "今すぐ同期"),
+                h("button", { type: "button", onClick: () => { if (!askOff) {
+                        setAskOff(true);
+                        setTimeout(() => setAskOff(false), 4000);
+                        return;
+                    } setAskOff(false); sync.disconnect(); }, className: BTN_SECONDARY + " btn-h fs-body-sm" }, askOff ? "もう一度押すと解除" : "Google連携を解除")),
+            h(RowCard, { className: "mt-3" },
+                h(SheetRow, { label: "毎日の控えもドライブに", last: true, help: "1日1回、バックアップファイルをドライブに残します（7日分）。「ファイルから読み込む」で戻せます。" },
+                    h(Switch, { on: st.autoBackup, onChange: (v) => sync.setAutoBackup(v), label: "毎日の控えもドライブに" }))),
+            h("p", { className: "fs-label text-neutral-400 mt-2 leading-relaxed" }, "書きかえると自動で同期します。ログインが切れたら「ログインする」を押してください。"))),
+        note && h("p", { className: "fs-label text-amber-800 mt-2" }, note)));
+}
 function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backupAt, unsavedCount, zIndex }) {
     const used = (0, react_1.useMemo)(() => usedBytes(data.records), [data.records]);
     const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
@@ -27342,6 +27468,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
             react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u30D0\u30C3\u30AF\u30A2\u30C3\u30D7", onBack: close }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
+                react_1.default.createElement(GoogleSyncCard, null),
                 react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft p-4 mb-5" },
                     react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
                         react_1.default.createElement("p", { className: "fs-body-sm font-bold text-neutral-900" }, "\u3044\u307E\u306E\u8A18\u9332"),
@@ -28907,6 +29034,75 @@ function AppMain() {
         setBackupOpen(false);
         tell("読み込みました");
     };
+    /* ---- Googleドライブ同期（2.29.0〜。エンジンは gsync.js、つなぎは buildSyncSnapshot の近く） ---- */
+    const changedAtRef = (0, react_1.useRef)("");
+    changedAtRef.current = changedAt;
+    /* 混ぜ終わった中身を、この端末の保存へ反映する。
+       **変わっていない部分には触れないこと**（描き直しと保存を増やさない）。
+       sortOrder など端末ごとの設定は、この端末のものを残す。
+       ほかの端末から来た書きかえは、この端末で「まだ書き出していない書きかえ」に数えない
+       （setRecords などが数えてしまうので、あとで元に戻す） */
+    const applySyncSnapshot = (0, react_1.useCallback)(async (m) => {
+        const G = window.GSync;
+        const same = (a, b) => G.setHash([a]) === G.setHash([b]);
+        const prevLog = changeLogRef.current;
+        const prevChangedAt = changedAtRef.current;
+        if (G.setHash(m.records) !== G.setHash(recordsRef.current)) {
+            const list = await Promise.all((m.records || []).map(async (r) => { const mr = migrateRecord(r); return mr ? await stashPhotos(mr) : null; }));
+            setRecords(list.filter(Boolean));
+        }
+        if (G.setHash(m.plans) !== G.setHash(plansRef.current))
+            setPlans((m.plans || []).map(migratePlan).filter(Boolean));
+        if (G.setHash(m.kinds) !== G.setHash(kindsRef.current))
+            setKinds((m.kinds || []).filter((k) => k && k.id));
+        if (G.setHash(m.folders) !== G.setHash(foldersRef.current))
+            setFolders((m.folders || []).map(migrateFolder).filter(Boolean).filter((f) => !isRetiredStarFolder(f)));
+        if (G.setHash(m.tags) !== G.setHash(tagMasterRef.current))
+            setTagMaster(Array.isArray(m.tags) ? m.tags : []);
+        if (m.prefs && typeof m.prefs === "object") {
+            const strip = (p) => { const o = { ...p }; for (const k of SYNC_PREF_LOCAL)
+                delete o[k]; return o; };
+            if (!same(strip(m.prefs), strip(prefsRef.current))) {
+                const cur = prefsRef.current;
+                const next = { ...DEFAULT_PREFS, ...m.prefs, typeColor: { ...DEFAULT_TYPE_COLOR, ...(m.prefs.typeColor || {}) }, typeName: m.prefs.typeName || {} };
+                for (const k of SYNC_PREF_LOCAL)
+                    next[k] = cur[k];
+                savePrefs(next);
+            }
+        }
+        putChangeLog(prevLog);
+        setChangedAt(prevChangedAt);
+        storageSet(CHANGED_AT_KEY, prevChangedAt);
+    }, []); // eslint-disable-line
+    /* ドライブに控えを置けたら、書き出し済みとして扱う（「送る・保存する」のあとと同じ） */
+    const markDriveBackedUp = (0, react_1.useCallback)(() => {
+        const now = new Date().toISOString();
+        setBackupAt(now);
+        storageSet(BACKUP_AT_KEY, now);
+        savePrefs((p) => ({ ...p, lastBackup: now }));
+        putChangeLog({});
+    }, []); // eslint-disable-line
+    syncBridge.getState = () => ({ records: recordsRef.current, plans: plansRef.current, kinds: kindsRef.current, folders: foldersRef.current, tags: tagMasterRef.current, prefs: prefsRef.current });
+    syncBridge.apply = applySyncSnapshot;
+    syncBridge.onBackedUp = markDriveBackedUp;
+    /* 読み込みが終わったら同期を始める（つないでいなければ何もしない） */
+    (0, react_1.useEffect)(() => {
+        if (!loaded)
+            return undefined;
+        const g = getGoogleSync();
+        if (!g)
+            return undefined;
+        g.start();
+        return () => g.stop();
+    }, [loaded]);
+    /* 書きかわったら、少し置いて同期する（gsync.js の中で間引く） */
+    (0, react_1.useEffect)(() => {
+        if (!loaded)
+            return;
+        const g = getGoogleSync();
+        if (g)
+            g.notifyChange();
+    }, [loaded, records, plans, kinds, folders, tagMaster, prefs]);
     const editingLive = editing;
     /* 「削除」ボタンを出すかどうかは、この画面を開いた瞬間に一度だけ決めて、そのまま持ち越す。
        **records（保存ずみの記録）を毎回の描画でそのまま見て決めないこと。**
