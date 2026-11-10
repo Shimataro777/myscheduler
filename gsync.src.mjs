@@ -22,8 +22,13 @@
 
    ■ 認証
    Google Identity Services のトークン方式（サーバー不要）。トークンは約1時間で切れる。
-   アプリを前面に戻したときに静かに取り直し（prompt:none）、できなければ「再ログインが必要」と出し、
-   次にどこかをタップしたとき（指の操作の中でないとポップアップが開かない）に取り直す。
+   取り直すには、Googleの小さな画面（ポップアップ）が一瞬開く。これは指の操作の中でしか開けない。
+   **使っている途中に、勝手にこの画面を出さないこと（Footprints 2.17.0 / My手帳 2.30.0〜）。**
+   以前は「切れたら、次にどこかをタップしたときに取り直す」形で、書いている途中に
+   Googleの画面が一瞬はさまり、何が起きたのか分からなかった（依頼により廃止）。
+   いまは、起動したとき（と、しばらく離れてから戻ったとき）だけ askLogin を立て、
+   画面が「Googleドライブとつなぎ直す」の小窓を出す。そこで押したときにだけ取り直す。
+   使っている途中で切れたときは、ヘッダーの雲のしるしが変わるだけ（押せばログインできる）。
    ============================================================ */
 
 export const SYNC_FOLDER = "Footprints-Sync";
@@ -193,6 +198,32 @@ export function contentHash(s, schema) {
     ...sc.collections.map((c) => setHash(c.get(x))),
     ...sc.values.map((v) => hashOf(v.get(x))),
   ].join("/"));
+}
+/* 中身の目録（{ 一覧の名前: {番号: ハッシュ}, …, values: {設定の名前: ハッシュ} }）。前回の同期の姿（base）と同じ形 */
+export function indexOf(s, schema) {
+  const sc = schema || FOOTPRINTS_SCHEMA;
+  const x = s || {};
+  const out = { values: {} };
+  for (const c of sc.collections) {
+    const m = {};
+    for (const it of c.get(x) || []) { const id = c.id(it); if (id !== null && id !== undefined && id !== "" && !(id in m)) m[id] = hashOf(it); }
+    out[c.key] = m;
+  }
+  for (const v of sc.values) { const val = v.get(x); out.values[v.key] = hashOf(val === undefined ? null : val); }
+  return out;
+}
+/* 2つの目録のちがいの数（足した・変えた・消した、を1件ずつ）。b に values が無いときは、設定は数えない */
+export function diffCount(a, b, schema) {
+  const sc = schema || FOOTPRINTS_SCHEMA;
+  let n = 0;
+  for (const c of sc.collections) {
+    const A = (a && a[c.key]) || {};
+    const B = (b && b[c.key]) || {};
+    for (const id of Object.keys(A)) if (A[id] !== B[id]) n++;
+    for (const id of Object.keys(B)) if (!(id in A)) n++;
+  }
+  if (a && a.values && b && b.values) for (const v of sc.values) if (b.values[v.key] !== undefined && a.values[v.key] !== b.values[v.key]) n++;
+  return n;
 }
 const tombsHash = (sc, t) => hashOf(Object.fromEntries(sc.collections.map((c) => [c.key, Object.keys((t && t[c.key]) || {}).sort()])));
 
@@ -426,7 +457,8 @@ export function createGoogleSync(opts) {
   const listeners = new Set();
   const dayStr = (t) => { const d = new Date(t); const p = (n) => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); };
 
-  let cfg = { enabled: false, clientId: "", email: "", folderId: "", autoBackup: true, lastBackupDay: "", lastSyncAt: 0 };
+  let cfg = { enabled: false, clientId: "", email: "", folderId: "", autoBackup: true, lastBackupDay: "", lastSyncAt: 0,
+    sentN: 0, sentAt: 0, recvN: 0, recvAt: 0 };
   try { Object.assign(cfg, JSON.parse(ls.getItem(CFG_KEY) || "{}")); } catch (e) { /* 初回 */ }
   const saveCfg = () => { try { ls.setItem(CFG_KEY, JSON.stringify(cfg)); } catch (e) { /* noop */ } };
 
@@ -435,11 +467,15 @@ export function createGoogleSync(opts) {
   const clientId = () => cfg.clientId || opts.defaultClientId || "";
   const auth = opts.auth || createGisAuth({ getClientId: clientId, ls, doc: opts.doc, win: opts.win, tokenKey: PREFIX + "-token" });
 
-  let status = { phase: cfg.enabled ? "idle" : "off", message: "" };
+  /* pending … この端末で書きかえて、まだドライブへ送っていない数（前回の同期の姿とのちがい）
+     askLogin … 起動したときにログインが切れていた。画面が「Googleドライブとつなぎ直す」の小窓を出す
+     （最後に送った数・時刻、受け取った数・時刻は cfg の sentN/sentAt・recvN/recvAt。何も動かなかった同期では変えない） */
+  let status = { phase: cfg.enabled ? "idle" : "off", message: "", pending: 0, askLogin: false };
   const setStatus = (patch) => { status = { ...status, ...patch }; listeners.forEach((fn) => { try { fn(); } catch (e) { /* noop */ } }); };
   const publicStatus = () => ({
     ...status, enabled: cfg.enabled, email: cfg.email, lastSyncAt: cfg.lastSyncAt, autoBackup: cfg.autoBackup,
-    lastBackupDay: cfg.lastBackupDay, clientId: cfg.clientId, hasClientId: !!clientId(), clientIdFixed: !!opts.defaultClientId && !cfg.clientId,
+    lastBackupDay: cfg.lastBackupDay, clientId: cfg.clientId,
+    sentN: cfg.sentN, sentAt: cfg.sentAt, recvN: cfg.recvN, recvAt: cfg.recvAt, hasClientId: !!clientId(), clientIdFixed: !!opts.defaultClientId && !cfg.clientId,
     ready: auth.isReady ? auth.isReady() : true,
   });
   let statusCache = null;
@@ -450,11 +486,24 @@ export function createGoogleSync(opts) {
   let periodic = null;
   let lastAuto = 0;
   let folderVerified = false;
-  let tapArmed = false;
   let started = false;
+  let memBase = undefined; // 前回の同期の姿（目録）。undefined＝まだ読んでいない、null＝一度も同期していない
+  let hiddenAt = 0;
+  let lastMoved = { sent: 0, received: 0 };
 
   async function loadState() { try { return (await opts.kv.get(STATE_KEY)) || {}; } catch (e) { return {}; } }
-  async function saveState(s) { try { await opts.kv.set(STATE_KEY, s); } catch (e) { /* noop */ } }
+  async function saveState(s) { memBase = s && s.base ? s.base : null; try { await opts.kv.set(STATE_KEY, s); } catch (e) { /* noop */ } }
+
+  /* まだ送っていない数を数え直す。一度も同期していないときは、端末にあるもの全部 */
+  async function refreshPending() {
+    if (!cfg.enabled) return;
+    try {
+      if (memBase === undefined) { const st = await loadState(); if (memBase === undefined) memBase = st.base || null; }
+      const snap = await opts.getSnapshot();
+      const n = diffCount(indexOf(snap, schema), memBase || {}, schema);
+      if (n !== status.pending) setStatus({ pending: n });
+    } catch (e) { /* 数えられなくても同期には差し支えない */ }
+  }
 
   async function ensureFolder(drive) {
     if (cfg.folderId && folderVerified) return cfg.folderId;
@@ -492,12 +541,17 @@ export function createGoogleSync(opts) {
 
     if (dataFile && hasBase && st.lastRemoteModified === dataFile.modifiedTime && st.lastLocalHash === localHash) {
       await maybeBackup(drive, folderId, files, local0);
+      lastMoved = { sent: 0, received: 0 };
       return true; // どちらも変わっていない
     }
 
     let remote = null;
     if (dataFile) remote = parseRemote(await drive.download(dataFile.id));
     const res = mergeSnapshots(local0, remote, { schema, base: st.base, baseAt: st.baseAt, hasBase, tombs: st.tombs, now: now() });
+    const localIdx = indexOf(local0, schema);
+    const mergedIdx = indexOf(res.merged, schema);
+    const received = res.localChanged ? diffCount(mergedIdx, localIdx, schema) : 0;
+    const sent = res.remoteChanged ? diffCount(mergedIdx, remote ? indexOf(remote, schema) : {}, schema) : 0;
 
     /* 写真：足りないものをドライブから取る（記録を反映する前に） */
     const refs = Array.from(new Set(opts.listPhotoRefs(res.merged)));
@@ -538,6 +592,7 @@ export function createGoogleSync(opts) {
     }
 
     await saveState({ base: res.base, tombs: res.tombs, lastRemoteModified: modified, lastLocalHash: contentHash(res.merged, schema), baseAt: now() });
+    lastMoved = { sent, received };
     await cleanOrphans(drive, files, refs, res.merged);
     await maybeBackup(drive, folderId, files, res.merged);
     return true;
@@ -577,27 +632,9 @@ export function createGoogleSync(opts) {
     }
   }
 
-  /* ログインが切れたとき、次のタップでログインし直す。
-     **一度も同期できていない（ログインできたことがない）ときは使わないこと。**
-     Google側の設定不備でログインが拒まれると、どこを触ってもログイン画面が開き、解除もできなくなる（2.16.1で直した）。
-     **Google連携のカード（data-gsync-card）の中のタップには反応しないこと**（解除ボタンを押せなくなる） */
-  let tapHandler = null;
-  function disarmTap() {
-    if (tapHandler && opts.doc) opts.doc.removeEventListener("pointerup", tapHandler, true);
-    tapHandler = null; tapArmed = false;
-  }
-  function armTap() {
-    if (tapArmed || !opts.doc || !cfg.enabled || !cfg.email) return;
-    tapArmed = true;
-    tapHandler = (ev) => {
-      const t = ev && ev.target;
-      if (t && t.closest && t.closest("[data-gsync-card]")) return; // カードの中は、ボタンに任せる
-      disarmTap();
-      if (!cfg.enabled || auth.getStored()) return;
-      syncNow({ reason: "tap", interactive: true });
-    };
-    opts.doc.addEventListener("pointerup", tapHandler, true);
-  }
+  /* **ログインが切れても、次のタップで勝手にログイン画面を開かないこと（2.30.0で廃止）。**
+     使っている途中に Google の画面が一瞬はさまり、何が起きたのか分からなかった。
+     取り直すのは、画面のボタン（起動時の小窓・ヘッダーの雲・バックアップのカード）を押したときだけ */
 
   function classify(e) {
     if (e instanceof SyncError) return e;
@@ -606,6 +643,11 @@ export function createGoogleSync(opts) {
 
   async function runOnce(reason, interactive) {
     let token = auth.getStored();
+    if (!token && !interactive) {
+      /* 指の操作の外では取りにいかない（Googleの画面がだしぬけに開くのを防ぐ）。しるしを変えるだけ */
+      setStatus({ phase: "needsAuth", message: "ログインが必要です" });
+      return;
+    }
     if (!token) {
       /* 起動の直後は、Googleの部品がまだ読み込み中のことがある。読み終わるのを待ってから取りにいく
          （指の操作の直後なら、数秒はポップアップを開ける） */
@@ -619,35 +661,36 @@ export function createGoogleSync(opts) {
         const denied = why === "access_denied" || why === "denied";
         /* 一度もログインできていない（初めての連携）ときに失敗したら、連携していない状態に戻す */
         if (interactive && !cfg.email && why !== "notready") {
-          cfg.enabled = false; saveCfg(); disarmTap();
+          cfg.enabled = false; saveCfg();
           setStatus({ phase: "off", message: denied
             ? "Googleにログインを拒否されました。アプリのGoogle設定（公開状態）を確認してください"
             : "ログインできませんでした" });
           return;
         }
-        if (interactive && why !== "notready") { setStatus({ phase: "needsAuth", message: "ログインが完了しませんでした" }); return; }
-        setStatus({ phase: "needsAuth", message: "再ログインが必要です" });
-        armTap();
+        setStatus({ phase: "needsAuth", message: why === "notready" ? "準備中です。もう一度押してください" : "ログインが完了しませんでした" });
         return;
       }
     }
     const drive = createDrive(fetchFn, () => auth.getStored() || token);
-    setStatus({ phase: "syncing", message: "" });
+    setStatus({ phase: "syncing", message: "", askLogin: false });
     try {
       if (!cfg.email) {
         try { const u = await drive.about(); cfg.email = u.emailAddress || ""; saveCfg(); } catch (e) { if (e instanceof SyncError && e.kind === "auth") throw e; }
       }
       let ok = false;
       for (let i = 0; i < 3 && !ok; i++) ok = await cycle(drive, token);
-      cfg.lastSyncAt = now(); saveCfg();
+      cfg.lastSyncAt = now();
+      if (lastMoved.sent > 0) { cfg.sentN = lastMoved.sent; cfg.sentAt = cfg.lastSyncAt; }
+      if (lastMoved.received > 0) { cfg.recvN = lastMoved.received; cfg.recvAt = cfg.lastSyncAt; }
+      saveCfg();
       setStatus({ phase: "idle", message: "" });
+      await refreshPending();
       if (!ok) scheduleSoon(); // 通信中に書きかえがあり続けた。少し置いてやり直す
     } catch (e) {
       const err = classify(e);
       if (err.kind === "auth") {
         auth.clear();
         setStatus({ phase: "needsAuth", message: err.message });
-        armTap();
       } else if (err.kind === "network") {
         setStatus({ phase: "offline", message: "通信できません。つながれば自動で再開します" });
       } else {
@@ -676,12 +719,24 @@ export function createGoogleSync(opts) {
     timer = setTimeout(() => { syncNow({ reason: "auto" }); }, ms === undefined ? DEBOUNCE_MS : ms);
   }
 
-  function onVisible() {
+  /* しばらく離れてから戻ったときは「開き直した」とみなし、ログインが切れていれば小窓を出す。
+     すぐ戻ったとき（ほかのアプリをちらっと見ただけ）は出さない */
+  const RESUME_ASK_MS = 3 * 60 * 1000;
+  function onVisible(ev) {
     if (!opts.doc || opts.doc.visibilityState !== "visible") return;
-    if (cfg.enabled && now() - cfg.lastSyncAt > 30000) syncNow({ reason: "visible" });
+    const away = hiddenAt ? now() - hiddenAt : 0;
+    hiddenAt = 0;
+    if (!cfg.enabled) return;
+    if (!auth.getStored()) {
+      if (away >= RESUME_ASK_MS) setStatus({ phase: "needsAuth", message: "ログインが必要です", askLogin: true });
+      return;
+    }
+    if (now() - cfg.lastSyncAt > 30000 || (ev && ev.type === "online")) syncNow({ reason: "visible" });
   }
   function onHidden() {
-    if (opts.doc && opts.doc.visibilityState === "hidden" && cfg.enabled && timer) { clearTimeout(timer); timer = null; syncNow({ reason: "hidden" }); }
+    if (!opts.doc || opts.doc.visibilityState !== "hidden") return;
+    hiddenAt = now();
+    if (cfg.enabled && timer && auth.getStored()) { clearTimeout(timer); timer = null; syncNow({ reason: "hidden" }); }
   }
 
   return {
@@ -699,22 +754,33 @@ export function createGoogleSync(opts) {
     /* 「接続」ボタンの中から呼ぶ。**awaitを挟まずに呼ぶこと**（ポップアップは指の操作の流れの中でしか開かない） */
     connect() {
       cfg.enabled = true; saveCfg();
-      setStatus({ phase: "idle", message: "" });
+      memBase = undefined;
+      setStatus({ phase: "idle", message: "", askLogin: false });
       return syncNow({ reason: "manual", interactive: true });
     },
     syncManual() { return syncNow({ reason: "manual", interactive: !auth.getStored() }); },
+    /* 起動時の小窓の「ログインして同期」。指の操作の中から、await を挟まずに呼ぶこと */
+    loginNow() { setStatus({ askLogin: false }); return syncNow({ reason: "manual", interactive: true }); },
+    /* 起動時の小窓の「あとで」 */
+    dismissLogin() { setStatus({ askLogin: false }); },
     /* 解除はログインなしでできること（Googleへは何も問い合わせない） */
     async disconnect() {
-      disarmTap();
-      cfg.enabled = false; cfg.email = ""; cfg.folderId = ""; cfg.lastSyncAt = 0; cfg.lastBackupDay = ""; saveCfg();
+      memBase = undefined;
+      cfg.enabled = false; cfg.email = ""; cfg.folderId = ""; cfg.lastSyncAt = 0; cfg.lastBackupDay = "";
+      cfg.sentN = 0; cfg.sentAt = 0; cfg.recvN = 0; cfg.recvAt = 0; saveCfg();
       folderVerified = false; clearTimeout(timer); timer = null;
       const t = auth.getStored(); if (t) auth.revoke(t);
       auth.clear();
       try { await opts.kv.del(STATE_KEY); } catch (e) { /* noop */ }
-      setStatus({ phase: "off", message: "" });
+      setStatus({ phase: "off", message: "", pending: 0, askLogin: false });
     },
-    /* 端末の中の記録が書きかわったとき */
-    notifyChange() { if (cfg.enabled && started) scheduleSoon(); },
+    /* 端末の中の記録が書きかわったとき。まだ送っていない数をすぐ数え直す（ヘッダーの雲に出る） */
+    notifyChange() {
+      if (!cfg.enabled || !started) return;
+      refreshPending();
+      if (auth.getStored()) scheduleSoon();
+      else if (status.phase !== "needsAuth") setStatus({ phase: "needsAuth", message: "ログインが必要です" });
+    },
     start() {
       if (started) return;
       started = true;
@@ -722,8 +788,13 @@ export function createGoogleSync(opts) {
       if (opts.doc) opts.doc.addEventListener("visibilitychange", onVisible);
       if (opts.doc) opts.doc.addEventListener("visibilitychange", onHidden);
       if (opts.win) opts.win.addEventListener("online", onVisible);
-      periodic = setInterval(() => { if (!opts.doc || opts.doc.visibilityState === "visible") { if (cfg.enabled && now() - cfg.lastSyncAt > PERIOD_MS - 1000) syncNow({ reason: "period" }); } }, 60000);
-      if (cfg.enabled) syncNow({ reason: "start" });
+      periodic = setInterval(() => { if (!opts.doc || opts.doc.visibilityState === "visible") { if (cfg.enabled && auth.getStored() && now() - cfg.lastSyncAt > PERIOD_MS - 1000) syncNow({ reason: "period" }); } }, 60000);
+      if (cfg.enabled) {
+        refreshPending();
+        /* 起動したときにログインが切れていたら、ここで（起動の流れの中で）小窓を出してもらう */
+        if (auth.getStored()) syncNow({ reason: "start" });
+        else setStatus({ phase: "needsAuth", message: "ログインが必要です", askLogin: true });
+      }
     },
     stop() {
       started = false; clearTimeout(timer); clearInterval(periodic);

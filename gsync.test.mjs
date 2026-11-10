@@ -388,4 +388,66 @@ await test("My手帳の形：計画・種類・フォルダ・タグも同期し
   assert.deepEqual(A.st.tags, ["仕事"]);
 });
 
+await test("2.30.0 ログインが切れていても、指の操作の外ではログイン画面を開かない。起動時は askLogin を立てる", async () => {
+  const drive = fakeDrive();
+  const A = device("A", drive);
+  A.st.records = [rec("r1", "one")];
+  await A.sync.connect();
+  A.token = null;
+  let asked = 0;
+  const req = A.auth.request; A.auth.request = async (o) => { asked++; return req(o); };
+  // 自動の同期（書きかえ・定期）では取りにいかない
+  A.sync.start();
+  await new Promise((r) => setTimeout(r, 10));
+  try {
+  let s = A.sync.getStatus();
+  assert.equal(asked, 0, "起動時に勝手にログインしない");
+  assert.equal(s.phase, "needsAuth");
+  assert.equal(s.askLogin, true, "起動時はつなぎ直しの小窓を出す");
+  A.st.records.push(rec("r2", "two"));
+  A.sync.notifyChange();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(asked, 0, "書きかえてもログイン画面は開かない");
+  assert.equal(A.sync.getStatus().pending, 1, "送っていない数が出る");
+  // 「あとで」
+  A.sync.dismissLogin();
+  assert.equal(A.sync.getStatus().askLogin, false);
+  // 押したときだけ取りにいく
+  CLOCK += 60000;
+  await A.sync.loginNow();
+  s = A.sync.getStatus();
+  assert.equal(asked, 1);
+  assert.equal(s.phase, "idle");
+  assert.equal(s.pending, 0, "送ったら0");
+  assert.equal(s.sentN, 1, "送った数");
+  } finally { A.sync.stop(); A.auth.request = req; }
+});
+
+await test("2.30.0 送っていない数・受け取った数", async () => {
+  const drive = fakeDrive();
+  const A = device("A", drive);
+  const B = device("B", drive);
+  A.st.records = [rec("r1", "one"), rec("r2", "two")];
+  await A.sync.connect();
+  A.sync.start();
+  await B.sync.connect();
+  B.sync.start();
+  await new Promise((r) => setTimeout(r, 50)); // 起動時の同期が終わるのを待つ
+  try {
+  assert.equal(ids(B), "r1,r2");
+  assert.equal(B.sync.getStatus().recvN, 2);
+  // B で1件書きかえ・1件消す
+  B.st.records = [{ ...B.st.records.find((r) => r.id === "r1"), text: "ONE", updatedAt: "2026-11-02T00:00:00.000Z" }];
+  B.sync.notifyChange();
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(B.sync.getStatus().pending, 2);
+  let s = await B.run();
+  assert.equal(s.pending, 0);
+  assert.equal(s.sentN, 2);
+  s = await A.run();
+  assert.equal(s.recvN, 2);
+  assert.equal(ids(A), "r1");
+  } finally { A.sync.stop(); B.sync.stop(); }
+});
+
 console.log(`\n${pass} passed${process.exitCode ? " (失敗あり)" : ""}`);

@@ -17,9 +17,9 @@ var GSync = (() => {
   };
   var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-  // src/bible-tracker/gsync.js
-  var gsync_exports = {};
-  __export(gsync_exports, {
+  // gsync.src.mjs
+  var gsync_src_exports = {};
+  __export(gsync_src_exports, {
     BACKUP_KEEP: () => BACKUP_KEEP,
     BACKUP_PREFIX: () => BACKUP_PREFIX,
     DATA_FILE: () => DATA_FILE,
@@ -34,7 +34,9 @@ var GSync = (() => {
     createGisAuth: () => createGisAuth,
     createGoogleSync: () => createGoogleSync,
     createKV: () => createKV,
+    diffCount: () => diffCount,
     hashOf: () => hashOf,
+    indexOf: () => indexOf,
     mergeKeyed: () => mergeKeyed,
     mergeSnapshots: () => mergeSnapshots,
     mergeValue: () => mergeValue,
@@ -188,6 +190,38 @@ var GSync = (() => {
       ...sc.collections.map((c) => setHash(c.get(x))),
       ...sc.values.map((v) => hashOf(v.get(x)))
     ].join("/"));
+  }
+  function indexOf(s, schema) {
+    const sc = schema || FOOTPRINTS_SCHEMA;
+    const x = s || {};
+    const out = { values: {} };
+    for (const c of sc.collections) {
+      const m = {};
+      for (const it of c.get(x) || []) {
+        const id = c.id(it);
+        if (id !== null && id !== void 0 && id !== "" && !(id in m)) m[id] = hashOf(it);
+      }
+      out[c.key] = m;
+    }
+    for (const v of sc.values) {
+      const val = v.get(x);
+      out.values[v.key] = hashOf(val === void 0 ? null : val);
+    }
+    return out;
+  }
+  function diffCount(a, b, schema) {
+    const sc = schema || FOOTPRINTS_SCHEMA;
+    let n = 0;
+    for (const c of sc.collections) {
+      const A = a && a[c.key] || {};
+      const B = b && b[c.key] || {};
+      for (const id of Object.keys(A)) if (A[id] !== B[id]) n++;
+      for (const id of Object.keys(B)) if (!(id in A)) n++;
+    }
+    if (a && a.values && b && b.values) {
+      for (const v of sc.values) if (b.values[v.key] !== void 0 && a.values[v.key] !== b.values[v.key]) n++;
+    }
+    return n;
   }
   var tombsHash = (sc, t) => hashOf(Object.fromEntries(sc.collections.map((c) => [c.key, Object.keys(t && t[c.key] || {}).sort()])));
   function unionTombs(sc, a, b) {
@@ -463,7 +497,19 @@ var GSync = (() => {
       const p = (n) => String(n).padStart(2, "0");
       return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
     };
-    let cfg = { enabled: false, clientId: "", email: "", folderId: "", autoBackup: true, lastBackupDay: "", lastSyncAt: 0 };
+    let cfg = {
+      enabled: false,
+      clientId: "",
+      email: "",
+      folderId: "",
+      autoBackup: true,
+      lastBackupDay: "",
+      lastSyncAt: 0,
+      sentN: 0,
+      sentAt: 0,
+      recvN: 0,
+      recvAt: 0
+    };
     try {
       Object.assign(cfg, JSON.parse(ls.getItem(CFG_KEY) || "{}"));
     } catch (e) {
@@ -478,7 +524,7 @@ var GSync = (() => {
     const NAMES = { folder: SYNC_FOLDER, data: DATA_FILE, backup: BACKUP_PREFIX, ...opts.names || {} };
     const clientId = () => cfg.clientId || opts.defaultClientId || "";
     const auth = opts.auth || createGisAuth({ getClientId: clientId, ls, doc: opts.doc, win: opts.win, tokenKey: PREFIX + "-token" });
-    let status = { phase: cfg.enabled ? "idle" : "off", message: "" };
+    let status = { phase: cfg.enabled ? "idle" : "off", message: "", pending: 0, askLogin: false };
     const setStatus = (patch) => {
       status = { ...status, ...patch };
       listeners.forEach((fn) => {
@@ -496,6 +542,10 @@ var GSync = (() => {
       autoBackup: cfg.autoBackup,
       lastBackupDay: cfg.lastBackupDay,
       clientId: cfg.clientId,
+      sentN: cfg.sentN,
+      sentAt: cfg.sentAt,
+      recvN: cfg.recvN,
+      recvAt: cfg.recvAt,
       hasClientId: !!clientId(),
       clientIdFixed: !!opts.defaultClientId && !cfg.clientId,
       ready: auth.isReady ? auth.isReady() : true
@@ -507,8 +557,10 @@ var GSync = (() => {
     let periodic = null;
     let lastAuto = 0;
     let folderVerified = false;
-    let tapArmed = false;
     let started = false;
+    let memBase = void 0;
+    let hiddenAt = 0;
+    let lastMoved = { sent: 0, received: 0 };
     async function loadState() {
       try {
         return await opts.kv.get(STATE_KEY) || {};
@@ -517,8 +569,22 @@ var GSync = (() => {
       }
     }
     async function saveState(s) {
+      memBase = s && s.base ? s.base : null;
       try {
         await opts.kv.set(STATE_KEY, s);
+      } catch (e) {
+      }
+    }
+    async function refreshPending() {
+      if (!cfg.enabled) return;
+      try {
+        if (memBase === void 0) {
+          const st = await loadState();
+          if (memBase === void 0) memBase = st.base || null;
+        }
+        const snap = await opts.getSnapshot();
+        const n = diffCount(indexOf(snap, schema), memBase || {}, schema);
+        if (n !== status.pending) setStatus({ pending: n });
       } catch (e) {
       }
     }
@@ -562,11 +628,16 @@ var GSync = (() => {
       const hasBase = !!st.base;
       if (dataFile && hasBase && st.lastRemoteModified === dataFile.modifiedTime && st.lastLocalHash === localHash) {
         await maybeBackup(drive, folderId, files, local0);
+        lastMoved = { sent: 0, received: 0 };
         return true;
       }
       let remote = null;
       if (dataFile) remote = parseRemote(await drive.download(dataFile.id));
       const res = mergeSnapshots(local0, remote, { schema, base: st.base, baseAt: st.baseAt, hasBase, tombs: st.tombs, now: now() });
+      const localIdx = indexOf(local0, schema);
+      const mergedIdx = indexOf(res.merged, schema);
+      const received = res.localChanged ? diffCount(mergedIdx, localIdx, schema) : 0;
+      const sent = res.remoteChanged ? diffCount(mergedIdx, remote ? indexOf(remote, schema) : {}, schema) : 0;
       const refs = Array.from(new Set(opts.listPhotoRefs(res.merged)));
       const onDrive = /* @__PURE__ */ new Map();
       for (const f of files) {
@@ -606,6 +677,7 @@ var GSync = (() => {
         }
       }
       await saveState({ base: res.base, tombs: res.tombs, lastRemoteModified: modified, lastLocalHash: contentHash(res.merged, schema), baseAt: now() });
+      lastMoved = { sent, received };
       await cleanOrphans(drive, files, refs, res.merged);
       await maybeBackup(drive, folderId, files, res.merged);
       return true;
@@ -645,30 +717,16 @@ var GSync = (() => {
         if (e instanceof SyncError && (e.kind === "auth" || e.kind === "network")) throw e;
       }
     }
-    let tapHandler = null;
-    function disarmTap() {
-      if (tapHandler && opts.doc) opts.doc.removeEventListener("pointerup", tapHandler, true);
-      tapHandler = null;
-      tapArmed = false;
-    }
-    function armTap() {
-      if (tapArmed || !opts.doc || !cfg.enabled || !cfg.email) return;
-      tapArmed = true;
-      tapHandler = (ev) => {
-        const t = ev && ev.target;
-        if (t && t.closest && t.closest("[data-gsync-card]")) return;
-        disarmTap();
-        if (!cfg.enabled || auth.getStored()) return;
-        syncNow({ reason: "tap", interactive: true });
-      };
-      opts.doc.addEventListener("pointerup", tapHandler, true);
-    }
     function classify(e) {
       if (e instanceof SyncError) return e;
       return new SyncError("drive", e && e.message || "\u540C\u671F\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
     }
     async function runOnce(reason, interactive) {
       let token = auth.getStored();
+      if (!token && !interactive) {
+        setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059" });
+        return;
+      }
       if (!token) {
         if (auth.preload && auth.isReady && !auth.isReady()) await auth.preload();
         const r = await auth.request({ interactive, hint: cfg.email });
@@ -687,21 +745,15 @@ var GSync = (() => {
           if (interactive && !cfg.email && why !== "notready") {
             cfg.enabled = false;
             saveCfg();
-            disarmTap();
             setStatus({ phase: "off", message: denied ? "Google\u306B\u30ED\u30B0\u30A4\u30F3\u3092\u62D2\u5426\u3055\u308C\u307E\u3057\u305F\u3002\u30A2\u30D7\u30EA\u306EGoogle\u8A2D\u5B9A\uFF08\u516C\u958B\u72B6\u614B\uFF09\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044" : "\u30ED\u30B0\u30A4\u30F3\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F" });
             return;
           }
-          if (interactive && why !== "notready") {
-            setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5B8C\u4E86\u3057\u307E\u305B\u3093\u3067\u3057\u305F" });
-            return;
-          }
-          setStatus({ phase: "needsAuth", message: "\u518D\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059" });
-          armTap();
+          setStatus({ phase: "needsAuth", message: why === "notready" ? "\u6E96\u5099\u4E2D\u3067\u3059\u3002\u3082\u3046\u4E00\u5EA6\u62BC\u3057\u3066\u304F\u3060\u3055\u3044" : "\u30ED\u30B0\u30A4\u30F3\u304C\u5B8C\u4E86\u3057\u307E\u305B\u3093\u3067\u3057\u305F" });
           return;
         }
       }
       const drive = createDrive(fetchFn, () => auth.getStored() || token);
-      setStatus({ phase: "syncing", message: "" });
+      setStatus({ phase: "syncing", message: "", askLogin: false });
       try {
         if (!cfg.email) {
           try {
@@ -715,15 +767,23 @@ var GSync = (() => {
         let ok = false;
         for (let i = 0; i < 3 && !ok; i++) ok = await cycle(drive, token);
         cfg.lastSyncAt = now();
+        if (lastMoved.sent > 0) {
+          cfg.sentN = lastMoved.sent;
+          cfg.sentAt = cfg.lastSyncAt;
+        }
+        if (lastMoved.received > 0) {
+          cfg.recvN = lastMoved.received;
+          cfg.recvAt = cfg.lastSyncAt;
+        }
         saveCfg();
         setStatus({ phase: "idle", message: "" });
+        await refreshPending();
         if (!ok) scheduleSoon();
       } catch (e) {
         const err = classify(e);
         if (err.kind === "auth") {
           auth.clear();
           setStatus({ phase: "needsAuth", message: err.message });
-          armTap();
         } else if (err.kind === "network") {
           setStatus({ phase: "offline", message: "\u901A\u4FE1\u3067\u304D\u307E\u305B\u3093\u3002\u3064\u306A\u304C\u308C\u3070\u81EA\u52D5\u3067\u518D\u958B\u3057\u307E\u3059" });
         } else {
@@ -758,12 +818,22 @@ var GSync = (() => {
         syncNow({ reason: "auto" });
       }, ms === void 0 ? DEBOUNCE_MS : ms);
     }
-    function onVisible() {
+    const RESUME_ASK_MS = 3 * 60 * 1e3;
+    function onVisible(ev) {
       if (!opts.doc || opts.doc.visibilityState !== "visible") return;
-      if (cfg.enabled && now() - cfg.lastSyncAt > 3e4) syncNow({ reason: "visible" });
+      const away = hiddenAt ? now() - hiddenAt : 0;
+      hiddenAt = 0;
+      if (!cfg.enabled) return;
+      if (!auth.getStored()) {
+        if (away >= RESUME_ASK_MS) setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059", askLogin: true });
+        return;
+      }
+      if (now() - cfg.lastSyncAt > 3e4 || ev && ev.type === "online") syncNow({ reason: "visible" });
     }
     function onHidden() {
-      if (opts.doc && opts.doc.visibilityState === "hidden" && cfg.enabled && timer) {
+      if (!opts.doc || opts.doc.visibilityState !== "hidden") return;
+      hiddenAt = now();
+      if (cfg.enabled && timer && auth.getStored()) {
         clearTimeout(timer);
         timer = null;
         syncNow({ reason: "hidden" });
@@ -802,20 +872,34 @@ var GSync = (() => {
       connect() {
         cfg.enabled = true;
         saveCfg();
-        setStatus({ phase: "idle", message: "" });
+        memBase = void 0;
+        setStatus({ phase: "idle", message: "", askLogin: false });
         return syncNow({ reason: "manual", interactive: true });
       },
       syncManual() {
         return syncNow({ reason: "manual", interactive: !auth.getStored() });
       },
+      /* 起動時の小窓の「ログインして同期」。指の操作の中から、await を挟まずに呼ぶこと */
+      loginNow() {
+        setStatus({ askLogin: false });
+        return syncNow({ reason: "manual", interactive: true });
+      },
+      /* 起動時の小窓の「あとで」 */
+      dismissLogin() {
+        setStatus({ askLogin: false });
+      },
       /* 解除はログインなしでできること（Googleへは何も問い合わせない） */
       async disconnect() {
-        disarmTap();
+        memBase = void 0;
         cfg.enabled = false;
         cfg.email = "";
         cfg.folderId = "";
         cfg.lastSyncAt = 0;
         cfg.lastBackupDay = "";
+        cfg.sentN = 0;
+        cfg.sentAt = 0;
+        cfg.recvN = 0;
+        cfg.recvAt = 0;
         saveCfg();
         folderVerified = false;
         clearTimeout(timer);
@@ -827,11 +911,14 @@ var GSync = (() => {
           await opts.kv.del(STATE_KEY);
         } catch (e) {
         }
-        setStatus({ phase: "off", message: "" });
+        setStatus({ phase: "off", message: "", pending: 0, askLogin: false });
       },
-      /* 端末の中の記録が書きかわったとき */
+      /* 端末の中の記録が書きかわったとき。まだ送っていない数をすぐ数え直す（ヘッダーの雲に出る） */
       notifyChange() {
-        if (cfg.enabled && started) scheduleSoon();
+        if (!cfg.enabled || !started) return;
+        refreshPending();
+        if (auth.getStored()) scheduleSoon();
+        else if (status.phase !== "needsAuth") setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059" });
       },
       start() {
         if (started) return;
@@ -842,10 +929,14 @@ var GSync = (() => {
         if (opts.win) opts.win.addEventListener("online", onVisible);
         periodic = setInterval(() => {
           if (!opts.doc || opts.doc.visibilityState === "visible") {
-            if (cfg.enabled && now() - cfg.lastSyncAt > PERIOD_MS - 1e3) syncNow({ reason: "period" });
+            if (cfg.enabled && auth.getStored() && now() - cfg.lastSyncAt > PERIOD_MS - 1e3) syncNow({ reason: "period" });
           }
         }, 6e4);
-        if (cfg.enabled) syncNow({ reason: "start" });
+        if (cfg.enabled) {
+          refreshPending();
+          if (auth.getStored()) syncNow({ reason: "start" });
+          else setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059", askLogin: true });
+        }
       },
       stop() {
         started = false;
@@ -944,5 +1035,5 @@ var GSync = (() => {
       }
     };
   }
-  return __toCommonJS(gsync_exports);
+  return __toCommonJS(gsync_src_exports);
 })();
