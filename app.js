@@ -21127,6 +21127,63 @@ function useLockBackground() {
     /* 見える窓が下へずれただけ（高さは同じ）のときも、紙の上端を合わせ直す */
     vv.addEventListener("scroll", measure);
     window.addEventListener("orientationchange", measure);
+    /* ================================================================
+       画面ずれの自己修復（2.30.1〜）
+       ----------------------------------------------------------------
+       キーボードを閉じたあと、アプリから戻ったあとなどに、iPhone が「見える窓」を下へずらしたまま
+       戻さないことがある。すると fixed で置いたもの（上の見出し・下タブ・右下の＋）が
+       まとめて上へ持ち上がったままになる（下タブが画面の途中に浮く）。
+       ・入力中でも、持ち上げの最中（pending）でもないのに、見える窓の上端（offsetTop）が 0 でない、
+         または画面の高さが縮んだままのとき「ずれたまま」とみなす
+       ・直し方は、いまのページの位置で window.scrollTo を打ち直すだけ。直らなければ 1px 動かして戻す
+       ・くり返しは3回まで（直らない端末で scroll の知らせとぶつかって延々動かないように）。
+         ずれが無くなったら数え直す
+       ・❌ 入力中（キーボードが出ているあいだ）は何もしないこと。上の「キーボードと入力欄」の動きと
+         ぶつかって画面が震える
+       ================================================================ */
+    let healTry = 0;
+    let healTimer = 0;
+    const stuckNow = () => {
+        if (pending || isTyping(document.activeElement))
+            return false;
+        return (vv.offsetTop || 0) > 1 || layoutShrunk();
+    };
+    const healOnce = () => {
+        if (!stuckNow()) {
+            healTry = 0;
+            return;
+        }
+        if (healTry >= 3)
+            return;
+        healTry += 1;
+        const x = window.scrollX || 0;
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        window.scrollTo(x, y);
+        setTimeout(() => {
+            if (!stuckNow())
+                return;
+            window.scrollTo(x, y + 1);
+            requestAnimationFrame(() => window.scrollTo(x, y));
+        }, 100);
+    };
+    const scheduleHeal = (delays) => {
+        clearTimeout(healTimer);
+        const run = (i) => {
+            if (i >= delays.length)
+                return;
+            healTimer = setTimeout(() => { healOnce(); run(i + 1); }, delays[i] - (i ? delays[i - 1] : 0));
+        };
+        run(0);
+    };
+    document.addEventListener("focusout", () => scheduleHeal([350, 900, 1800]), true);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible")
+        scheduleHeal([120, 600, 1500]); });
+    window.addEventListener("pageshow", () => scheduleHeal([120, 600, 1500]));
+    window.addEventListener("orientationchange", () => scheduleHeal([400, 1000]));
+    vv.addEventListener("resize", () => { if (stuckNow())
+        scheduleHeal([300, 900]); });
+    vv.addEventListener("scroll", () => { if (stuckNow())
+        scheduleHeal([300, 900]); });
     measure();
 })();
 /* hook を直接呼べない場所（open && (...) の中など）で、うしろを留めるための部品。
