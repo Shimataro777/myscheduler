@@ -564,3 +564,29 @@ h1,h2,h3,h4,p{font-size:inherit;font-weight:inherit}
    ここは、戻し忘れや古い本体が残ったときの用心として置いてある
    ============================================================ */
 body { position: static !important; top: auto !important; }
+
+/* ===== 2.31.0：あと何日の帯・日のまとまりの見出し・ストック ===== */
+/* あと何日の帯。横に送れる。**文字のラベルを足さないこと**（色で分ける） */
+.ft-cdstrip{display:flex;gap:8px;overflow-x:auto;margin:2px -20px 12px;padding:0 20px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.ft-cdstrip::-webkit-scrollbar{display:none}
+.ft-cd{flex:none;width:122px;border-radius:16px;padding:9px 12px 10px;text-align:left;display:flex;flex-direction:column;gap:2px}
+.ft-cd-n{font-weight:700;font-size:calc(24px * var(--ft-scale));line-height:1.1}
+.ft-cd-n small{font-size:calc(12px * var(--ft-scale));margin-left:2px}
+.ft-cd-t{font-size:calc(12.5px * var(--ft-scale));line-height:1.45;color:#26323A;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+/* 日のまとまりの見出し（予定・やること・メモ） */
+.ft-seclbl{display:flex;align-items:center;gap:8px;padding:4px 20px 8px;color:#6B7883}
+.ft-seclbl::after{content:"";flex:1;height:1px;background:#E5EAEE}
+/* ストックの書く欄 */
+.ft-stcap{border:1.5px solid var(--th-300,#9FCBE3);border-radius:18px;background:#fff;padding:10px 10px 8px 14px}
+.ft-stcap-in{width:100%;border:0;outline:none;resize:none;background:transparent;line-height:1.6;color:#171717;font-size:max(16px, calc(14.5px * var(--ft-scale)))}
+.ft-stcap-in::placeholder{color:#A3A3A3}
+.ft-stkind{display:inline-flex;align-items:center;gap:4px;min-height:34px;padding:0 12px;border-radius:999px;border:1px solid #E5E5E5;color:#737373;font-size:calc(12.5px * var(--ft-scale));font-weight:700;background:#fff}
+.ft-stkind.on{background:var(--th-800,#3E7EA6);border-color:var(--th-800,#3E7EA6);color:#fff}
+.ft-stsend{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:var(--th-800,#3E7EA6);color:#fff}
+.ft-stsend:disabled{opacity:.35}
+.ft-stchips{display:flex;gap:6px;overflow-x:auto;padding-top:10px;scrollbar-width:none}
+.ft-stchips::-webkit-scrollbar{display:none}
+.ft-stchip{flex:none;min-height:32px;padding:0 12px;border-radius:999px;border:1px solid #E5E5E5;background:#fff;color:#737373;font-size:calc(12.5px * var(--ft-scale));white-space:nowrap}
+.ft-stchip.on{background:#262626;border-color:#262626;color:#fff;font-weight:700}
+.ft-stacts{display:flex;justify-content:flex-end;padding:0 16px 12px;margin-top:-6px}
+.ft-sttoday{min-height:34px;padding:0 14px;border-radius:999px;background:var(--th-50,#EEF6FB);color:var(--th-800,#3E7EA6);font-weight:700;font-size:calc(12.5px * var(--ft-scale))}

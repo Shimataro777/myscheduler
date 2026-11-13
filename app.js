@@ -23273,6 +23273,8 @@ const fmtDateShort = (s) => { const d = parseYmd(s); return d ? `${d.getMonth() 
    **終日（既定）は文字を出さない。** 日付だけで足りる。
    繰り返しも「なし」（既定）のときは文字を出さない */
 function checklistWhenSummary(rec) {
+    if (rec.scope === "stock")
+        return "\u65E5\u4ED8\u306A\u3057";
     const allDay = isAllDay(rec);
     const sameDay = !rec.endDate || rec.endDate === rec.date;
     let s = sameDay ? fmtDateShort(rec.date) : `${fmtDateShort(rec.date)}\u301C${fmtDateShort(rec.endDate)}`;
@@ -23289,6 +23291,8 @@ function checklistWhenSummary(rec) {
 /* メモ用の要約：繰り返しは持たないので、日付［・時刻］（または週／月）だけ。
    こちらも終日（既定）のときは文字を出さない */
 function memoWhenSummary(rec) {
+    if (rec.scope === "stock")
+        return "\u65E5\u4ED8\u306A\u3057";
     if (rec.scope === "week")
         return `${fmtDateShort(rec.date)}\u306E\u9031`;
     if (rec.scope === "month")
@@ -23483,6 +23487,9 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                 (rec.type === "schedule" || rec.type === "checklist") && (react_1.default.createElement("input", { value: rec.title, onChange: (e) => set({ title: e.target.value }), placeholder: "タイトル", className: "w-full rounded-xl border border-neutral-200 bg-white px-3.5 fs-title font-bold text-neutral-900 placeholder-neutral-300 focus:border-th-800 focus:outline-none mb-3", style: { minHeight: 52 } })),
                 /* ②終日・開始・終了・繰り返し。既定は折りたたみ、要約タップで展開 */
                 rec.type === "checklist" && (react_1.default.createElement(WhenCollapse, { summary: checklistWhenSummary(rec), open: whenOpen, onToggle: () => setWhenOpen((v) => !v) },
+                    (rec.scope === "day" || rec.scope === "stock") && react_1.default.createElement(RowCard, { className: "mb-3" },
+                        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8\u3092\u6C7A\u3081\u306A\u3044", last: true },
+                            react_1.default.createElement(Switch, { on: rec.scope === "stock", label: "\u65E5\u4ED8\u3092\u6C7A\u3081\u306A\u3044", onChange: (v) => set(v ? { scope: "stock", repeat: { freq: "none", days: [], until: "", skip: [] } } : { scope: "day", date: todayStr() }) }))),
                     react_1.default.createElement(RowCard, { className: "mb-3" },
                         react_1.default.createElement(SheetRow, { label: "\u7D42\u65E5" },
                             react_1.default.createElement(Switch, { on: isAllDay(rec), label: "\u7D42\u65E5", onChange: (v) => (v ? set({ time: null, endTime: "" }) : setStart("09:00")) })),
@@ -23518,6 +23525,10 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                                 react_1.default.createElement("span", { className: isAllDay(rec) ? "opacity-40 pointer-events-none" : "" },
                                     react_1.default.createElement(TimeInput, { pill: true, value: rec.endTime, placeholder: "\u6642\u523B", onChange: (v) => set({ endTime: v }) }))))),
                     react_1.default.createElement(RepeatRow, { value: rec.repeat, onChange: (v) => set({ repeat: v }), scope: rec.scope }))),
+                /* 楽しみ（2.31.0〜）。オンにした予定は、Today の上に「あと何日」で出る */
+                rec.type === "schedule" && rec.scope === "day" && (react_1.default.createElement(RowCard, { className: "mb-3" },
+                    react_1.default.createElement(SheetRow, { label: "\u697D\u3057\u307F", last: true },
+                        react_1.default.createElement(Switch, { on: !!rec.joy, label: "\u697D\u3057\u307F", onChange: (v) => set({ joy: v }) })))),
                 /* ④場所（単独。ほかの単独項目と同じ、枠つきの1行の欄） */
                 rec.type === "schedule" && (react_1.default.createElement("input", { value: rec.placeUrl, onChange: (e) => set({ placeUrl: e.target.value }), placeholder: "\u5834\u6240\u3001\u30D3\u30C7\u30AA\u901A\u8A71\u306A\u3069", inputMode: "url", className: inputCls + " mb-3" })),
                 /* ⑤色・メモ を、ひとつの白いカードにまとめる */
@@ -23537,6 +23548,9 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                    ②→③の間は、ほかと同じふだんの余白（mb-3）にそろえる ---- */
                 /* ①終日・日付。既定は折りたたみ、要約タップで展開 */
                 rec.type === "memo" && (react_1.default.createElement(WhenCollapse, { summary: memoWhenSummary(rec), open: whenOpen, onToggle: () => setWhenOpen((v) => !v) },
+                    (rec.scope === "day" || rec.scope === "stock") && react_1.default.createElement(RowCard, { className: "mb-3" },
+                        react_1.default.createElement(SheetRow, { label: "\u65E5\u4ED8\u3092\u6C7A\u3081\u306A\u3044", last: true },
+                            react_1.default.createElement(Switch, { on: rec.scope === "stock", label: "\u65E5\u4ED8\u3092\u6C7A\u3081\u306A\u3044", onChange: (v) => set(v ? { scope: "stock", repeat: { freq: "none", days: [], until: "", skip: [] } } : { scope: "day", date: todayStr() }) }))),
                     react_1.default.createElement(WhenRow, { rec: rec, onChange: set, withTime: true, withRepeat: false }))),
                 rec.type === "memo" && (react_1.default.createElement(TextArea, { bare: true, value: rec.text, onChange: (e) => set({ text: e.target.value }), minRows: 6, placeholder: "\u30E1\u30E2", className: "mb-3" })),
                 rec.type === "memo" && (react_1.default.createElement("div", { className: "mb-3" },
@@ -23751,6 +23765,9 @@ function CommentBubble({ text, small }) {
    何も出ないと「入れ忘れ」に見える。終日だと分かるように「終日」と出す。
    メモだけは出さない（メモに終日という考えはない） */
 function timeLabel(r) {
+    /* ストック（日付を決めていないもの）は、いつかを言わない */
+    if (r.scope === "stock")
+        return "";
     if (!r.time)
         return r.type === "memo" ? "" : "終日";
     if ((r.type === "schedule" || r.type === "checklist") && r.endTime)
@@ -24159,7 +24176,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             quotedN > 0 && (react_1.default.createElement("div", { className: "mt-1", style: { marginBottom: -8 } },
                 react_1.default.createElement(QuotedByLink, { n: quotedN, selectMode: selectMode, onOpen: () => setQuotedOpen(true) }))),
             ratio && (react_1.default.createElement("div", { className: "mb-1" },
-                ratio.total > 0 && (react_1.default.createElement("div", { className: "mb-1" },
+                ratio.total > 0 && !(r.scope === "stock" && ratio.total < 2) && (react_1.default.createElement("div", { className: "mb-1" },
                     react_1.default.createElement(ProgressLine, { done: ratio.done, total: ratio.total, items: r.items, color: color, strong: allDone }))),
                 react_1.default.createElement("div", { className: "-ml-1.5 space-y-[2px]" }, (r.items || []).map((it) => (react_1.default.createElement("div", { key: it.id, className: "flex items-center gap-1" },
                     react_1.default.createElement("span", { className: "flex-1 min-w-0" },
@@ -24664,9 +24681,9 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
                 const ua = a.updatedAt || a.createdAt || "";
                 const ub = b.updatedAt || b.createdAt || "";
                 return ub.localeCompare(ua);
-            });
+            }).sort((a, b) => dayGroup(a) - dayGroup(b));
         }
-        return all.sort(compareTimeline);
+        return all.sort(compareTimeline).sort((a, b) => dayGroup(a) - dayGroup(b));
     }, [records, date, hidden, order]);
     /* **絵文字を置かないこと。** 画面の調子がそこだけ変わって見える。
        「まだ〜ありません」の見せ方は、どの画面でも同じにすること
@@ -24679,9 +24696,15 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
        時刻のないものには線を引かない（つながっていないほうが正しい） */
     return (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, list.map((r, i) => {
         const on = timed(r);
-        return (react_1.default.createElement(RecordRow, { key: r.id + (r.__repeat ? "-rep" : ""), r: r, repeated: r.__repeat, onLongSelect: onLongSelect, onEdit: onEdit, onToggleItem: onToggleItem, lineUp: on && i > 0 && timed(list[i - 1]), lineDown: on && i < list.length - 1 && timed(list[i + 1]), onPin: onPin, selectMode: selectMode, selected: !!selectedIds && selectedIds.has(r.id), onSelect: onSelect }));
+        const g = dayGroup(r);
+        const head = (i === 0 || dayGroup(list[i - 1]) !== g)
+            ? react_1.default.createElement("div", { key: "g" + g, className: "ft-seclbl fs-label font-bold" }, DAY_GROUP_LABEL[g]) : null;
+        return (react_1.default.createElement(react_1.default.Fragment, { key: r.id + (r.__repeat ? "-rep" : "") }, head, react_1.default.createElement(RecordRow, { key: r.id + (r.__repeat ? "-rep" : ""), r: r, repeated: r.__repeat, onLongSelect: onLongSelect, onEdit: onEdit, onToggleItem: onToggleItem, lineUp: on && i > 0 && timed(list[i - 1]) && dayGroup(list[i - 1]) === g, lineDown: on && i < list.length - 1 && timed(list[i + 1]) && dayGroup(list[i + 1]) === g, onPin: onPin, selectMode: selectMode, selected: !!selectedIds && selectedIds.has(r.id), onSelect: onSelect })));
     })));
 }
+/* 日の並びのまとまり。予定 → やること（リスト）→ メモ */
+const DAY_GROUP_LABEL = ["\u4E88\u5B9A", "\u3084\u308B\u3053\u3068", "\u30E1\u30E2"];
+function dayGroup(r) { return r.type === "schedule" ? 0 : r.type === "checklist" ? 1 : 2; }
 /* ============================================================
    1週間ごとの画面
    スケジュールとチェックリストが1週間ぶん見わたせる
@@ -25242,8 +25265,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 react_1.default.createElement("span", { className: "flex-1" }),
                 react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
                 sel.can && (react_1.default.createElement("button", { type: "button", onClick: sel.start, className: "h-9 px-2 -mr-2 ml-1 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "\u9078\u629E")))))),
-        upcoming.length > 0 && span === "day" && (react_1.default.createElement("div", { className: "mb-1" }, upcoming.map(({ plan, list }) => (react_1.default.createElement("div", { key: plan.id, className: CARD_SLOT },
-            react_1.default.createElement(PlanDueCard, { plan: plan, list: list, onOpen: () => onOpenPlan(plan) })))))),
+        span === "day" && (react_1.default.createElement(CountdownStrip, { records: records, upcoming: upcoming, onEdit: onEdit, onOpenPlan: onOpenPlan })),
         react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
             /* **key に span だけでなく date も入れる（2.11.9〜）。**
                以前は週・月では span だけを key にしていたため、日付を送っても
@@ -25952,7 +25974,7 @@ function PinButton({ on, onClick, color }) {
         react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") },
             react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: on ? "currentColor" : "none" }))));
 }
-function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onChangePlan, onDeletePlan, resetSig = 0 }) {
+function PlanScreen({ topSwitch, plans, records, onOpenPlan, onPinPlan, sort, onSort, onChangePlan, onDeletePlan, resetSig = 0 }) {
     /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
     const [menu, setMenu] = (0, react_1.useState)(null); // { plan }
     const [edit, setEdit] = (0, react_1.useState)(null);
@@ -26048,7 +26070,8 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
             : "\u898B\u3064\u304B\u308A\u307E\u305B\u3093";
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(TopChrome, null,
-        react_1.default.createElement(ScreenHeader, { title: "\u8A08\u753B" }),
+        react_1.default.createElement(ScreenHeader, { title: topSwitch ? "\u30EA\u30B9\u30C8" : "\u8A08\u753B" }),
+        topSwitch && react_1.default.createElement("div", { className: "px-4 pt-3 bg-app" }, topSwitch),
         /* **検索バーとタブを、ふたつの帯にしないこと。** 別々に sticky を付けると、
            重なりの計算がずれて隙間や被りが出る。ひとつの帯にまとめて、
            Today 画面の見出しと同じ決まり（top は帯の高さの変数、bg-appで下地を隠す）で貼り付ける */
@@ -26852,7 +26875,7 @@ function FolderDetail({ folder, records, knownTags, onCreateTag, onClose, onChan
             renameOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", presets: false, initialName: folder.name, initialIcon: folder.icon, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setRenameOpen(false), onSave: (n, ic) => { onChange({ ...folder, name: n, icon: ic }); setRenameOpen(false); } })),
             delOpen && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u8A18\u9332\u305D\u306E\u3082\u306E\u306F\u6B8B\u308A\u307E\u3059", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(folder.id); } })))));
 }
-function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange, onDelete, resetSig = 0 }) {
+function FolderScreen({ topSwitch, folders, records, onOpen, onPin, sort, onSort, onChange, onDelete, resetSig = 0 }) {
     /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
     const [menu, setMenu] = (0, react_1.useState)(null);
     const [edit, setEdit] = (0, react_1.useState)(null);
@@ -26920,7 +26943,8 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
     });
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(TopChrome, null,
-            react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
+            react_1.default.createElement(ScreenHeader, { title: topSwitch ? "\u30EA\u30B9\u30C8" : "\u30D5\u30A9\u30EB\u30C0" }),
+            topSwitch && react_1.default.createElement("div", { className: "px-4 pt-3 bg-app" }, topSwitch),
             react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: "\u30D5\u30A9\u30EB\u30C0\u3092\u3055\u304C\u3059", right: react_1.default.createElement(SortToggle, { value: sort, onChange: onSort, options: FOLDER_SORT_OPTIONS }) })),
         /* **2列のカード（2.11.25〜）。** 絵を主役にして、文字は下にまとめる。
            並べ方・大きさは GLOBAL_CSS の .ft-fgrid / .ft-fcard にある。
@@ -28646,17 +28670,108 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 /* ============================================================
    下のタブ
    ============================================================ */
+/* 2.31.0〜：Today・ストック・リスト・探す。
+   **「リスト」は計画とフォルダをまとめた入口。** 中では tab を "plan" / "folder" のまま持ち、
+   下の帯で光らせるときだけ "list" に読みかえる（AppMain の BottomNav の active） */
 const TABS = [
     { key: "today", label: "Today", icon: lucide_react_1.CalendarDays },
+    { key: "stock", label: "ストック", icon: lucide_react_1.StickyNote },
+    { key: "list", label: "リスト", icon: lucide_react_1.Layers },
     { key: "find", label: "探す", icon: lucide_react_1.Search },
-    { key: "plan", label: "計画", icon: lucide_react_1.Target },
-    { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
 ];
 /* **下タブを onClick だけで受けないこと**（2.11.1〜）。Today は「1回め＝上へ」「2回め＝今日へ」と続けて押す作り。
    iOS では、①続けて素早く押した2回めを「ダブルタップ」とみなして click を配らない、
    ②縦に送った慣性が残っているうちに押すと、慣性を止めるだけで click を配らない、
    ことがあり、「1回押しても反応しない」ように見えた。
    TapOnceButton（useTapOnce）で指を離した時点に受け止める（引継書 6-③ と同じ理由） */
+/* ============================================================
+   あと何日の帯（2.31.0〜）
+   楽しみの予定（赤み）と、計画の期日（その計画の色）を、近い順に横へ並べる。
+   **「楽しみ」「計画」と文字で書かないこと。** 色だけで分ける
+   ============================================================ */
+function CountdownStrip({ records, upcoming, onEdit, onOpenPlan }) {
+    const planCol = useTypeColor(PLAN_TYPE);
+    const today = todayStr();
+    const items = [];
+    (records || []).forEach((r) => {
+        if (r.joy && r.type === "schedule" && isDayRec(r) && r.date >= today)
+            items.push({ key: r.id, left: daysBetween(today, r.date), title: r.title || "（名前なし）", joy: true, onTap: () => onEdit(r) });
+    });
+    (upcoming || []).forEach(({ plan, list }) => {
+        const c = planColorOf(plan, planCol);
+        list.forEach(({ step, left }) => items.push({ key: plan.id + ":" + step.id, left, title: step.title || plan.name || "（名前なし）", color: c, onTap: () => onOpenPlan(plan) }));
+    });
+    if (!items.length)
+        return null;
+    items.sort((a, b) => a.left - b.left);
+    return (react_1.default.createElement("div", { className: "px-5" },
+        react_1.default.createElement("div", { className: "ft-cdstrip" }, items.map((it) => (react_1.default.createElement("button", { key: it.key, type: "button", onClick: it.onTap, className: "ft-cd ft-tap", style: it.joy ? { background: "#FCEEE9", color: "#C9604A" } : { background: it.color.soft, color: it.color.deep } },
+            react_1.default.createElement("span", { className: "ft-cd-n tabular-nums" }, it.left === 0 ? "今日" : react_1.default.createElement(react_1.default.Fragment, null, it.left, react_1.default.createElement("small", null, "日"))),
+            react_1.default.createElement("span", { className: "ft-cd-t" }, it.title)))))));
+}
+/* リストの中の、計画とフォルダの切り替え */
+function listSwitch(value, onChange) {
+    return react_1.default.createElement(PillTabs, { tabs: [{ key: "plan", label: "計画" }, { key: "folder", label: "フォルダ" }], value: value, onChange: onChange });
+}
+/* ============================================================
+   ストック（2.31.0〜）
+   日付を決めずに書きためる場所。記録の scope を "stock" にして持つ。
+   **scope を "day" 以外にすること。** isDayRec が外すので、Today・週・月には出ない。
+   探すからは見つかる。「今日へ」で scope を "day"、日付を今日にする
+   ============================================================ */
+function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
+    const [text, setText] = (0, react_1.useState)("");
+    const [kind, setKind] = (0, react_1.useState)("memo");
+    const [filter, setFilter] = (0, react_1.useState)("all");
+    const list = (0, react_1.useMemo)(() => records.filter((r) => r.scope === "stock").sort((a, b) => {
+        if (!!a.pinned !== !!b.pinned)
+            return a.pinned ? -1 : 1;
+        return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
+    }), [records]);
+    const tags = (0, react_1.useMemo)(() => {
+        const m = new Map();
+        list.forEach((r) => normalizeTags(r.tags).forEach((t) => m.set(t, (m.get(t) || 0) + 1)));
+        return [...m.keys()];
+    }, [list]);
+    const shown = list.filter((r) => filter === "all" ? true : filter === "task" ? r.type === "checklist" : filter === "memo" ? r.type === "memo" : normalizeTags(r.tags).includes(filter));
+    const send = () => {
+        const raw = text.trim();
+        if (!raw)
+            return;
+        const tg = (raw.match(/[#＃][^\s#＃]+/g) || []).map((x) => x.slice(1));
+        const body = raw.replace(/[#＃][^\s#＃]+/g, "").trim() || raw;
+        const rec = emptyRecord(kind === "task" ? "checklist" : "memo", todayStr(), "stock");
+        if (kind === "task")
+            rec.items = body.split("\n").map((x) => x.trim()).filter(Boolean).map((x) => ({ id: uid(), text: x, done: false, min: 0 }));
+        else
+            rec.text = body;
+        rec.tags = tg;
+        onSave(rec);
+        setText("");
+    };
+    const toToday = (r) => onSave({ ...r, scope: "day", date: todayStr(), updatedAt: new Date().toISOString() });
+    const chip = (key, label) => (react_1.default.createElement("button", { key: key, type: "button", onClick: () => setFilter(key), "aria-pressed": filter === key, className: "ft-stchip ft-tap" + (filter === key ? " on" : "") }, label));
+    return (react_1.default.createElement("div", { className: "pad-fab" },
+        react_1.default.createElement(TopChrome, null,
+            react_1.default.createElement(ScreenHeader, { title: "ストック" }),
+            react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 bg-app" },
+                react_1.default.createElement("div", { className: "ft-stcap" },
+                    react_1.default.createElement("textarea", { value: text, onChange: (e) => setText(e.target.value), rows: 2, placeholder: "ふと思ったことを書く", className: "ft-input ft-stcap-in", onKeyDown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } } }),
+                    react_1.default.createElement("div", { className: "flex items-center gap-1.5 mt-1.5" },
+                        react_1.default.createElement("button", { type: "button", onClick: () => setKind("memo"), "aria-pressed": kind === "memo", className: "ft-stkind ft-tap" + (kind === "memo" ? " on" : "") }, typeIcon("memo", 14), "メモ"),
+                        react_1.default.createElement("button", { type: "button", onClick: () => setKind("task"), "aria-pressed": kind === "task", className: "ft-stkind ft-tap" + (kind === "task" ? " on" : "") }, typeIcon("checklist", 14), "やること"),
+                        react_1.default.createElement("span", { className: "flex-1" }),
+                        react_1.default.createElement("button", { type: "button", onClick: send, disabled: !text.trim(), "aria-label": "ストックに入れる", className: "ft-stsend ft-tap" }, react_1.default.createElement(lucide_react_1.Plus, { size: 20 })))),
+                list.length > 0 && (react_1.default.createElement("div", { className: "ft-stchips" },
+                    chip("all", "すべて"), chip("task", "やること"), chip("memo", "メモ"),
+                    tags.map((t) => chip(t, "#" + t)))))),
+        react_1.default.createElement("div", { className: "px-5", style: { minHeight: "60vh" } },
+            shown.length === 0 ? (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
+                react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, list.length ? "見つかりません" : "まだ何もありません"))) : (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, shown.map((r) => (react_1.default.createElement(react_1.default.Fragment, { key: r.id },
+                react_1.default.createElement(RecordRow, { r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, showDate: true }),
+                react_1.default.createElement("div", { className: "ft-stacts" },
+                    react_1.default.createElement("button", { type: "button", onClick: () => toToday(r), className: "ft-sttoday ft-tap" }, "今日へ"))))))))));
+}
 function BottomNav({ active, onChange }) {
     return (react_1.default.createElement("div", { className: "z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
         react_1.default.createElement("div", { className: "max-w-lg lg:max-w-5xl mx-auto flex" }, TABS.map(({ key, label, icon: Icon }) => {
@@ -28767,6 +28882,7 @@ function AppMain() {
     const [tagMaster, setTagMasterState] = (0, react_1.useState)([]);
     const [prefs, setPrefsState] = (0, react_1.useState)(DEFAULT_PREFS);
     const [tab, setTab] = (0, react_1.useState)("today");
+    const [listSub, setListSub] = (0, react_1.useState)("plan");
     /* 下のタブの「Today」を押した回数。TodayScreen はこれが変わったら今日の上へ戻る */
     const [todayReset, setTodayReset] = (0, react_1.useState)(0);
     /* Today 以外の下タブを、いま開いているまま押した回数（useTabReturn）。
@@ -29677,10 +29793,13 @@ function AppMain() {
                                         tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
                                             react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped, resetSig: todayReset }))),
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, knownTags: knownTags, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, resetSig: tabReset.find || 0 })),
-                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), resetSig: tabReset.plan || 0 })),
-                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.folderSortOrder, onSort: (v) => savePrefs((p) => ({ ...p, folderSortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
-                                loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
-                                loaded && react_1.default.createElement(BottomNav, { active: tab, onChange: (k) => {
+                                        tab === "stock" && (react_1.default.createElement(StockScreen, { records: records, onSave: saveRecord, onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin })),
+                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { topSwitch: listSwitch(tab, (k) => { setListSub(k); setTab(k); }), plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), resetSig: tabReset.plan || 0 })),
+                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { topSwitch: listSwitch(tab, (k) => { setListSub(k); setTab(k); }), folders: folders, records: records, sort: prefs.folderSortOrder, onSort: (v) => savePrefs((p) => ({ ...p, folderSortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
+                                loaded && !selecting && tab !== "find" && tab !== "stock" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
+                                loaded && react_1.default.createElement(BottomNav, { active: (tab === "plan" || tab === "folder") ? "list" : tab, onChange: (k) => {
+                                        if (k === "list")
+                                            k = (tab === "plan" || tab === "folder") ? tab : listSub;
                                         if (k === "today")
                                             setTodayReset((n) => n + 1);
                                         /* いま開いているタブをもう一度押した → その画面の上へ／デフォルトへ（useTabReturn） */
