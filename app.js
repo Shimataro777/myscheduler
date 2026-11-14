@@ -18354,7 +18354,7 @@ function emptyPlan() {
     return {
         /* **色を持たないこと。** 計画の色は表示設定でひとつだけ決める。
            古い記録に残っている color は、読み込むときに落とす */
-        id: uid(), name: "", note: "",
+        id: uid(), name: "", note: "", goalDate: "", todo: [], secs: [],
         steps: [], // 2段のチェックリスト {id,title,dueDate,done,items:[{id,text,done}]}
         pinned: false, // 上に固定（いちばん上に出す）
         doneAt: "", // やり遂げた日（空なら、まだ進行中）
@@ -21494,7 +21494,7 @@ function useSwipePages(onPrev, onNext, opts) {
                （計画の画面）、いちばん近い data-ft-overlay は自分の外わくになる。
                それも除いてしまうと、面のどこを払っても届かない */
             const tg = e.target;
-            const ov = tg && tg.closest ? tg.closest(".ft-sheet-wrap, [data-ft-overlay]") : null;
+            const ov = tg && tg.closest ? tg.closest(".ft-sheet-wrap, [data-ft-overlay], .ft-ink") : null;
             if (ov && el.contains(ov)) {
                 on = false;
                 return;
@@ -22448,6 +22448,10 @@ function TopChrome({ children }) {
         const put = () => {
             const v = el.getBoundingClientRect().height;
             setH((p) => (Math.abs(p - v) < 0.1 ? p : v));
+            try {
+                document.documentElement.style.setProperty("--ft-chrome-h", Math.round(v) + "px");
+            }
+            catch (e) { /* noop */ }
         };
         put();
         if (typeof ResizeObserver === "undefined")
@@ -24121,7 +24125,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 ? { boxShadow: `inset 3px 0 0 ${color.mid}` } : undefined },
             react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-0.5" },
                 react_1.default.createElement("span", { className: "shrink-0 flex", style: { color: color.deep } }, typeIcon(r.type, 15)),
-                showDate && r.date && (react_1.default.createElement("span", { className: "fs-label font-bold tabular-nums", style: { color: color.deep } }, shortDate(r.date))),
+                showDate && r.date && r.scope !== "stock" && (react_1.default.createElement("span", { className: "fs-label font-bold tabular-nums", style: { color: color.deep } }, shortDate(r.date))),
                 t && (isAllDay(r)
                     ? react_1.default.createElement("span", { className: "fs-label font-bold rounded-md px-1.5 py-[1px] shrink-0", style: { background: color.soft, color: color.deep } }, t)
                     : react_1.default.createElement("span", { className: "fs-body-sm font-bold tabular-nums text-neutral-800" }, t)),
@@ -24697,10 +24701,16 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
     /* **絵文字を置かないこと。** 画面の調子がそこだけ変わって見える。
        「まだ〜ありません」の見せ方は、どの画面でも同じにすること
        （py-14・まん中ぞろえ・14.5px・ft-noresult でふわりと出す） */
-    if (!list.length) {
+    /* 計画のやることで、この日にやると決めたもの（2.34.0〜）。「やること」のまとまりの最後に出す */
+    const planCtx = react_1.default.useContext(PlanCtx);
+    const hasPlanDay = !(hidden && hidden.includes("checklist")) && planDayTasks(planCtx.plans, date).length > 0;
+    if (!list.length && !hasPlanDay) {
         return (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
             react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u3053\u306E\u65E5\u306F\u307E\u3060\u8A18\u9332\u304C\u3042\u308A\u307E\u305B\u3093")));
     }
+    const hasList = list.some((r) => dayGroup(r) === 1);
+    const firstMemo = list.findIndex((r) => dayGroup(r) === 2);
+    const planEl = hasPlanDay ? react_1.default.createElement(PlanDayCards, { key: "plan-day", date: date, withLabel: !hasList }) : null;
     /* 時刻の入った記録は、しるしの列を縦線が貫いて串のように見える。
        時刻のないものには線を引かない（つながっていないほうが正しい） */
     return (react_1.default.createElement("div", { className: CARD_LIST + (single ? "" : " ft-spread") }, list.map((r, i) => {
@@ -24708,8 +24718,8 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
         const g = dayGroup(r);
         const head = (i === 0 || dayGroup(list[i - 1]) !== g)
             ? react_1.default.createElement("div", { key: "g" + g, className: "ft-seclbl fs-label font-bold" }, DAY_GROUP_LABEL[g]) : null;
-        return (react_1.default.createElement(react_1.default.Fragment, { key: r.id + (r.__repeat ? "-rep" : "") }, head, react_1.default.createElement(RecordRow, { key: r.id + (r.__repeat ? "-rep" : ""), r: r, repeated: r.__repeat, onLongSelect: onLongSelect, onEdit: onEdit, onToggleItem: onToggleItem, lineUp: on && i > 0 && timed(list[i - 1]) && dayGroup(list[i - 1]) === g, lineDown: on && i < list.length - 1 && timed(list[i + 1]) && dayGroup(list[i + 1]) === g, onPin: onPin, selectMode: selectMode, selected: !!selectedIds && selectedIds.has(r.id), onSelect: onSelect })));
-    })));
+        return (react_1.default.createElement(react_1.default.Fragment, { key: r.id + (r.__repeat ? "-rep" : "") }, i === firstMemo ? planEl : null, head, react_1.default.createElement(RecordRow, { key: r.id + (r.__repeat ? "-rep" : ""), r: r, repeated: r.__repeat, onLongSelect: onLongSelect, onEdit: onEdit, onToggleItem: onToggleItem, lineUp: on && i > 0 && timed(list[i - 1]) && dayGroup(list[i - 1]) === g, lineDown: on && i < list.length - 1 && timed(list[i + 1]) && dayGroup(list[i + 1]) === g, onPin: onPin, selectMode: selectMode, selected: !!selectedIds && selectedIds.has(r.id), onSelect: onSelect })));
+    }), firstMemo < 0 ? planEl : null));
 }
 /* 日の並びのまとまり。予定 → やること（リスト）→ メモ */
 const DAY_GROUP_LABEL = ["\u4E88\u5B9A", "\u3084\u308B\u3053\u3068", "\u30E1\u30E2"];
@@ -25275,7 +25285,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 react_1.default.createElement("span", { className: "flex-1" }),
                 react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
                 sel.can && (react_1.default.createElement("button", { type: "button", onClick: sel.start, className: "h-9 px-2 -mr-2 ml-1 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "\u9078\u629E")))))),
-        span === "day" && (react_1.default.createElement(CountdownStrip, { records: records, plans: plans, upcoming: upcoming, onEdit: onEdit, onOpenPlan: onOpenPlan })),
+        span === "day" && !(wideLand && onSaveRecord) && (react_1.default.createElement(CountdownStrip, { records: records, plans: plans, upcoming: upcoming, onEdit: onEdit, onOpenPlan: onOpenPlan })),
         react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
             /* **key に span だけでなく date も入れる（2.11.9〜）。**
                以前は週・月では span だけを key にしていたため、日付を送っても
@@ -25283,11 +25293,11 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                週・月は動かない、という食い違いの原因）。date を入れて、
                隣へ送るたびに必ず作り直されるようにする */
             react_1.default.createElement("div", { key: span + "|" + date, className: pageCls + (returnCls ? " " + returnCls : "") },
-                span === "day" && react_1.default.createElement(NeedBackupBanner, { onOpen: onOpenBackup, dim: sel.on }),
+                span === "day" && !(wideLand && onSaveRecord) && react_1.default.createElement(NeedBackupBanner, { onOpen: onOpenBackup, dim: sel.on }),
                 span === "day" && !(wideLand && onSaveRecord) && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
                 /* 横長（iPad 横）の日：左に記録、右にその日の手書きのページ（2.33.0〜） */
                 span === "day" && wideLand && onSaveRecord && (react_1.default.createElement("div", { className: "ft-dayspread" },
-                    react_1.default.createElement("div", { className: "min-w-0" }, react_1.default.createElement(DayTimeline, { single: true, hideInk: true, date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
+                    react_1.default.createElement("div", { className: "min-w-0" }, react_1.default.createElement(NeedBackupBanner, { onOpen: onOpenBackup, dim: sel.on }), react_1.default.createElement("div", { className: "-mx-5" }, react_1.default.createElement(CountdownStrip, { records: records, plans: plans, upcoming: upcoming, onEdit: onEdit, onOpenPlan: onOpenPlan })), react_1.default.createElement(DayTimeline, { single: true, hideInk: true, date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
                     react_1.default.createElement("div", { className: "ft-dayspread-r" }, react_1.default.createElement(DayInkPanel, { date: date, records: records, onSave: onSaveRecord })))),
                 span === "week" && wideLand && (react_1.default.createElement(WeekWide, { start: weekStart, records: records, onOpenDay: (d) => { setDate(d); setSpan("day"); }, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, onAddScoped: onAddScoped })),
                 span === "week" && !wideLand && (react_1.default.createElement(react_1.default.Fragment, null,
@@ -25936,8 +25946,6 @@ function PlanSettingsSheet({ plan, onCancel, onSave }) {
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                 react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setNameSafe(e.target.value), placeholder: "\u8A08\u753B\u306E\u540D\u524D", maxLength: PLAN_TITLE_MAX }))),
         react_1.default.createElement("p", { className: "fs-caption text-neutral-400 text-right mb-2" }, `${(d.name || "").length}/${PLAN_TITLE_MAX}`),
-        react_1.default.createElement("p", { className: "fs-label font-bold text-neutral-400 mb-2" }, "\u76EE\u6307\u3059\u3053\u3068"),
-        react_1.default.createElement(TextArea, { value: d.note || "", onChange: (e) => setD({ ...d, note: e.target.value }), minRows: 2, placeholder: "\u3069\u3046\u306A\u308A\u305F\u3044\u304B\u3001\u3044\u3064\u307E\u3067\u306B", className: "mb-4" }),
         react_1.default.createElement("p", { className: "fs-label font-bold text-neutral-400 mb-2" }, "\u30A2\u30A4\u30B3\u30F3"),
         react_1.default.createElement("div", { className: "mb-5" },
             react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(lucide_react_1.Target, { size: 24 }), color: c, baseColor: planC, photo: false }))));
@@ -25960,7 +25968,6 @@ function PlanCard({ plan, records, onOpen, onPin, pressProps, hitQ }) {
     const done = !!p.doneAt;
     /* 2.33.0〜：進み具合は付けたリストのチェック、「あと何日」は付けた予定、次の一歩 */
     const S = planSummary(p, records);
-    const gl = S.goal ? daysBetween(S.today, S.goal.date) : null;
     return (react_1.default.createElement("div", { onClick: onOpen, role: "button", tabIndex: 0, ...(pressProps || {}), onKeyDown: (e) => { if (e.key === "Enter")
             onOpen(); }, 
         /* **やり遂げた札を、灰にしないこと。** 折り畳んだり色を抜いたりせず、
@@ -25978,14 +25985,10 @@ function PlanCard({ plan, records, onOpen, onPin, pressProps, hitQ }) {
             onPin && react_1.default.createElement(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } }),
             react_1.default.createElement(lucide_react_1.ChevronRight, { size: 20, className: "text-neutral-300 shrink-0" })),
         hits && react_1.default.createElement(PlanHitBox, { plan: p, hits: hits, words: hitWords }),
-        !done && (S.total > 0 || gl != null) && (react_1.default.createElement("div", { className: "mt-3" },
-            gl != null && react_1.default.createElement("div", { className: "flex items-center gap-2 mb-1.5" },
-                react_1.default.createElement("span", { className: "flex-1" }),
-                gl != null && react_1.default.createElement("span", { className: "fs-body-sm font-bold tabular-nums truncate", style: { color: c.deep, maxWidth: "70%" } }, (gl === 0 ? "\u4ECA\u65E5 " : `\u3042\u3068${gl}\u65E5 `) + (S.goal.title || ""))),
-            S.total > 0 && react_1.default.createElement(ProgressLine, { done: S.done, total: S.total, color: c, strong: S.done === S.total }),
-            S.next && react_1.default.createElement("div", { className: "mt-2 fs-body-sm text-neutral-700 flex items-center gap-1.5 min-w-0" },
-                react_1.default.createElement("span", { className: "ft-nextmark", style: { borderColor: c.mid } }),
-                react_1.default.createElement("span", { className: "truncate" }, S.next.it.text)))),
+        !done && (S.total > 0 || S.left != null) && (react_1.default.createElement("div", { className: "ft-pcard-foot" },
+            react_1.default.createElement(TaskSquares, { todo: S.todo, color: c, small: true }),
+            react_1.default.createElement("span", { className: "flex-1" }),
+            S.left != null && react_1.default.createElement("span", { className: "ft-pcard-left tabular-nums", style: { color: c.deep } }, S.left === 0 ? "今日" : S.left < 0 ? `${-S.left}日すぎた` : `あと${S.left}日`))),
         false && !done && dues.length > 0 && (react_1.default.createElement("div", { className: "mt-2.5 space-y-1.5" }, dues.map((g) => {
             const l = daysBetween(todayStr(), g.dueDate);
             return (react_1.default.createElement("div", { key: g.id, className: "flex items-center gap-2" },
@@ -26490,7 +26493,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
             react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, hideMenu: true, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
-            react_1.default.createElement("div", { ref: stepSwipeRef, className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
+            react_1.default.createElement("div", { ref: stepSwipeRef, className: "flex-1 overflow-y-auto px-5 py-4 ft-col ft-colwide pad-fab" },
                 /* 計画の中身は 2.33.0 で組み直した（PlanBody）。イベント（段階）はやめて、
                    ふつうの記録（予定・リスト・メモ）を付けて進める。**イベントの欄を戻さないこと** */
                 plan.doneAt && (react_1.default.createElement("div", { className: "mb-5" },
@@ -26500,9 +26503,9 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                         react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                             react_1.default.createElement("span", { className: "block fs-subhead font-bold", style: { color: color.deep } }, "\u3084\u308A\u9042\u3052\u307E\u3057\u305F"),
                             react_1.default.createElement("span", { className: "block fs-body-sm text-neutral-500" }, fmtDate(plan.doneAt)))))),
-                react_1.default.createElement(PlanBody, { plan: plan, records: records, color: color, onEditRecord: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, onSaveRecord: onSaveRecord, onAdd: (k) => onAddRecord(plan, k), onDone: () => setDoneAsk(true), onEditGoal: () => setSettingsOpen(true) })),
+                react_1.default.createElement(PlanBody, { plan: plan, records: records, color: color, onChange: onChange, onEditRecord: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, onAdd: (k) => onAddRecord(plan, k), onDone: () => setDoneAsk(true) })),
             react_1.default.createElement(SelectBar, { sel: sel, list: planRecords }),
-            !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
+            false && !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 })),
             stepEdit && (react_1.default.createElement(StepForm, { initial: stepEdit.step, plans: plans, planId: plan.id, onCancel: () => setStepEdit(null), onSave: saveStep, onDelete: stepEdit.isNew ? null : () => { delStep(stepEdit.step.id); setStepEdit(null); } })),
             addOpen && (react_1.default.createElement(TypePickSheet, { title: "\u306A\u306B\u3092\u8FFD\u52A0\u3057\u307E\u3059\u304B", types: TYPES, onCancel: () => setAddOpen(false), onPick: (k) => {
@@ -28639,6 +28642,27 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 .gs-bob { animation: gs-bob 1s ease-in-out infinite; }
 @keyframes gs-bob { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
+/* ============================================================
+   2.34.0：横長（iPad 横）は、下のタブを左の帯にして、中身を横いっぱいに使う。
+   **重なる画面（書く画面など）の柱の幅は変えない**（入力欄が横に伸びすぎて読みにくい）。
+   変えるのは、ふだんの面（.ft-page）と見出し（.ft-topchrome）、計画の画面（.ft-colwide）だけ
+   ============================================================ */
+@media (min-width: 820px) and (orientation: landscape) {
+  :root { --ft-rail: 78px; --ft-nav-h: 0px; --ft-widew: calc(100vw - var(--ft-rail) - 40px); }
+  .ft-shell { padding-left: var(--ft-rail); }
+  .ft-page > .ft-col, .ft-topchrome > .ft-col { max-width: var(--ft-widew); }
+  .ft-colwide.ft-col { max-width: calc(100vw - 56px); }
+  .ft-topchrome { left: var(--ft-rail); }
+  .ft-page .ft-bleed, .ft-topchrome .ft-bleed {
+    margin-left: calc((100% - (100vw - var(--ft-rail))) / 2); margin-right: calc((100% - (100vw - var(--ft-rail))) / 2);
+    padding-left: calc(((100vw - var(--ft-rail)) - 100%) / 2); padding-right: calc(((100vw - var(--ft-rail)) - 100%) / 2); }
+  .ft-tabbar-wrap { top: 0; right: auto; bottom: 0; width: var(--ft-rail); border-top: 0; border-right: 1px solid #E5E5E5;
+    padding: env(safe-area-inset-top) 0 0; display: flex; flex-direction: column; justify-content: center; }
+  .ft-tabbar-wrap > div { flex-direction: column; max-width: none; width: 100%; margin: 0; gap: 10px; }
+  .ft-tabbar-wrap .ft-tabbtn { flex: none; min-height: 66px; }
+  .ft-fab { right: 28px; }
+  .ft-fab-side { right: 96px; }
+}
 `;
 /* ============================================================
    下のタブ
@@ -28670,11 +28694,16 @@ function CountdownStrip({ records, upcoming, onEdit, onOpenPlan, plans }) {
         if (r.joy && r.type === "schedule" && isDayRec(r) && r.date >= today)
             items.push({ key: r.id, left: daysBetween(today, r.date), title: r.title || "（名前なし）", joy: true, onTap: () => onEdit(r) });
     });
-    /* 計画に付けた予定（2.33.0〜）。計画ごとに、いちばん近いものだけ。計画の色で */
+    /* 計画（2.34.0〜）。「いつまでに」があればその日、なければ付けた予定でいちばん近いもの。計画の色で */
     (plans || []).filter((pl) => !pl.doneAt).forEach((pl) => {
+        const c = planColorOf(pl, planCol);
+        if (pl.goalDate && pl.goalDate >= today) {
+            items.push({ key: "pg" + pl.id, left: daysBetween(today, pl.goalDate), title: pl.name || "（名前なし）", color: c, onTap: () => onOpenPlan(pl) });
+            return;
+        }
         const g = (records || []).filter((r) => r.planId === pl.id && r.type === "schedule" && !r.joy && isDayRec(r) && r.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1))[0];
         if (g)
-            items.push({ key: "pg" + g.id, left: daysBetween(today, g.date), title: g.title || pl.name || "（名前なし）", color: planColorOf(pl, planCol), onTap: () => onOpenPlan(pl) });
+            items.push({ key: "pg" + g.id, left: daysBetween(today, g.date), title: g.title || pl.name || "（名前なし）", color: c, onTap: () => onOpenPlan(pl) });
     });
     (upcoming || []).forEach(({ plan, list }) => {
         const c = planColorOf(plan, planCol);
@@ -28705,11 +28734,11 @@ function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
     const [inkOpen, setInkOpen] = (0, react_1.useState)(false);
     const wide = useWideLand();
     const endRef = (0, react_1.useRef)(null);
-    /* 古いものが上、新しいものが下（書くところに近いほうが新しい）。留めたものは上にまとめる */
+    /* 新しいものが上（書く欄のすぐ下）。留めたものは上にまとめる */
     const list = (0, react_1.useMemo)(() => records.filter((r) => r.scope === "stock" && !r.planId).sort((a, b) => {
         if (!!a.pinned !== !!b.pinned)
             return a.pinned ? -1 : 1;
-        return String(a.createdAt || "").localeCompare(String(b.createdAt || ""));
+        return String(b.createdAt || "").localeCompare(String(a.createdAt || ""));
     }), [records]);
     const tags = (0, react_1.useMemo)(() => {
         const m = new Map();
@@ -28717,11 +28746,8 @@ function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
         return [...m.keys()];
     }, [list]);
     const shown = list.filter((r) => filter === "all" ? true : filter === "task" ? r.type === "checklist" : filter === "memo" ? r.type === "memo" : normalizeTags(r.tags).includes(filter));
-    const toEnd = () => requestAnimationFrame(() => { try {
-        window.scrollTo(0, document.documentElement.scrollHeight);
-    }
-    catch (e) { /* noop */ } });
-    (0, react_1.useEffect)(() => { toEnd(); const t = setTimeout(toEnd, 450); return () => clearTimeout(t); }, []); // eslint-disable-line
+    const toEnd = () => { };
+    const rows = Math.max(1, Math.min(8, text.split("\n").length));
     const send = () => {
         const raw = text.trim();
         if (!raw)
@@ -28738,7 +28764,7 @@ function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
         setText("");
         setFilter("all");
         toEnd();
-        setTimeout(toEnd, 300);
+        
     };
     /* 「今日やる」は、ストックから消さずに pick（やる日）だけを付け外しする（2.32.0〜） */
     const toToday = (r) => onSave({ ...r, pick: r.pick === todayStr() ? "" : todayStr(), updatedAt: new Date().toISOString() }, { keepOpen: true });
@@ -28754,7 +28780,7 @@ function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
     /* 書くところ。画面の下（下のタブのすぐ上）に貼りつく。キーボードが出たら、ページごと上がる */
     const cap = ce("div", { className: "ft-stdock" },
         ce("div", { className: "ft-stcap" },
-            ce("textarea", { value: text, onChange: (e) => setText(e.target.value), rows: 1, placeholder: "ふと思ったことを書く", className: "ft-input ft-stcap-in", onKeyDown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            ce("textarea", { value: text, onChange: (e) => setText(e.target.value), rows: rows, placeholder: kind === "task" ? "やること（改行で次の行）" : "ふと思ったことを書く", className: "ft-input ft-stcap-in", onKeyDown: (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                     e.preventDefault();
                     send();
                 } } }),
@@ -28764,7 +28790,7 @@ function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
                 !wide && ce("button", { type: "button", onClick: () => setInkOpen(true), className: "ft-stkind ft-tap" }, ce(lucide_react_1.Pencil, { size: 14 }), "手書き"),
                 ce("span", { className: "flex-1" }),
                 ce("button", { type: "button", onClick: send, disabled: !text.trim(), "aria-label": "ストックに入れる", className: "ft-stsend ft-tap" }, ce(lucide_react_1.Plus, { size: 20 })))));
-    const left = ce("div", { className: "ft-stmain" }, listEl, cap);
+    const left = ce("div", { className: "ft-stmain" }, cap, listEl);
     return (ce("div", { className: "ft-stockpage" },
         ce(TopChrome, null,
             ce(ScreenHeader, { title: "ストック" }),
@@ -28868,8 +28894,8 @@ const INK_PENS = [
 ];
 let inkPenSeen = false;
 function inkDraw(ctx, s, scale) {
-    const p = s.p;
-    if (!p.length)
+    const p = s && s.p;
+    if (!p || !p.length)
         return;
     ctx.save();
     ctx.globalAlpha = s.a == null ? 1 : s.a;
@@ -28904,169 +28930,239 @@ function inkDraw(ctx, s, scale) {
     }
     ctx.restore();
 }
-/* 絵にする。書いたところだけを切り抜く（白地） */
-function inkToPng(strokes) {
+/* 絵にする。たては書いたところだけ、よこはページの幅いっぱい（白地） */
+function inkToPng(strokes, W) {
+    W = W || INK_W;
     if (!strokes || !strokes.length)
         return null;
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    strokes.forEach((s) => s.p.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }));
+    let y0 = Infinity, y1 = -Infinity;
+    strokes.forEach((s) => (s.p || []).forEach((q) => { y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }));
+    if (!isFinite(y0))
+        return null;
     const m = 36;
-    x0 = Math.max(0, Math.floor(x0 - m)); y0 = Math.max(0, Math.floor(y0 - m));
-    x1 = Math.min(INK_W, Math.ceil(x1 + m)); y1 = Math.min(INK_H, Math.ceil(y1 + m));
-    /* 横は、ページの幅いっぱいを使う（字の大きさが札ごとにばらつかない） */
-    x0 = 0; x1 = INK_W;
-    const w = x1 - x0, h = Math.max(160, y1 - y0);
+    y0 = Math.max(0, Math.floor(y0 - m));
+    y1 = Math.ceil(y1 + m);
+    const h = Math.max(160, y1 - y0);
     const cv = document.createElement("canvas");
     const k = 0.9;
-    cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+    cv.width = Math.round(W * k);
+    cv.height = Math.round(h * k);
     const ctx = cv.getContext("2d");
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, cv.width, cv.height);
-    ctx.translate(-x0 * k, -y0 * k);
+    ctx.translate(0, -y0 * k);
     strokes.forEach((s) => inkDraw(ctx, s, k));
-    return { png: cv.toDataURL("image/png"), ar: Math.round((w / h) * 1000) / 1000 };
+    return { png: cv.toDataURL("image/png"), ar: Math.round((W / h) * 1000) / 1000 };
 }
-function InkCanvas({ value, onChange, height, toolbarRight }) {
+/* 手書きの面。
+   ・**面は、置かれた箱にぴったり収める（面の中では画面を送らない）。** 書いている途中で画面が動くと書けない
+   ・新しく書くときは、箱の形（横長・縦長）に合わせた紙になる。前に書いたものは、その紙の形のまま収める
+   ・面の上では、ブラウザの送り・拡大を止める（touch-action: none）。ペンを使う人が指で触れたときは、
+     こちらで画面を送る（線は引かない）
+   ・「戻す」「やり直す」は、どちらも何度でも
+   ・**消しゴムの途中の印（erase）を、線として描かないこと。** 2.33.0 はここで落ちて「画面を表示できませんでした」が出た */
+function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass }) {
     const wrapRef = (0, react_1.useRef)(null);
     const cvRef = (0, react_1.useRef)(null);
     const [strokes, setStrokes] = (0, react_1.useState)(() => (value && Array.isArray(value.s) ? value.s : []));
     const strokesRef = (0, react_1.useRef)(strokes);
     strokesRef.current = strokes;
     const [undo, setUndo] = (0, react_1.useState)([]);
+    const [redo, setRedo] = (0, react_1.useState)([]);
     const [pen, setPen] = (0, react_1.useState)("ink");
-    const [penSeen, setPenSeen] = (0, react_1.useState)(inkPenSeen);
     const cur = (0, react_1.useRef)(null);
-    const [wpx, setWpx] = (0, react_1.useState)(0);
+    const pan = (0, react_1.useRef)(null);
+    const [box, setBox] = (0, react_1.useState)({ w: 0, h: 0 });
+    /* 紙の大きさ（中の座標）。前に書いたものがあればその大きさ、なければ箱の形から決める */
+    const pageRef = (0, react_1.useRef)(value && value.w && value.h ? { w: value.w, h: value.h } : null);
     (0, react_1.useLayoutEffect)(() => {
         const el = wrapRef.current;
         if (!el)
             return undefined;
-        const put = () => setWpx(el.clientWidth);
+        /* 横長の見開きの面（ft-inkfill）は、画面の下端までの高さにする。送らなくても紙ぜんたいが見える */
+        const fit = () => {
+            if (!boxClass || boxClass.indexOf("ft-inkfill") < 0)
+                return;
+            const top = el.getBoundingClientRect().top + (window.scrollY || 0);
+            el.style.height = Math.max(340, Math.round(window.innerHeight - top - 14)) + "px";
+        };
+        const put = () => { fit(); setBox((p) => (p.w === el.clientWidth && p.h === el.clientHeight ? p : { w: el.clientWidth, h: el.clientHeight })); };
         put();
+        const t1 = setTimeout(put, 300), t2 = setTimeout(put, 1200);
+        window.addEventListener("resize", put);
         if (typeof ResizeObserver === "undefined")
             return undefined;
         const ro = new ResizeObserver(put);
         ro.observe(el);
-        return () => ro.disconnect();
+        return () => { ro.disconnect(); clearTimeout(t1); clearTimeout(t2); window.removeEventListener("resize", put); };
     }, []);
-    const scale = wpx / INK_W;
+    /* **まだ何も書いていないあいだは、紙の形を決めきらないこと。** 見出しの高さがあとから決まると、箱の形が変わる。
+       はじめの1本を書いたときの形で決まる（commit で pageRef に入れる） */
+    const page = pageRef.current || (box.w > 0 && box.h > 0 ? { w: INK_W, h: Math.round(INK_W * Math.max(0.45, Math.min(1.6, box.h / box.w))) } : { w: INK_W, h: INK_H });
+    const scale = box.w > 0 && box.h > 0 ? Math.min(box.w / page.w, box.h / page.h) : 0;
+    const cw = page.w * scale, ch = page.h * scale;
     const redraw = () => {
         const cv = cvRef.current;
-        if (!cv || !wpx)
+        if (!cv || !scale)
             return;
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
-        const W = Math.round(wpx * dpr), H = Math.round(INK_H * scale * dpr);
+        const W = Math.round(cw * dpr), H = Math.round(ch * dpr);
         if (cv.width !== W || cv.height !== H) {
-            cv.width = W; cv.height = H;
+            cv.width = W;
+            cv.height = H;
         }
         const ctx = cv.getContext("2d");
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, W, H);
         strokesRef.current.forEach((s) => inkDraw(ctx, s, scale * dpr));
-        if (cur.current)
+        if (cur.current && !cur.current.erase)
             inkDraw(ctx, cur.current, scale * dpr);
     };
-    (0, react_1.useEffect)(redraw, [strokes, wpx]); // eslint-disable-line
+    (0, react_1.useEffect)(redraw, [strokes, box.w, box.h]); // eslint-disable-line
+    const emit = (next) => { if (onChange)
+        onChange({ v: 1, w: page.w, h: page.h, s: next }); };
     const commit = (next) => {
-        setUndo((u) => [...u.slice(-40), strokesRef.current]);
+        if (!pageRef.current)
+            pageRef.current = page;
+        setUndo((u) => [...u.slice(-60), strokesRef.current]);
+        setRedo([]);
         strokesRef.current = next;
         setStrokes(next);
-        if (onChange)
-            onChange({ v: 1, w: INK_W, h: INK_H, s: next });
+        emit(next);
     };
     const pt = (e) => {
         const r = cvRef.current.getBoundingClientRect();
-        const x = ((e.clientX - r.left) / r.width) * INK_W, y = ((e.clientY - r.top) / r.height) * INK_H;
+        const x = ((e.clientX - r.left) / r.width) * page.w, y = ((e.clientY - r.top) / r.height) * page.h;
         return [Math.round(x * 10) / 10, Math.round(y * 10) / 10, e.pointerType === "pen" ? Math.round((e.pressure || 0.5) * 100) / 100 : 0.5];
     };
-    const eraseAt = ([x, y]) => {
-        const R = 16;
-        const keep = strokesRef.current.filter((s) => !s.p.some((q) => Math.abs(q[0] - x) < R && Math.abs(q[1] - y) < R));
+    const eraseAt = (q) => {
+        const R = 18;
+        const keep = strokesRef.current.filter((s) => !(s.p || []).some((a) => Math.abs(a[0] - q[0]) < R && Math.abs(a[1] - q[1]) < R));
         if (keep.length !== strokesRef.current.length)
             commit(keep);
     };
+    /* 指で画面を送る相手（重なる画面の送り場か、ページ） */
+    const scroller = () => { const el = wrapRef.current && wrapRef.current.closest ? wrapRef.current.closest(".overflow-y-auto") : null; return el || window; };
     const down = (e) => {
-        if (e.pointerType === "pen" && !inkPenSeen) {
+        if (!cvRef.current)
+            return;
+        if (e.pointerType === "pen")
             inkPenSeen = true;
-            setPenSeen(true);
+        if (e.pointerType === "touch" && inkPenSeen) {
+            pan.current = { id: e.pointerId, y: e.clientY };
+            return;
         }
-        if (e.pointerType === "touch" && inkPenSeen)
-            return; /* ペンを使う人は、指では書かない（動かすだけ） */
+        if (cur.current)
+            return; /* 2本目の指は数えない */
         e.preventDefault();
         try {
             cvRef.current.setPointerCapture(e.pointerId);
         }
         catch (er) { /* noop */ }
         if (pen === "erase") {
-            cur.current = { erase: true };
+            cur.current = { erase: true, id: e.pointerId };
             eraseAt(pt(e));
             return;
         }
         const P = INK_PENS.find((x) => x.k === pen) || INK_PENS[0];
-        cur.current = { c: P.c, w: P.w, a: P.a, p: [pt(e)] };
+        cur.current = { c: P.c, w: P.w, a: P.a, p: [pt(e)], id: e.pointerId };
         redraw();
     };
     const move = (e) => {
-        if (!cur.current)
-            return;
-        e.preventDefault();
-        const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
-        if (cur.current.erase) {
-            evs.forEach((ev) => eraseAt(pt(ev)));
+        if (pan.current && pan.current.id === e.pointerId) {
+            const dy = pan.current.y - e.clientY;
+            pan.current.y = e.clientY;
+            try {
+                scroller().scrollBy(0, dy);
+            }
+            catch (er) { /* noop */ }
             return;
         }
-        evs.forEach((ev) => cur.current.p.push(pt(ev)));
+        const c = cur.current;
+        if (!c || c.id !== e.pointerId || !cvRef.current)
+            return;
+        e.preventDefault();
+        const ne = e.nativeEvent;
+        const evs = ne && ne.getCoalescedEvents ? ne.getCoalescedEvents() : null;
+        const list = evs && evs.length ? evs.map((x) => ({ clientX: x.clientX, clientY: x.clientY, pressure: x.pressure, pointerType: e.pointerType })) : [e];
+        if (c.erase) {
+            list.forEach((ev) => eraseAt(pt(ev)));
+            return;
+        }
+        list.forEach((ev) => c.p.push(pt(ev)));
         redraw();
     };
-    const up = () => {
-        const s = cur.current;
-        cur.current = null;
-        if (!s || s.erase)
+    const up = (e) => {
+        if (pan.current && (!e || pan.current.id === e.pointerId)) {
+            pan.current = null;
             return;
-        commit([...strokesRef.current, s]);
+        }
+        const s = cur.current;
+        if (!s || (e && s.id !== e.pointerId))
+            return;
+        cur.current = null;
+        if (s.erase)
+            return;
+        commit([...strokesRef.current, { c: s.c, w: s.w, a: s.a, p: s.p }]);
     };
     const doUndo = () => {
         if (!undo.length)
             return;
         const prev = undo[undo.length - 1];
         setUndo(undo.slice(0, -1));
+        setRedo((r) => [...r, strokesRef.current]);
         strokesRef.current = prev;
         setStrokes(prev);
-        if (onChange)
-            onChange({ v: 1, w: INK_W, h: INK_H, s: prev });
+        emit(prev);
+    };
+    const doRedo = () => {
+        if (!redo.length)
+            return;
+        const next = redo[redo.length - 1];
+        setRedo(redo.slice(0, -1));
+        setUndo((u) => [...u, strokesRef.current]);
+        strokesRef.current = next;
+        setStrokes(next);
+        emit(next);
     };
     const tool = (k, child, label) => react_1.default.createElement("button", { key: k, type: "button", onClick: () => setPen(k), "aria-label": label, "aria-pressed": pen === k, className: "ft-inktool ft-tap" + (pen === k ? " on" : "") }, child);
     return react_1.default.createElement("div", { className: "ft-ink" },
         react_1.default.createElement("div", { className: "ft-inkbar" },
             INK_PENS.map((P) => tool(P.k, react_1.default.createElement("span", { className: "ft-inkdot" + (P.k === "mark" ? " mark" : ""), style: { background: P.c } }), P.k === "mark" ? "マーカー" : "ペン")),
             tool("erase", react_1.default.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinejoin: "round" }, react_1.default.createElement("path", { d: "M8 20h12M5.5 14.5l8-8a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8.5z" })), "消しゴム"),
-            react_1.default.createElement("button", { type: "button", onClick: doUndo, disabled: !undo.length, "aria-label": "元に戻す", className: "ft-inktool ft-tap" }, react_1.default.createElement(lucide_react_1.Undo2, { size: 18 })),
+            react_1.default.createElement("span", { className: "ft-inksep" }),
+            react_1.default.createElement("button", { type: "button", onClick: doUndo, disabled: !undo.length, "aria-label": "元に戻す", className: "ft-inktool ft-tap" }, react_1.default.createElement(lucide_react_1.Undo2, { size: 19 })),
+            react_1.default.createElement("button", { type: "button", onClick: doRedo, disabled: !redo.length, "aria-label": "やり直す", className: "ft-inktool ft-tap" }, react_1.default.createElement(lucide_react_1.Redo2, { size: 19 })),
             react_1.default.createElement("span", { className: "flex-1" }),
             toolbarRight || null),
-        react_1.default.createElement("div", { ref: wrapRef, className: "ft-inkpage", style: height ? { height } : undefined },
-            react_1.default.createElement("canvas", { ref: cvRef, className: "ft-inkcv", style: { width: wpx || "100%", height: INK_H * scale || 0, touchAction: penSeen ? "pan-y" : "none" }, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up, onPointerLeave: (e) => { if (cur.current && e.pointerType !== "mouse")
-                    up(); } })));
+        react_1.default.createElement("div", { ref: wrapRef, className: "ft-inkbox " + (boxClass || ""), style: boxStyle },
+            react_1.default.createElement("canvas", { ref: cvRef, className: "ft-inkcv", style: { width: cw || 0, height: ch || 0 }, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up })));
 }
-/* 手書きを書く画面（下から）。新しく書くときも、書き直すときも */
+/* 手書きを書く画面（下から）。紙は画面いっぱい。新しく書くときも、書き直すときも */
 function InkEditor({ initial, onSave, onCancel, title = "手書き" }) {
     const inkRef = (0, react_1.useRef)(initial || null);
     const [dirty, setDirty] = (0, react_1.useState)(false);
     const save = () => {
-        const s = inkRef.current && inkRef.current.s ? inkRef.current.s : [];
+        const v = inkRef.current;
+        const s = v && v.s ? v.s : [];
         if (!s.length) {
             onCancel();
             return;
         }
-        const out = inkToPng(s);
-        onSave({ ink: { v: 1, w: INK_W, h: INK_H, ar: out.ar, s }, png: out.png });
+        const out = inkToPng(s, v.w);
+        if (!out) {
+            onCancel();
+            return;
+        }
+        onSave({ ink: { v: 1, w: v.w || INK_W, h: v.h || INK_H, ar: out.ar, s }, png: out.png });
     };
     return react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60 },
-        react_1.default.createElement("div", { className: "absolute inset-0 bg-app flex flex-col", "data-ft-overlay": "" },
+        react_1.default.createElement("div", { className: "absolute inset-0 bg-app flex flex-col ft-inkedit", "data-ft-overlay": "" },
             react_1.default.createElement("div", { className: "shrink-0 flex items-center gap-2 px-3 border-b border-neutral-200 bg-white", style: { paddingTop: "calc(env(safe-area-inset-top) + 8px)", paddingBottom: 8 } },
                 react_1.default.createElement("button", { type: "button", onClick: onCancel, "aria-label": "閉じる", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap" }, react_1.default.createElement(lucide_react_1.X, { size: 24 })),
                 react_1.default.createElement("span", { className: "flex-1 text-center fs-subhead font-bold text-neutral-900 flex items-center justify-center gap-1.5" }, react_1.default.createElement(lucide_react_1.Pencil, { size: 16, className: "text-th-800" }), title),
-                react_1.default.createElement("button", { type: "button", onClick: save, disabled: !dirty && !(initial && initial.s && initial.s.length), className: BTN_PRIMARY + " px-5 min-h-[42px] fs-body" }, "保存")),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-3 py-3 ft-col" },
+                react_1.default.createElement("button", { type: "button", onClick: save, disabled: !dirty, className: BTN_PRIMARY + " px-5 fs-body", style: { minHeight: 42 } }, "保存")),
+            react_1.default.createElement("div", { className: "flex-1 min-h-0 ft-inkedit-body" },
                 react_1.default.createElement(InkCanvas, { value: initial, onChange: (v) => { inkRef.current = v; setDirty(true); } }))));
 }
 /* 手書きのメモを、書く画面から書き直すためのボタン（RecordForm の中） */
@@ -29091,38 +29187,38 @@ function DayInkPanel({ date, records, onSave }) {
         pending.current = null;
         if (!v)
             return;
-        const out = inkToPng(v.s);
-        const base = recRef.current || { ...emptyRecord("memo", date), id: idRef.current || uid(), inkDay: date };
-        idRef.current = base.id;
-        onSave({ ...base, ink: out ? { ...v, ar: out.ar } : { ...v, s: [] }, images: out ? [out.png] : [], updatedAt: new Date().toISOString() }, { keepOpen: true });
+        try {
+            const out = inkToPng(v.s, v.w);
+            const base = recRef.current || { ...emptyRecord("memo", date), id: idRef.current || uid(), inkDay: date };
+            idRef.current = base.id;
+            onSave({ ...base, ink: out ? { ...v, ar: out.ar } : { ...v, s: [] }, images: out ? [out.png] : [], updatedAt: new Date().toISOString() }, { keepOpen: true });
+        }
+        catch (e) {
+            console.error("手書きを保存できませんでした", e);
+        }
     };
     (0, react_1.useEffect)(() => () => flush(), [date]); // eslint-disable-line
-    const d = parseYmd(date);
-    return react_1.default.createElement("div", { className: "ft-daypage" },
-        react_1.default.createElement("div", { className: "ft-daypage-h" },
-            react_1.default.createElement("b", null, d ? `${d.getMonth() + 1}/${d.getDate()} のページ` : ""),
-            react_1.default.createElement("span", null, "ペンで書く・指で動かす")),
-        react_1.default.createElement(InkCanvas, { key: date, value: rec ? rec.ink : null, onChange: (v) => { pending.current = v; clearTimeout(timer.current); timer.current = setTimeout(flush, 900); } }));
+    return react_1.default.createElement(InkCanvas, { key: date, value: rec ? rec.ink : null, boxClass: "ft-inkfill", onChange: (v) => { pending.current = v; clearTimeout(timer.current); timer.current = setTimeout(flush, 900); } });
 }
-/* ストックの「ふと書き」（横長のストックの右）。書いて「ストックに入れる」で1件になる */
+/* ストックの「ふと書き」（横長のストックの右）。書いて「ストックへ」で1件になる */
 function StockInkPanel({ onSave }) {
     const [k, setK] = (0, react_1.useState)(0);
     const inkRef = (0, react_1.useRef)(null);
     const [has, setHas] = (0, react_1.useState)(false);
     const put = () => {
-        const s = inkRef.current && inkRef.current.s;
-        if (!s || !s.length)
+        const v = inkRef.current;
+        if (!v || !v.s || !v.s.length)
             return;
-        const out = inkToPng(s);
+        const out = inkToPng(v.s, v.w);
+        if (!out)
+            return;
         const rec = emptyRecord("memo", todayStr(), "stock");
-        onSave({ ...rec, ink: { v: 1, w: INK_W, h: INK_H, ar: out.ar, s }, images: [out.png] }, { keepOpen: true });
+        onSave({ ...rec, ink: { v: 1, w: v.w, h: v.h, ar: out.ar, s: v.s }, images: [out.png] }, { keepOpen: true });
         inkRef.current = null;
         setHas(false);
         setK((n) => n + 1);
     };
-    /* 見出しは置かない（上の帯に隠れる）。ページの高さは画面に収める（はみ出したぶんは書けない余白） */
-    return react_1.default.createElement("div", { className: "ft-daypage" },
-        react_1.default.createElement(InkCanvas, { key: k, value: null, height: "calc(100dvh - var(--ft-nav-h) - 210px)", onChange: (v) => { inkRef.current = v; setHas(!!(v && v.s && v.s.length)); }, toolbarRight: react_1.default.createElement(react_1.default.Fragment, null, react_1.default.createElement("span", { className: "ft-daypage-h", style: { marginRight: 8 } }, react_1.default.createElement("b", null, "\u3075\u3068\u66F8\u304D")), react_1.default.createElement("button", { type: "button", onClick: put, disabled: !has, className: BTN_PRIMARY + " px-4 fs-body-sm", style: { minHeight: 36 } }, "\u30B9\u30C8\u30C3\u30AF\u3078")) }));
+    return react_1.default.createElement(InkCanvas, { key: k, value: null, boxClass: "ft-inkfill", onChange: (v) => { inkRef.current = v; setHas(!!(v && v.s && v.s.length)); }, toolbarRight: react_1.default.createElement("button", { type: "button", onClick: put, disabled: !has, className: BTN_PRIMARY + " px-4 fs-body-sm", style: { minHeight: 38, whiteSpace: "nowrap" } }, "ストックへ") });
 }
 /* ============================================================
    週のバーチカル（横長の Today の「週」）。紙の手帳の見開きのように、
@@ -29138,6 +29234,7 @@ function dayRecordsOf(records, date) {
 const WEEK_EN = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 function WeekVertical({ start, records, onOpenDay, onEdit }) {
     const slotColor = useSchedColor();
+    const planCtx = react_1.default.useContext(PlanCtx);
     const today = todayStr();
     const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
     const per = days.map((d) => dayRecordsOf(records, d));
@@ -29155,7 +29252,7 @@ function WeekVertical({ start, records, onOpenDay, onEdit }) {
         per.map((list, i) => ce("div", { key: "a" + i, className: "ft-wv-ad" }, list.filter((r) => r.type === "schedule" && !r.time).map((r) => ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wv-chip ft-tap" + (r.joy ? " joy" : ""), style: r.joy ? undefined : { background: slotColor(r.color).soft, color: slotColor(r.color).deep } }, r.title || "（名前なし）")))),
         ce("div", { className: "ft-wv-side" }),
         per.map((list, i) => {
-            const items = list.filter((r) => r.type === "checklist").flatMap((r) => r.items || []);
+            const items = [...list.filter((r) => r.type === "checklist").flatMap((r) => r.items || []), ...planDayTasks(planCtx.plans, days[i]).flatMap((x) => x.items)];
             return ce("div", { key: "t" + i, className: "ft-wv-tk" }, items.slice(0, 8).map((it, j) => ce("i", { key: j, className: it.done ? "on" : "" })), items.length > 8 ? ce("small", null, "+" + (items.length - 8)) : null);
         }),
         ce("div", { className: "ft-wv-hrs" }, [6, 9, 12, 15, 18, 21, 24].map((h) => ce("span", { key: h, style: { top: ((h - 6) / 18 * 100) + "%" } }, h))),
@@ -29182,57 +29279,190 @@ function WeekWide({ start, records, onOpenDay, onEdit, onToggleItem, onPin, onAd
         react_1.default.createElement(WeekVertical, { start: start, records: records, onOpenDay: onOpenDay, onEdit: onEdit }));
 }
 /* ============================================================
-   計画のまとめ（2.33.0〜）
-   計画は「目指すこと」と、そこに付けたふつうの記録（予定・リスト・メモ）のまとまり。
-   **計画だけの特別な部品（イベント）は使わない。** 進み具合は付けたリストのチェック、
-   「あと何日」は付けた予定、次の一歩は、まだ済んでいないいちばん上のやること
+   計画（2.34.0 で作り直し）
+   計画＝「ゴール」と「いつまでに」、そこへ向かう「やること」の1枚の紙。
+   ・やることは計画そのものが持つ（plan.todo ＝ [{ id, text, done, date, sec }]）。
+     **記録（リスト）を計画に結びつける形にしないこと。** 「計画に対してこれをやる。それが今日になる」
+     という順番で、やる日（date）を入れたものだけが、その日の Today に計画の札として出る
+   ・sec は見出し（段階）。plan.secs に並び順を持つ。見出しなし（""）もある
+   ・予定とメモは、ふつうの記録を planId で付ける（予定は道のりの上の節目になる）
+   ・進み具合は、やることの数だけの小さな四角（済んだら塗る）。％や棒は出さない
    ============================================================ */
+const PlanCtx = react_1.default.createContext({ plans: [], toggle: () => { }, open: () => { } });
+function BothProviders({ actions, planv, children }) {
+    return react_1.default.createElement(PlanCtx.Provider, { value: planv }, react_1.default.createElement(RecordActionsContext.Provider, { value: actions }, children));
+}
+function planTodo(p) { return Array.isArray(p && p.todo) ? p.todo : []; }
+function planSecs(p) {
+    const out = [];
+    (Array.isArray(p.secs) ? p.secs : []).forEach((s) => { if (s && !out.includes(s))
+        out.push(s); });
+    planTodo(p).forEach((t) => { if (t.sec && !out.includes(t.sec))
+        out.push(t.sec); });
+    return out;
+}
 function planSummary(plan, records) {
     const today = todayStr();
     const recs = records.filter((r) => r.planId === plan.id);
-    const lists = recs.filter((r) => r.type === "checklist");
-    const items = lists.flatMap((r) => (r.items || []).map((it) => ({ it, r })));
-    const done = items.filter((x) => x.it.done).length;
-    const order = (a, b) => (a.scope === "stock" ? "9" : a.date || "") < (b.scope === "stock" ? "9" : b.date || "") ? -1 : (a.scope === "stock" ? "9" : a.date || "") > (b.scope === "stock" ? "9" : b.date || "") ? 1 : String(a.createdAt).localeCompare(String(b.createdAt));
-    const openLists = lists.filter((r) => (r.items || []).some((i) => !i.done)).sort(order);
-    const next = openLists.length ? { r: openLists[0], it: openLists[0].items.find((i) => !i.done) } : null;
+    const todo = planTodo(plan);
     const scheds = recs.filter((r) => r.type === "schedule").sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    const goal = scheds.find((r) => r.date >= today) || null;
-    return { recs, lists, total: items.length, done, next, scheds, goal, memos: recs.filter((r) => r.type === "memo").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))), today };
+    const next = scheds.find((r) => r.date >= today) || null;
+    const goalDate = plan.goalDate || "";
+    return { recs, todo, total: todo.length, done: todo.filter((t) => t.done).length, scheds, next, goalDate,
+        left: goalDate ? daysBetween(today, goalDate) : (next ? daysBetween(today, next.date) : null),
+        leftLabel: goalDate ? "" : (next ? next.title || "" : ""),
+        memos: recs.filter((r) => r.type === "memo").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))),
+        lists: recs.filter((r) => r.type === "checklist"), today };
 }
-function PlanBody({ plan, records, color, onEditRecord, onToggleItem, onPin, onSaveRecord, onAdd, onDone, onEditGoal }) {
+/* 進み具合の四角。やること1つにつき1つ */
+function TaskSquares({ todo, color, small }) {
+    if (!todo.length)
+        return null;
+    return react_1.default.createElement("span", { className: "ft-sq" + (small ? " s" : "") }, todo.map((t) => react_1.default.createElement("i", { key: t.id, style: t.done ? { background: color.mid, borderColor: color.mid } : undefined })));
+}
+/* 道のり：始まりからゴールまでの1本の線。今日・予定（ひし形）・日付のあるやること（四角） */
+function PlanRoad({ plan, S, color }) {
+    const dated = S.todo.filter((t) => t.date);
+    const pts = [S.today, ...dated.map((t) => t.date), ...S.scheds.map((r) => r.date)];
+    if (!S.goalDate && pts.length < 2)
+        return null;
+    const created = (plan.createdAt || "").slice(0, 10) || S.today;
+    let a = [created, ...pts].sort()[0];
+    let b = S.goalDate || pts.slice().sort().pop();
+    if (b <= a)
+        b = addDays(a, 30);
+    const span = Math.max(1, daysBetween(a, b));
+    const x = (d) => Math.max(0, Math.min(100, (daysBetween(a, d) / span) * 100));
+    const months = [];
+    const d0 = parseYmd(a);
+    let m = new Date(d0.getFullYear(), d0.getMonth() + 1, 1);
+    const end = parseYmd(b);
+    const stepM = span > 400 ? 3 : span > 200 ? 2 : 1;
+    while (m <= end) {
+        months.push({ k: ymd(m), l: (m.getMonth() + 1) + "月" });
+        m = new Date(m.getFullYear(), m.getMonth() + stepM, 1);
+    }
+    const ce = react_1.default.createElement;
+    const md = (s) => { const d = parseYmd(s); return d ? `${d.getMonth() + 1}/${d.getDate()}` : ""; };
+    return ce("div", { className: "ft-road" },
+        ce("div", { className: "ft-road-line" },
+            ce("span", { className: "ft-road-fill", style: { width: x(S.today) + "%", background: color.mid } }),
+            months.map((mo) => ce("span", { key: mo.k, className: "ft-road-tick", style: { left: x(mo.k) + "%" } }, ce("small", null, mo.l))),
+            dated.map((t) => ce("i", { key: t.id, className: "ft-road-task", title: t.text, style: { left: x(t.date) + "%", ...(t.done ? { background: color.mid, borderColor: color.mid } : { borderColor: color.mid }) } })),
+            S.scheds.map((r) => ce("i", { key: r.id, className: "ft-road-ms", title: r.title, style: { left: x(r.date) + "%", background: r.joy ? "#D0664C" : color.deep } })),
+            ce("span", { className: "ft-road-today", style: { left: x(S.today) + "%" } }),
+            S.goalDate ? ce("span", { className: "ft-road-goal", style: { background: color.deep } }) : null),
+        ce("div", { className: "ft-road-ends" }, ce("span", null, md(a)), ce("span", { className: "flex-1" }), ce("span", { style: S.goalDate ? { color: color.deep, fontWeight: 700 } : undefined }, md(b))));
+}
+/* やることの1行。字はその場で直せる。右の日付の札で、やる日を決める */
+function PlanTaskRow({ t, color, onPatch, onRemove }) {
+    const [open, setOpen] = (0, react_1.useState)(false);
+    const today = todayStr();
+    const ce = react_1.default.createElement;
+    const lbl = !t.date ? null : t.date === today ? "今日" : t.date === addDays(today, 1) ? "明日" : (() => { const d = parseYmd(t.date); return d ? `${d.getMonth() + 1}/${d.getDate()}` : ""; })();
+    const pick = (date) => { onPatch({ date }); setOpen(false); };
+    return ce("div", { className: "ft-ptask" + (t.done ? " done" : "") },
+        ce("div", { className: "ft-ptask-row" },
+            ce("button", { type: "button", onClick: () => onPatch({ done: !t.done }), "aria-label": t.done ? "済みを外す" : "済みにする", "aria-pressed": !!t.done, className: "ft-pcheck ft-tap", style: t.done ? { background: color.mid, borderColor: color.mid } : undefined }, t.done ? ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, color: "#fff" }) : null),
+            ce("input", { value: t.text, onChange: (e) => onPatch({ text: e.target.value }), onBlur: () => { if (!String(t.text || "").trim())
+                    onRemove(); }, className: "ft-ptask-in", "aria-label": "やること" }),
+            ce("button", { type: "button", onClick: () => setOpen((v) => !v), "aria-label": "やる日", "aria-expanded": open, className: "ft-pdate ft-tap" + (lbl ? " on" : ""), style: lbl ? (t.date === today ? { background: color.mid, color: "#fff" } : { background: color.soft, color: color.deep }) : undefined }, lbl || ce(lucide_react_1.CalendarDays, { size: 16 }))),
+        open && ce("div", { className: "ft-pwhen" },
+            ce("button", { type: "button", onClick: () => pick(today), className: "ft-pwhen-b ft-tap" }, "今日"),
+            ce("button", { type: "button", onClick: () => pick(addDays(today, 1)), className: "ft-pwhen-b ft-tap" }, "明日"),
+            ce("label", { className: "ft-pwhen-b ft-tap" }, "日付", ce("input", { type: "date", value: t.date || "", onChange: (e) => pick(e.target.value) })),
+            t.date ? ce("button", { type: "button", onClick: () => pick(""), className: "ft-pwhen-b ft-tap" }, "決めない") : null,
+            ce("span", { className: "flex-1" }),
+            ce("button", { type: "button", onClick: onRemove, "aria-label": "消す", className: "ft-pwhen-b del ft-tap" }, ce(lucide_react_1.Trash2, { size: 15 }))));
+}
+function PlanAddRow({ onAdd, placeholder }) {
+    const [v, setV] = (0, react_1.useState)("");
+    const go = () => { const s = v.trim(); if (!s)
+        return; onAdd(s); setV(""); };
+    return react_1.default.createElement("div", { className: "ft-ptask-row add" },
+        react_1.default.createElement("span", { className: "ft-pcheck ghost" }, react_1.default.createElement(lucide_react_1.Plus, { size: 14 })),
+        react_1.default.createElement("input", { value: v, onChange: (e) => setV(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                go();
+            } }, onBlur: go, placeholder: placeholder, enterKeyHint: "done", className: "ft-ptask-in" }));
+}
+function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, onPin, onAdd, onDone }) {
     const S = planSummary(plan, records);
     const wide = useWideLand();
-    const [showDone, setShowDone] = (0, react_1.useState)(false);
     const ce = react_1.default.createElement;
-    const left = S.goal ? daysBetween(S.today, S.goal.date) : null;
-    const openLists = S.lists.filter((r) => (r.items || []).some((i) => !i.done) || !(r.items || []).length);
-    const doneLists = S.lists.filter((r) => (r.items || []).length && (r.items || []).every((i) => i.done));
+    const patch = (fn) => onChange(plan.id, (p) => ({ ...fn(p), updatedAt: new Date().toISOString() }));
+    const patchTask = (id, d) => patch((p) => ({ ...p, todo: planTodo(p).map((t) => (t.id === id ? { ...t, ...d } : t)) }));
+    const removeTask = (id) => patch((p) => ({ ...p, todo: planTodo(p).filter((t) => t.id !== id) }));
+    const addTask = (text, sec) => patch((p) => ({ ...p, todo: [...planTodo(p), { id: uid(), text, done: false, date: "", sec: sec || "" }] }));
+    const secs = planSecs(plan);
+    const renameSec = (old, name) => patch((p) => ({ ...p, secs: planSecs(p).map((s) => (s === old ? name : s)), todo: planTodo(p).map((t) => (t.sec === old ? { ...t, sec: name } : t)) }));
+    const [newSec, setNewSec] = (0, react_1.useState)(null);
     const card = (r) => ce(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true });
-    const section = (label, kids, add) => ce("div", { className: "mb-5" },
-        ce("div", { className: "ft-seclbl fs-label font-bold", style: { padding: "2px 0 8px" } }, label),
-        kids && kids.length ? ce("div", { className: "-mx-4" }, kids) : null,
-        add ? ce("button", { type: "button", onClick: add, className: "ft-addwk ft-tap" }, ce(lucide_react_1.Plus, { size: 16 }), label === "予定" ? "予定を足す" : label === "やること" ? "リストを足す" : "メモを足す") : null);
-    const head = ce("div", { className: "ft-planhead", style: { borderColor: color.line } },
-        plan.note ? ce("button", { type: "button", onClick: onEditGoal, className: "ft-planwhy ft-tap" }, plan.note) : ce("button", { type: "button", onClick: onEditGoal, className: "ft-planwhy empty ft-tap" }, "\u76EE\u6307\u3059\u3053\u3068\u3092\u66F8\u304F"),
-        ce("div", { className: "flex items-end gap-3" },
-            ce("div", { className: "flex-1 min-w-0" },
-                S.total ? null : ce("div", { className: "fs-body-sm text-neutral-400" }, "やることはまだありません"),
-                S.total ? ce(ProgressLine, { done: S.done, total: S.total, color: color, strong: S.done === S.total, big: true }) : null),
-            left != null ? ce("button", { type: "button", onClick: () => onEditRecord(S.goal), className: "ft-plancd ft-tap", style: { color: color.deep } }, ce("b", null, left === 0 ? "今日" : left), left === 0 ? null : ce("small", null, "日"), ce("span", null, S.goal.title || "")) : null),
-        S.next && !plan.doneAt ? ce("div", { className: "ft-plannext" },
-            ce("span", { className: "k" }, "次"),
-            ce("button", { type: "button", onClick: () => onToggleItem(S.next.r, S.next.it.id), "aria-label": "済んだ", className: "ft-plannext-cb ft-tap" }),
-            ce("span", { className: "t" }, S.next.it.text),
-            ce("button", { type: "button", onClick: () => onSaveRecord({ ...S.next.r, pick: S.next.r.pick === S.today ? "" : S.today, updatedAt: new Date().toISOString() }, { keepOpen: true }), className: "ft-sttoday ft-tap" + (S.next.r.pick === S.today || (S.next.r.scope === "day" && S.next.r.date === S.today) ? " on" : "") }, "今日やる")) : null,
-        !plan.doneAt && S.total > 0 && S.done === S.total ? ce("button", { type: "button", onClick: onDone, className: BTN_PRIMARY + " w-full btn-h-lg fs-body mt-3" }, ce(lucide_react_1.Check, { size: 18 }), "達成にする") : null);
-    const todo = section("やること", [...openLists.map(card), ...(showDone ? doneLists.map(card) : [])], () => onAdd("checklist"));
-    const doneToggle = doneLists.length ? ce("button", { type: "button", onClick: () => setShowDone((v) => !v), className: "ft-donefold ft-tap" }, showDone ? "済んだリストをたたむ" : `済んだリスト ${doneLists.length}`) : null;
-    const sch = section("予定", S.scheds.map(card), () => onAdd("schedule"));
-    const memo = section("メモ", S.memos.map(card), () => onAdd("memo"));
+    const lbl = (text, right) => ce("div", { className: "ft-plbl" }, ce("span", null, text), ce("i", null), right || null);
+    /* ゴール：その場で書く。いつまでに：日付を押して決める */
+    const goal = ce("div", { className: "ft-goal", style: { borderColor: color.line } },
+        ce("div", { className: "ft-goal-k", style: { color: color.deep } }, "ゴール"),
+        ce(TextArea, { bare: true, value: plan.note || "", onChange: (e) => patch((p) => ({ ...p, note: e.target.value })), minRows: 1, rows: 1, placeholder: "どうなったら達成か", className: "ft-goal-in" }),
+        ce("div", { className: "ft-goal-when" },
+            ce("label", { className: "ft-goal-date ft-tap" },
+                ce(lucide_react_1.CalendarDays, { size: 15 }),
+                plan.goalDate ? (() => { const d = parseYmd(plan.goalDate); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} まで`; })() : "いつまでに",
+                ce("input", { type: "date", value: plan.goalDate || "", onChange: (e) => patch((p) => ({ ...p, goalDate: e.target.value })) })),
+            ce("span", { className: "flex-1" }),
+            S.left != null && !plan.doneAt ? ce("span", { className: "ft-goal-left", style: { color: color.deep } },
+                S.left < 0 ? ce("b", null, Math.abs(S.left)) : S.left === 0 ? ce("b", { className: "w" }, "今日") : ce(react_1.default.Fragment, null, ce("small", null, "あと"), ce("b", null, S.left)),
+                S.left === 0 ? null : ce("small", null, S.left < 0 ? "日すぎた" : "日"),
+                S.leftLabel ? ce("em", null, S.leftLabel) : null) : null),
+        ce(PlanRoad, { plan: plan, S: S, color: color }),
+        S.total > 0 ? ce("div", { className: "ft-goal-prog" }, ce(TaskSquares, { todo: S.todo, color: color }), ce("span", { className: "tabular-nums" }, `${S.done} / ${S.total}`)) : null);
+    const secBlock = (sec) => {
+        const items = S.todo.filter((t) => (t.sec || "") === sec);
+        return ce("div", { key: "s:" + sec, className: "ft-psec" },
+            sec ? ce("input", { defaultValue: sec, onBlur: (e) => { const n = e.target.value.trim(); if (n && n !== sec)
+                    renameSec(sec, n);
+                else
+                    e.target.value = sec; }, className: "ft-psec-h", "aria-label": "見出し" }) : null,
+            items.map((t) => ce(PlanTaskRow, { key: t.id, t: t, color: color, onPatch: (d) => patchTask(t.id, d), onRemove: () => removeTask(t.id) })),
+            ce(PlanAddRow, { onAdd: (text) => addTask(text, sec), placeholder: "やることを足す" }));
+    };
+    const todo = ce("div", { className: "ft-ptodo" },
+        lbl("やること"),
+        secBlock(""),
+        secs.map(secBlock),
+        newSec != null ? ce("input", { autoFocus: true, value: newSec, onChange: (e) => setNewSec(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                e.target.blur(); }, onBlur: () => { const n = newSec.trim(); if (n)
+                patch((p) => ({ ...p, secs: [...planSecs(p).filter((s) => s !== n), n] })); setNewSec(null); }, placeholder: "見出しの名前（例：申し込みまで）", className: "ft-psec-h new" })
+            : ce("button", { type: "button", onClick: () => setNewSec(""), className: "ft-psec-add ft-tap" }, ce(lucide_react_1.Plus, { size: 14 }), "見出しで分ける"));
+    const addBtn = (type, text) => ce("button", { type: "button", onClick: () => onAdd(type), className: "ft-plbl-add ft-tap" }, ce(lucide_react_1.Plus, { size: 14 }), text);
+    const sch = ce("div", { className: "mb-5" }, lbl("予定", addBtn("schedule", "予定")), S.scheds.length ? ce("div", { className: "-mx-4" }, S.scheds.map(card)) : null);
+    const memo = ce("div", { className: "mb-5" }, lbl("メモ", addBtn("memo", "メモ")), S.memos.length ? ce("div", { className: "-mx-4" }, S.memos.map(card)) : null);
+    const lists = S.lists.length ? ce("div", { className: "mb-5" }, lbl("リスト"), ce("div", { className: "-mx-4" }, S.lists.map(card))) : null;
+    const fin = !plan.doneAt ? ce("button", { type: "button", onClick: onDone, className: "ft-pfin ft-tap", style: { color: color.deep, borderColor: color.line } }, ce(lucide_react_1.Check, { size: 16 }), "この計画を達成にする") : null;
     if (wide)
-        return ce("div", { className: "ft-planwide" }, ce("div", null, head, sch), ce("div", null, todo, doneToggle, memo));
-    return ce("div", null, head, todo, doneToggle, sch, memo);
+        return ce("div", { className: "ft-planwide" }, ce("div", null, goal, sch, memo, lists, fin), ce("div", null, todo));
+    return ce("div", null, goal, todo, sch, memo, lists, fin);
+}
+/* その日にやると決めた計画のやること（Today の「やること」に、計画ごとの札で出る） */
+function planDayTasks(plans, date) {
+    return (plans || []).filter((p) => !p.doneAt).map((p) => ({ p, items: planTodo(p).filter((t) => t.date === date) })).filter((x) => x.items.length);
+}
+function PlanDayCards({ date, withLabel }) {
+    const ctx = react_1.default.useContext(PlanCtx);
+    const planCol = useTypeColor(PLAN_TYPE);
+    const list = planDayTasks(ctx.plans, date);
+    if (!list.length)
+        return null;
+    const ce = react_1.default.createElement;
+    return ce(react_1.default.Fragment, null,
+        withLabel ? ce("div", { className: "ft-seclbl fs-label font-bold" }, DAY_GROUP_LABEL[1]) : null,
+        list.map(({ p, items }) => {
+            const c = planColorOf(p, planCol);
+            return ce("div", { key: "pd" + p.id, className: CARD_SLOT },
+                ce("div", { className: "flex-1 min-w-0 rounded-2xl bg-white card-soft ft-pday" },
+                    ce("button", { type: "button", onClick: () => ctx.open(p.id), className: "ft-pday-h ft-tap", style: { color: c.deep } },
+                        ce(lucide_react_1.Target, { size: 14 }), ce("span", null, p.name || "（名前なし）"), ce(lucide_react_1.ChevronRight, { size: 15, className: "opacity-60" })),
+                    ce("div", { className: "-ml-1.5" }, items.map((t) => ce(CheckRow, { key: t.id, item: t, size: "l", onToggle: () => ctx.toggle(p.id, t.id) })))));
+        }));
 }
 function BottomNav({ active, onChange }) {
     return (react_1.default.createElement("div", { className: "z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
@@ -29436,24 +29666,35 @@ function AppMain() {
        ・期日のあるものはその日のリスト（その日の Today に出る）。期日のないものは日付を決めないリスト
        ・移したら、計画の steps は空にする */
     const stepsToRecords = () => {
+        /* 2.34.0〜：イベント（steps）と、2.33.0 が作った "st_" のリストを、計画の「やること」（plan.todo）へ移す */
         const ps = plansRef.current || [];
-        if (!ps.some((p) => (p.steps || []).length))
+        const isSt = (r) => typeof r.id === "string" && r.id.indexOf("st_") === 0 && r.planId && r.type === "checklist";
+        const stRecs = (recordsRef.current || []).filter(isSt);
+        if (!ps.some((p) => (p.steps || []).length) && !stRecs.length)
             return;
-        const have = new Set((recordsRef.current || []).map((r) => r.id));
-        const add = [];
-        ps.forEach((p) => (p.steps || []).forEach((st) => {
-            const id = "st_" + st.id;
-            if (have.has(id))
-                return;
-            const day = !!st.dueDate;
-            const base = emptyRecord("checklist", st.dueDate || todayStr(), day ? "day" : "stock");
-            const items = (st.items || []).length ? st.items.map((i) => ({ id: i.id || uid(), text: i.text, done: st.done ? true : !!i.done, min: i.min || 0 }))
-                : [{ id: uid(), text: st.title || "", done: !!st.done, min: 0 }];
-            add.push({ ...base, id, planId: p.id, title: (st.items || []).length ? (st.title || "") : "", items, body: st.body || "", pinned: !!st.pinned, createdAt: st.createdAt || base.createdAt, updatedAt: st.updatedAt || null });
+        setPlans((prev) => prev.map((p) => {
+            const add = [], secs = [];
+            (p.steps || []).forEach((st) => {
+                if ((st.items || []).length) {
+                    if (st.title)
+                        secs.push(st.title);
+                    st.items.forEach((i) => add.push({ id: i.id || uid(), text: i.text || "", done: !!(st.done || i.done), date: st.dueDate || "", sec: st.title || "" }));
+                }
+                else
+                    add.push({ id: st.id || uid(), text: st.title || "", done: !!st.done, date: st.dueDate || "", sec: "" });
+            });
+            stRecs.filter((r) => r.planId === p.id).forEach((r) => {
+                if (r.title)
+                    secs.push(r.title);
+                (r.items || []).forEach((i) => add.push({ id: i.id || uid(), text: i.text || "", done: !!i.done, date: r.scope === "day" ? r.date : "", sec: r.title || "" }));
+            });
+            if (!add.length && !(p.steps || []).length)
+                return p;
+            const have = new Set((p.todo || []).map((t) => t.id));
+            return { ...p, steps: [], secs: [...(p.secs || []), ...secs.filter((x) => !(p.secs || []).includes(x))], todo: [...(p.todo || []), ...add.filter((t) => t.text && !have.has(t.id))] };
         }));
-        if (add.length)
-            setRecords((prev) => [...prev, ...add.filter((x) => !prev.some((r) => r.id === x.id))]);
-        setPlans((prev) => prev.map((p) => ((p.steps || []).length ? { ...p, steps: [] } : p)));
+        if (stRecs.length)
+            setRecords((prev) => prev.filter((r) => !isSt(r)));
     };
     /* --- 読み込み --- */
     (0, react_1.useEffect)(() => {
@@ -30275,7 +30516,7 @@ function AppMain() {
                     } },
                     react_1.default.createElement(NeedBackupContext.Provider, { value: { need: needBackup, count: unsavedCount, backupAt } },
                         react_1.default.createElement(SyncUiContext.Provider, { value: syncUi },
-                        react_1.default.createElement(RecordActionsContext.Provider, { value: recordActions },
+                        react_1.default.createElement(BothProviders, { actions: recordActions, planv: { plans: plans, toggle: (pid, tid) => changePlan(pid, (pl) => ({ ...pl, todo: planTodo(pl).map((t) => (t.id === tid ? { ...t, done: !t.done } : t)), updatedAt: new Date().toISOString() })), open: (pid) => setPlanOpen(pid) } },
                             react_1.default.createElement("div", { className: "ft-shell bg-app font-sans text-neutral-900 ft-root "
                                     + (prefs.motion === false ? "ft-still " : "")
                                     + ("ft-font-" + (prefs.fontSize || "s")) },
