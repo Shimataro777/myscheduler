@@ -25264,14 +25264,26 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
             return a.soonest - b.soonest;
         }).slice(0, 3);
     }, [plans]);
-    return (react_1.default.createElement("div", { className: "pad-fab" },
-        react_1.default.createElement(TopChrome, null,
+    /* 横長（iPad 横）：見出しを1本の帯にまとめ、下を1画面の見開きにする（2.35.0〜）。ページは送らない */
+    const W = wideLand && !!onSaveRecord;
+    const visList = dayList.filter((r) => !hidden.includes(r.type));
+    const wideBar = W ? react_1.default.createElement(WideBar, { left: react_1.default.createElement("div", { className: "ft-wbar-seg" }, SPANS.map((sp) => react_1.default.createElement("button", { key: sp.key, type: "button", onClick: () => { setDir(0); setSpan(sp.key); }, "aria-pressed": span === sp.key, className: "ft-tap" + (span === sp.key ? " on" : "") }, sp.label))),
+        center: react_1.default.createElement(MonthNavHeader, { className: "ft-wbar-nav", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
+        right: span !== "day" ? null : sel.on ? react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(visList), className: "h-9 px-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, sel.allOf(visList) ? "選択解除" : "すべて選択"),
+            react_1.default.createElement("button", { type: "button", onClick: sel.stop, className: "h-9 px-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "完了")) : react_1.default.createElement(react_1.default.Fragment, null,
+            react_1.default.createElement("button", { type: "button", onClick: () => setFilterOpen(true), "aria-label": "種類でしぼる", className: "w-10 h-10 flex items-center justify-center rounded-full ft-tap relative " + (hidden.length ? "text-th-800" : "text-neutral-500") }, react_1.default.createElement(lucide_react_1.Filter, { size: 19 }), hidden.length > 0 && react_1.default.createElement("span", { className: "absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-th-800" })),
+            react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
+            sel.can && react_1.default.createElement("button", { type: "button", onClick: sel.start, className: "h-9 px-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "選択")) }) : null;
+    return (react_1.default.createElement("div", { className: W ? "ft-wtoday" : "pad-fab" },
+        wideBar,
+        !W && react_1.default.createElement(TopChrome, null,
         react_1.default.createElement(ScreenHeader, { title: "Today" }),
         react_1.default.createElement("div", { className: "px-4 pt-3 pb-2 bg-app" },
             react_1.default.createElement("div", { className: "flex gap-1 p-[3px] rounded-full bg-th-50" }, SPANS.map((s) => (react_1.default.createElement("button", { key: s.key, type: "button", onClick: () => { setDir(0); setSpan(s.key); }, "aria-pressed": span === s.key, style: { minHeight: 44 }, className: "flex-1 rounded-full fs-body font-bold flex items-center justify-center ft-tap "
                     + (span === s.key ? "bg-white text-th-900 card-soft" : "text-th-800/60") },
                 react_1.default.createElement("span", { className: "inline-block" }, s.label))))))),
-        react_1.default.createElement("div", { className: "px-5" },
+        !W && react_1.default.createElement("div", { className: "px-5" },
             react_1.default.createElement(MonthNavHeader, { className: "mb-1 mt-1", label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } }),
             span === "day" && (sel.on ? (react_1.default.createElement("div", { className: "flex items-center gap-2 mt-1 mb-3" },
                 react_1.default.createElement("button", { type: "button", onClick: () => sel.setAll(dayList.filter((r) => !hidden.includes(r.type))), className: "h-9 px-0 rounded-lg fs-body font-bold text-th-900 ft-tap text-left" }, sel.allOf(dayList.filter((r) => !hidden.includes(r.type))) ? "選択解除" : "すべて選択"),
@@ -25286,19 +25298,19 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 react_1.default.createElement(OrderToggle, { value: order, onChange: onOrder }),
                 sel.can && (react_1.default.createElement("button", { type: "button", onClick: sel.start, className: "h-9 px-2 -mr-2 ml-1 rounded-lg fs-body font-bold text-th-900 ft-tap" }, "\u9078\u629E")))))),
         span === "day" && !(wideLand && onSaveRecord) && (react_1.default.createElement(CountdownStrip, { records: records, plans: plans, upcoming: upcoming, onEdit: onEdit, onOpenPlan: onOpenPlan })),
-        react_1.default.createElement("div", { ref: areaRef, className: "px-5", style: { minHeight: "60vh" } },
+        react_1.default.createElement("div", { ref: areaRef, className: W ? (span === "month" ? "px-5 ft-wscroll" : "ft-wbody") : "px-5", style: W ? undefined : { minHeight: "60vh" } },
             /* **key に span だけでなく date も入れる（2.11.9〜）。**
                以前は週・月では span だけを key にしていたため、日付を送っても
                この箱が作り直されず、揺れる動きが再生されなかった（日だけ動き、
                週・月は動かない、という食い違いの原因）。date を入れて、
                隣へ送るたびに必ず作り直されるようにする */
-            react_1.default.createElement("div", { key: span + "|" + date, className: pageCls + (returnCls ? " " + returnCls : "") },
+            react_1.default.createElement("div", { key: span + "|" + date, className: W ? "ft-wfill" : pageCls + (returnCls ? " " + returnCls : "") },
                 span === "day" && !(wideLand && onSaveRecord) && react_1.default.createElement(NeedBackupBanner, { onOpen: onOpenBackup, dim: sel.on }),
                 span === "day" && !(wideLand && onSaveRecord) && (react_1.default.createElement(DayTimeline, { date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
                 /* 横長（iPad 横）の日：左に記録、右にその日の手書きのページ（2.33.0〜） */
                 span === "day" && wideLand && onSaveRecord && (react_1.default.createElement("div", { className: "ft-dayspread" },
-                    react_1.default.createElement("div", { className: "min-w-0" }, react_1.default.createElement(NeedBackupBanner, { onOpen: onOpenBackup, dim: sel.on }), react_1.default.createElement("div", { className: "-mx-5" }, react_1.default.createElement(CountdownStrip, { records: records, plans: plans, upcoming: upcoming, onEdit: onEdit, onOpenPlan: onOpenPlan })), react_1.default.createElement(DayTimeline, { single: true, hideInk: true, date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
-                    react_1.default.createElement("div", { className: "ft-dayspread-r" }, react_1.default.createElement(DayInkPanel, { date: date, records: records, onSave: onSaveRecord })))),
+                    react_1.default.createElement("div", { className: "ft-wleft" }, react_1.default.createElement(NeedBackupBanner, { onOpen: onOpenBackup, dim: sel.on }), react_1.default.createElement("div", { className: "-mx-5" }, react_1.default.createElement(CountdownStrip, { records: records, plans: plans, upcoming: upcoming, onEdit: onEdit, onOpenPlan: onOpenPlan })), react_1.default.createElement(DayTimeline, { single: true, hideInk: true, date: date, records: records, onEdit: onEdit, onToggleItem: onToggleItem, hidden: hidden, order: order, selectMode: sel.on, selectedIds: sel.ids, onSelect: sel.toggle, onPin: onPin, onLongSelect: sel.can ? (r) => sel.startWith(r) : null })),
+                    react_1.default.createElement("div", { className: "ft-wright" }, react_1.default.createElement(DayInkPanel, { date: date, records: records, onSave: onSaveRecord })))),
                 span === "week" && wideLand && (react_1.default.createElement(WeekWide, { start: weekStart, records: records, onOpenDay: (d) => { setDate(d); setSpan("day"); }, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, onAddScoped: onAddScoped })),
                 span === "week" && !wideLand && (react_1.default.createElement(react_1.default.Fragment, null,
                     react_1.default.createElement(WeekView, { start: weekStart, records: records, onOpenDay: (d) => { setDate(d); setSpan("day"); }, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, selected: weekSel, onSelect: setWeekSel }),
@@ -25311,7 +25323,7 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
                 " ",
                 TYPE_LABELS[t])))),
             hidden.length > 0 && (react_1.default.createElement("button", { type: "button", onClick: () => setHidden([]), className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body mt-3" }, "\u3059\u3079\u3066\u8868\u793A")))),
-        !sel.on && (react_1.default.createElement("button", { type: "button", onClick: cycleSpan, "aria-label": `${nextSpanLabel}の画面に切り替える`, className: "fixed rounded-2xl bg-white text-th-900 border border-th-200 card-soft flex items-center justify-center ft-tap ft-fab-side z-40", style: { width: 46, height: 46, bottom: "calc(var(--ft-nav-h) + 45px)" } },
+        !sel.on && !W && (react_1.default.createElement("button", { type: "button", onClick: cycleSpan, "aria-label": `${nextSpanLabel}の画面に切り替える`, className: "fixed rounded-2xl bg-white text-th-900 border border-th-200 card-soft flex items-center justify-center ft-tap ft-fab-side z-40", style: { width: 46, height: 46, bottom: "calc(var(--ft-nav-h) + 45px)" } },
             react_1.default.createElement("span", { key: span, className: "ft-tabpop inline-flex" },
                 react_1.default.createElement(SpanCycleIcon, { size: 21 })))),
         jumpOpen && (react_1.default.createElement(TodayPeriodSheet, { year: y, month: mo, day: Number(date.slice(8, 10)), years: jumpYears(y), onClose: () => setJumpOpen(false), onConfirm: (yy, mm, dd) => {
@@ -28791,6 +28803,12 @@ function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
                 ce("span", { className: "flex-1" }),
                 ce("button", { type: "button", onClick: send, disabled: !text.trim(), "aria-label": "ストックに入れる", className: "ft-stsend ft-tap" }, ce(lucide_react_1.Plus, { size: 20 })))));
     const left = ce("div", { className: "ft-stmain" }, cap, listEl);
+    if (wide)
+        return ce("div", { className: "ft-wtoday ft-stockpage" },
+            ce(WideBar, { left: ce("b", { className: "ft-wbar-title" }, "ストック"), center: list.length > 0 ? ce("div", { className: "ft-stchips" }, chip("all", "すべて"), chip("task", "やること"), chip("memo", "メモ"), tags.map((t) => chip(t, "#" + t))) : null }),
+            ce("div", { className: "ft-wbody" }, ce("div", { className: "ft-dayspread ft-wfill" },
+                ce("div", { className: "ft-wleft" }, cap, listEl),
+                ce("div", { className: "ft-wright" }, ce(StockInkPanel, { onSave: onSave })))));
     return (ce("div", { className: "ft-stockpage" },
         ce(TopChrome, null,
             ce(ScreenHeader, { title: "ストック" }),
@@ -28871,6 +28889,16 @@ function Masonry({ className = "", cols = 2, gap = 12, children }) {
     return react_1.default.createElement("div", { ref: boxRef, className: className, style: { display: "grid", gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))`, gap, alignItems: "start" } }, colsArr.map((c, i) => react_1.default.createElement("div", { key: i, style: { display: "flex", flexDirection: "column", gap, minWidth: 0 } }, c)));
 }
 /* 記録の札の2段（横長のとき）。段組みではなく Masonry で、すき間をそろえる */
+/* 横長の見出しの帯。左：切り替え、まん中：日付など、右：その画面の操作＋雲＋メニュー */
+function WideBar({ left, center, right }) {
+    const openMenu = react_1.default.useContext(MenuContext);
+    return react_1.default.createElement("div", { className: "ft-wbar" },
+        react_1.default.createElement("div", { className: "ft-wbar-l" }, left),
+        react_1.default.createElement("div", { className: "ft-wbar-mid" }, center),
+        react_1.default.createElement("div", { className: "ft-wbar-r" }, right,
+            openMenu && react_1.default.createElement(SyncHeaderButton, { onPhoto: false, style: { marginLeft: 6 } }),
+            openMenu && react_1.default.createElement("button", { type: "button", onClick: openMenu, "aria-label": "メニュー", className: "w-11 h-11 flex items-center justify-center rounded-xl text-neutral-800 ft-tap" }, react_1.default.createElement(lucide_react_1.Menu, { size: 24, strokeWidth: 2.2 }))));
+}
 function CardWall({ children }) {
     const wide = useWideLand();
     if (!wide)
@@ -29198,7 +29226,7 @@ function DayInkPanel({ date, records, onSave }) {
         }
     };
     (0, react_1.useEffect)(() => () => flush(), [date]); // eslint-disable-line
-    return react_1.default.createElement(InkCanvas, { key: date, value: rec ? rec.ink : null, boxClass: "ft-inkfill", onChange: (v) => { pending.current = v; clearTimeout(timer.current); timer.current = setTimeout(flush, 900); } });
+    return react_1.default.createElement(InkCanvas, { key: date, value: rec ? rec.ink : null, onChange: (v) => { pending.current = v; clearTimeout(timer.current); timer.current = setTimeout(flush, 900); } });
 }
 /* ストックの「ふと書き」（横長のストックの右）。書いて「ストックへ」で1件になる */
 function StockInkPanel({ onSave }) {
@@ -29218,7 +29246,7 @@ function StockInkPanel({ onSave }) {
         setHas(false);
         setK((n) => n + 1);
     };
-    return react_1.default.createElement(InkCanvas, { key: k, value: null, boxClass: "ft-inkfill", onChange: (v) => { inkRef.current = v; setHas(!!(v && v.s && v.s.length)); }, toolbarRight: react_1.default.createElement("button", { type: "button", onClick: put, disabled: !has, className: BTN_PRIMARY + " px-4 fs-body-sm", style: { minHeight: 38, whiteSpace: "nowrap" } }, "ストックへ") });
+    return react_1.default.createElement(InkCanvas, { key: k, value: null, onChange: (v) => { inkRef.current = v; setHas(!!(v && v.s && v.s.length)); }, toolbarRight: react_1.default.createElement("button", { type: "button", onClick: put, disabled: !has, className: BTN_PRIMARY + " px-4 fs-body-sm", style: { minHeight: 38, whiteSpace: "nowrap" } }, "ストックへ") });
 }
 /* ============================================================
    週のバーチカル（横長の Today の「週」）。紙の手帳の見開きのように、
@@ -29272,7 +29300,7 @@ function WeekVertical({ start, records, onOpenDay, onEdit }) {
 function WeekWide({ start, records, onOpenDay, onEdit, onToggleItem, onPin, onAddScoped }) {
     const weekRecs = records.filter((r) => r.scope === "week" && r.date === start);
     return react_1.default.createElement("div", { className: "ft-weekwide" },
-        react_1.default.createElement("div", { className: "ft-weekwide-l" },
+        react_1.default.createElement("div", { className: "ft-wleft" },
             react_1.default.createElement("div", { className: "ft-seclbl fs-label font-bold", style: { padding: "4px 0 8px" } }, "今週"),
             react_1.default.createElement("div", { className: "-mx-4" }, weekRecs.map((r) => react_1.default.createElement(RecordRow, { key: r.id, r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin }))),
             react_1.default.createElement("button", { type: "button", onClick: () => onAddScoped("week", start), className: "ft-addwk ft-tap" }, react_1.default.createElement(lucide_react_1.Plus, { size: 16 }), "今週の記録")),
@@ -30530,7 +30558,7 @@ function AppMain() {
                                         tab === "stock" && (react_1.default.createElement(StockScreen, { records: records, onSave: saveRecord, onEdit: openEdit, onToggleItem: toggleItem, onPin: togglePin })),
                                         tab === "plan" && (react_1.default.createElement(PlanScreen, { topSwitch: listSwitch(tab, (k) => { setListSub(k); setTab(k); }), plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), resetSig: tabReset.plan || 0 })),
                                         tab === "folder" && (react_1.default.createElement(FolderScreen, { topSwitch: listSwitch(tab, (k) => { setListSub(k); setTab(k); }), folders: folders, records: records, sort: prefs.folderSortOrder, onSort: (v) => savePrefs((p) => ({ ...p, folderSortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
-                                loaded && !selecting && tab !== "find" && tab !== "stock" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft", style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
+                                loaded && !selecting && tab !== "find" && tab !== "stock" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? "フォルダを追加" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft" + (tab === "today" ? " ft-fab-today" : ""), style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, tab === "plan" ? react_1.default.createElement(lucide_react_1.Target, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                                 loaded && react_1.default.createElement(BottomNav, { active: (tab === "plan" || tab === "folder") ? "list" : tab, onChange: (k) => {
                                         if (k === "list")
                                             k = (tab === "plan" || tab === "folder") ? tab : listSub;

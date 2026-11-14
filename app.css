@@ -718,3 +718,51 @@ body { position: static !important; top: auto !important; }
 .ft-pcard-left{font-size:calc(13px * var(--ft-scale));font-weight:700;white-space:nowrap}
 .ft-goal textarea.ft-goal-in{min-height:0 !important}
 .ft-road{margin-top:30px}
+/* ============================================================
+   2.35.0：横長（iPad 横）は、1本の帯＋1画面の見開き。ページは送らない
+   ============================================================ */
+.ft-wtoday{height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+.ft-wbar{flex:none;display:flex;align-items:center;gap:14px;height:calc(58px + env(safe-area-inset-top));padding:env(safe-area-inset-top) 0 0;border-bottom:1px solid #E3E9EE}
+.ft-wbar-l{flex:none;min-width:210px;display:flex;align-items:center}
+.ft-wbar-title{font-size:calc(17px * var(--ft-scale));color:#171717;padding-left:6px}
+.ft-wbar-mid{flex:1;min-width:0;display:flex;justify-content:center}
+.ft-wbar-mid > *{width:100%;max-width:480px}
+.ft-wbar-mid .ft-stchips{max-width:none;padding-top:0}
+.ft-wbar-nav{margin:0}
+.ft-wbar-r{flex:none;min-width:210px;display:flex;align-items:center;justify-content:flex-end;gap:2px}
+.ft-wbar-seg{display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--th-50,#EEF6FB);width:210px}
+.ft-wbar-seg button{flex:1;min-height:36px;border-radius:999px;font-weight:700;font-size:calc(13.5px * var(--ft-scale));color:var(--th-800,#3E7EA6);opacity:.6}
+.ft-wbar-seg button.on{background:#fff;opacity:1;box-shadow:0 1px 3px rgba(30,50,60,.12)}
+.ft-wbody{flex:1;min-height:0;padding:14px 0 14px}
+.ft-wscroll{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-top:10px;padding-bottom:40px}
+.ft-wfill{height:100%}
+.ft-dayspread{height:100%;align-items:stretch;gap:24px}
+.ft-weekwide{height:100%;align-items:stretch;grid-template-columns:270px minmax(0,1fr);gap:20px}
+.ft-wleft{min-width:0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 2px 96px 2px}
+.ft-wleft .ft-stdock{padding:0 0 14px}
+.ft-wleft .ft-stlist{padding:0 16px}
+.ft-weekwide .ft-wleft{padding-bottom:16px}
+.ft-wright{min-width:0;min-height:0;display:flex;flex-direction:column}
+.ft-wright .ft-ink{flex:1}
+.ft-wright .ft-inkbox{flex:1;min-height:0}
+/* 週：白い紙に細い灰の罫。予定の色がはっきり見える。画面の高さに収める */
+.ft-wv{height:100%;margin-bottom:0;grid-template-rows:auto auto auto minmax(0,1fr);background:#fff;border-color:#E3E9EE;padding:12px 12px 10px 2px}
+.ft-wv-dh{padding-bottom:6px}
+.ft-wv-dh .n{font-size:22px;width:34px;height:34px}
+.ft-wv-side,.ft-wv-ad{border-top-color:#E8ECEF}
+.ft-wv-tk{border-bottom-color:#DDE3E8}
+.ft-wv-col{border-left-color:#EDF0F3;
+  background-image:repeating-linear-gradient(180deg,#DDE3E8 0,#DDE3E8 1px,transparent 1px,transparent calc(100%/3)),repeating-linear-gradient(180deg,transparent 0,transparent calc(100%/18 - 1px),#F0F3F5 calc(100%/18 - 1px),#F0F3F5 calc(100%/18))}
+.ft-wv-col.we{background-color:#FAFBFC}
+.ft-wv-col.t{background-color:var(--th-50,#EEF6FB)}
+.ft-wv-ev{padding:3px 6px;border-radius:7px}
+.ft-wv-ev small{font-size:9px;margin-top:0}
+/* 手書きの紙も白に（点は淡い灰） */
+.ft-inkbox{background:#F4F6F8;border-color:#E3E9EE}
+.ft-inkcv{background-color:#fff;background-image:radial-gradient(circle,#D9DFE4 1px,transparent 1.3px)}
+@media (min-width: 820px) and (orientation: landscape){
+  /* Today の＋は、左の面の右下へ（右の紙にかぶせない） */
+  .ft-fab.ft-fab-today{right:auto;left:calc(var(--ft-rail) + 232px);bottom:26px !important}
+  /* ほかの画面の見出しも、同じ高さの帯にそろえる */
+  .ft-topchrome .bg-head{padding-top:calc(env(safe-area-inset-top) + 5px) !important;padding-bottom:4px}
+}
