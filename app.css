@@ -590,3 +590,6 @@ body { position: static !important; top: auto !important; }
 .ft-stchip.on{background:#262626;border-color:#262626;color:#fff;font-weight:700}
 .ft-stacts{display:flex;justify-content:flex-end;padding:0 16px 12px;margin-top:-6px}
 .ft-sttoday{min-height:34px;padding:0 14px;border-radius:999px;background:var(--th-50,#EEF6FB);color:var(--th-800,#3E7EA6);font-weight:700;font-size:calc(12.5px * var(--ft-scale))}
+/* 2.32.0：ストックの「今日やる」。押すと色が付き、ストックには残ったまま Today にも並ぶ */
+.ft-sttoday{display:inline-flex;align-items:center;gap:4px}
+.ft-sttoday.on{background:var(--th-800,#3E7EA6);color:#fff}

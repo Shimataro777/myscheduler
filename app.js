@@ -23556,7 +23556,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                 rec.type === "memo" && (react_1.default.createElement("div", { className: "mb-3" },
                     react_1.default.createElement(ImagesField, { images: rec.images, onChange: (v) => set({ images: v }), onError: setErr }))),
                 /* 引用しているメモ（2.25.0〜）。✕で引用だけを外せる（もとのメモは消えない） */
-                rec.type === "memo" && rec.quoteId && (react_1.default.createElement(QuoteCard, { id: rec.quoteId, onRemove: () => set({ quoteId: "" }), className: "mb-3" })),
+                /* 引用は 2.32.0 でやめた。quoteId は消さずに残すが、出さない */
                 /* ---- 計画を選択／タグを追加（どの画面でも、いちばん下に共通） ---- */
                 rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(PlanSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), plans: plans || [], placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" }))),
@@ -24008,7 +24008,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
     const acts = react_1.default.useContext(RecordActionsContext);
     /* このメモを引用した記録（2.26.0〜）。数は索引から毎回数える */
     const [quotedOpen, setQuotedOpen] = (0, react_1.useState)(false);
-    const quotedN = r.type === "memo" && !r.__repeat && acts && acts.quotedBy ? (acts.quotedBy.get(r.id) || []).length : 0;
+    const quotedN = 0; /* 引用は 2.32.0 でやめた */
     const ratio = r.type === "checklist" ? doneRatio(r) : null;
     const allDone = ratio && ratio.total > 0 && ratio.done === ratio.total;
     const t = timeLabel(r);
@@ -24171,7 +24171,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     setPhoto(i); }, onPointerDown: (e) => e.stopPropagation(), className: "block overflow-hidden ft-tap ft-tap-card", style: r.images.length === 3 && i === 0 ? { gridRow: "span 2" } : undefined },
                 react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } })))))),
             /* 引用しているメモ（2.25.0〜）。自分の本文・写真のあと、タグの前 */
-            r.type === "memo" && r.quoteId && (react_1.default.createElement(QuoteCard, { id: r.quoteId, selectMode: selectMode, className: "mt-3 mb-2" })),
+            false,
             /* このメモを引用した記録（2.26.0〜）。押すと下から紙が出て、たどれる */
             quotedN > 0 && (react_1.default.createElement("div", { className: "mt-1", style: { marginBottom: -8 } },
                 react_1.default.createElement(QuotedByLink, { n: quotedN, selectMode: selectMode, onOpen: () => setQuotedOpen(true) }))),
@@ -24652,7 +24652,7 @@ function scheduleWhen(r) {
    ============================================================ */
 function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selectedIds, onSelect, onPin, hidden, order, onLongSelect }) {
     const list = (0, react_1.useMemo)(() => {
-        const own = records.filter((r) => isDayRec(r) && coversDay(r, date));
+        const own = records.filter((r) => (isDayRec(r) && coversDay(r, date)) || (r.scope === "stock" && r.pick === date)); /* ストックで「今日やる」にしたもの（pick）も並べる（2.32.0〜） */
         /* 繰り返しの記録は、その日ぶんの控えを作って並べる（元の記録は書き換えない） */
         /* 繰り返しから作る仮の札には、**表示している日付を入れること。**
            元の日付のままだと、チェックを入れたとき別の日の記録が作られてしまう */
@@ -24794,7 +24794,7 @@ function MiniMonth({ start }) {
    **画面ごとに別の見せ方にしないこと** */
 function DayPanel({ date, records, onEdit, onToggleItem, onPin, onOpenDay }) {
     const list = (0, react_1.useMemo)(() => {
-        const own = records.filter((r) => isDayRec(r) && coversDay(r, date));
+        const own = records.filter((r) => (isDayRec(r) && coversDay(r, date)) || (r.scope === "stock" && r.pick === date)); /* ストックで「今日やる」にしたもの（pick）も並べる（2.32.0〜） */
         const made = new Set(own.filter((r) => r.fromRepeat).map((r) => r.fromRepeat));
         const rep = records.filter((r) => isDayRec(r) && repeatsOn(r, date) && !made.has(r.id))
             .map((r) => ({ ...r, __repeat: true, date }));
@@ -28749,7 +28749,8 @@ function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
         onSave(rec);
         setText("");
     };
-    const toToday = (r) => onSave({ ...r, scope: "day", date: todayStr(), updatedAt: new Date().toISOString() });
+    /* 「今日やる」は、ストックから消さずに pick（やる日）だけを付け外しする（2.32.0〜） */
+    const toToday = (r) => onSave({ ...r, pick: r.pick === todayStr() ? "" : todayStr(), updatedAt: new Date().toISOString() });
     const chip = (key, label) => (react_1.default.createElement("button", { key: key, type: "button", onClick: () => setFilter(key), "aria-pressed": filter === key, className: "ft-stchip ft-tap" + (filter === key ? " on" : "") }, label));
     return (react_1.default.createElement("div", { className: "pad-fab" },
         react_1.default.createElement(TopChrome, null,
@@ -28770,7 +28771,7 @@ function StockScreen({ records, onSave, onEdit, onToggleItem, onPin }) {
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, list.length ? "見つかりません" : "まだ何もありません"))) : (react_1.default.createElement("div", { className: CARD_LIST + " ft-spread" }, shown.map((r) => (react_1.default.createElement(react_1.default.Fragment, { key: r.id },
                 react_1.default.createElement(RecordRow, { r: r, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin, showDate: true }),
                 react_1.default.createElement("div", { className: "ft-stacts" },
-                    react_1.default.createElement("button", { type: "button", onClick: () => toToday(r), className: "ft-sttoday ft-tap" }, "今日へ"))))))))));
+                    react_1.default.createElement("button", { type: "button", onClick: () => toToday(r), "aria-pressed": r.pick === todayStr(), className: "ft-sttoday ft-tap" + (r.pick === todayStr() ? " on" : "") }, r.pick === todayStr() && react_1.default.createElement(lucide_react_1.Check, { size: 14 }), "今日やる"))))))))));
 }
 function BottomNav({ active, onChange }) {
     return (react_1.default.createElement("div", { className: "z-30 bg-white border-t border-neutral-200 ft-tabbar-wrap" },
@@ -29665,7 +29666,7 @@ function AppMain() {
         });
         const key = (r) => `${r.date || ""} ${r.time || ""} ${r.createdAt || ""}`;
         quotedBy.forEach((a) => a.sort((x, y) => (key(x) < key(y) ? 1 : key(x) > key(y) ? -1 : 0)));
-        return { records, byId: new Map(records.map((r) => [r.id, r])), quotedBy, onMoveItem: moveItem, onCreateAndMove: createAndMove, onQuote: startQuote };
+        return { records, byId: new Map(records.map((r) => [r.id, r])), quotedBy, onMoveItem: moveItem, onCreateAndMove: createAndMove };
     }, [records]);
     /* メニューから画面へ移る（2.20.6〜）。
        1. 板はその場に残し、移った先の画面の下へ沈める（menuUnder）
