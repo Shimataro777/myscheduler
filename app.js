@@ -28810,7 +28810,7 @@ function NoteScreen({ records, onOpen, onNew }) {
                     ce("span", { className: "ft-nthumb" }, ce(lucide_react_1.Plus, { size: 30 }), ce("b", null, "新しいページ")),
                     ce("span", { className: "ft-nmeta" }, "思いついたことを手書きで")),
                 shown.map((r) => ce("button", { key: r.id, type: "button", onClick: () => onOpen(r), className: "ft-ncard ft-tap ft-tap-card" },
-                    ce("span", { className: "ft-nthumb" }, ce(Photo, { src: r.images[0], className: "block w-full h-full", style: { objectFit: "cover", objectPosition: "top" } })),
+                    ce("span", { className: "ft-nthumb" }, ce(Photo, { src: r.images[0], className: "block w-full h-full", style: { objectFit: "contain", objectPosition: "top" } })),
                     ce("span", { className: "ft-nmeta" },
                         ce("span", { className: "tabular-nums" }, fmtDate(r.date)),
                         normalizeTags(r.tags).length ? ce("span", { className: "ft-ntags" }, normalizeTags(r.tags).map((t) => "#" + t).join(" ")) : null)))),
@@ -28991,6 +28991,26 @@ function inkDraw(ctx, s, scale) {
     }
     ctx.restore();
 }
+/* 書いている途中の線の、増えたぶんだけを描く（3.3.0〜）。毎回ぜんぶ描き直すと、線が多いと重くなって指についてこない */
+function inkDrawSeg(ctx, s, scale, from) {
+    const p = s && s.p;
+    if (!p || p.length < 2)
+        return;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = s.c;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (let i = Math.max(1, from); i < p.length; i++) {
+        const a = p[i - 1], b = p[i];
+        ctx.lineWidth = s.w * (0.6 + ((a[2] + b[2]) / 2 || 0.5) * 0.8) * scale;
+        ctx.beginPath();
+        ctx.moveTo(a[0] * scale, a[1] * scale);
+        ctx.lineTo(b[0] * scale, b[1] * scale);
+        ctx.stroke();
+    }
+    ctx.restore();
+}
 /* 絵にする。たては書いたところだけ、よこはページの幅いっぱい（白地） */
 function inkToPng(strokes, W) {
     W = W || INK_W;
@@ -29029,8 +29049,11 @@ function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass, hint, fo
     const [strokes, setStrokes] = (0, react_1.useState)(() => (value && Array.isArray(value.s) ? value.s : []));
     const strokesRef = (0, react_1.useRef)(strokes);
     strokesRef.current = strokes;
-    const [undo, setUndo] = (0, react_1.useState)([]);
-    const [redo, setRedo] = (0, react_1.useState)([]);
+    /* 戻す・やり直すの積み重ね（3.3.0〜）。**state で持たないこと。** 続けて押すと、描き直しの前の古い一覧から
+       もう一度取り出して、同じところへしか戻れなかった。上限も置かない（保存して閉じるまでは、いちばん初めまで戻れる） */
+    const undoRef = (0, react_1.useRef)([]);
+    const redoRef = (0, react_1.useRef)([]);
+    const [, bump] = (0, react_1.useState)(0);
     const [pen, setPen] = (0, react_1.useState)("ink");
     const cur = (0, react_1.useRef)(null);
     const pan = (0, react_1.useRef)(null);
@@ -29094,10 +29117,11 @@ function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass, hint, fo
         onChange({ v: 1, w: pg.w, h: pg.h, s: next });
     } };
     const commit = (next) => {
-        setUndo((u) => [...u.slice(-60), strokesRef.current]);
-        setRedo([]);
+        undoRef.current.push(strokesRef.current);
+        redoRef.current = [];
         strokesRef.current = next;
         setStrokes(next);
+        bump((n) => n + 1);
         emit(next);
     };
     const pt = (e) => {
@@ -29105,11 +29129,33 @@ function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass, hint, fo
         const x = (e.clientX - r.left) / scale, y = (e.clientY - r.top) / scale;
         return [Math.round(x * 10) / 10, Math.round(y * 10) / 10, e.pointerType === "pen" ? Math.round((e.pressure || 0.5) * 100) / 100 : 0.5];
     };
-    const eraseAt = (q) => {
+    /* 消しゴムは、なぞり終えるまでを1手として数える（戻す1回で、ひとなぞりぶん戻る） */
+    const eraseAt = (q, c) => {
         const R = 18;
         const keep = strokesRef.current.filter((s) => !(s.p || []).some((a) => Math.abs(a[0] - q[0]) < R && Math.abs(a[1] - q[1]) < R));
-        if (keep.length !== strokesRef.current.length)
-            commit(keep);
+        if (keep.length === strokesRef.current.length)
+            return;
+        if (!c.changed) {
+            c.changed = true;
+            c.base = strokesRef.current;
+        }
+        strokesRef.current = keep;
+        setStrokes(keep);
+    };
+    /* 1本を書き終えた（または消しゴムを離した） */
+    const finish = (s) => {
+        if (!s)
+            return;
+        if (s.erase) {
+            if (s.changed) {
+                undoRef.current.push(s.base);
+                redoRef.current = [];
+                bump((n) => n + 1);
+                emit(strokesRef.current);
+            }
+            return;
+        }
+        commit([...strokesRef.current, { c: s.c, w: s.w, a: s.a, p: s.p }]);
     };
     /* 指で画面を送る相手（重なる画面の送り場か、ページ） */
     const scroller = () => { const el = wrapRef.current && wrapRef.current.closest ? wrapRef.current.closest(".overflow-y-auto") : null; return el || window; };
@@ -29122,8 +29168,23 @@ function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass, hint, fo
             pan.current = { id: e.pointerId, y: e.clientY };
             return;
         }
-        if (cur.current)
-            return; /* 2本目の指は数えない */
+        /* 前の線がまだ終わっていないことになっている（3.3.0〜）。
+           ・ペンが来たら、前の線は終わったものとして扱う（ペンは2か所に同時に触れない。離した知らせが届かなかった）。
+             前の線が手のひら（指）なら、それは捨てる。**ここで「2本目は数えない」と弾かないこと。**
+             2.35.0〜3.2.0 は弾いていたので、手をついたまま書いたときや、知らせが抜けたあとの線が、続けて書いても出なかった
+           ・指の2本目は、いままでどおり数えない */
+        if (cur.current) {
+            if (cur.current.id === e.pointerId)
+                return;
+            if (e.pointerType !== "pen")
+                return;
+            const prev = cur.current;
+            cur.current = null;
+            if (prev.type === "pen")
+                finish(prev);
+            else
+                redraw();
+        }
         e.preventDefault();
         if (!touched)
             setTouched(true);
@@ -29132,12 +29193,12 @@ function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass, hint, fo
         }
         catch (er) { /* noop */ }
         if (pen === "erase") {
-            cur.current = { erase: true, id: e.pointerId };
-            eraseAt(pt(e));
+            cur.current = { erase: true, id: e.pointerId, type: e.pointerType };
+            eraseAt(pt(e), cur.current);
             return;
         }
         const P = INK_PENS.find((x) => x.k === pen) || INK_PENS[0];
-        cur.current = { c: P.c, w: P.w, a: P.a, p: [pt(e)], id: e.pointerId };
+        cur.current = { c: P.c, w: P.w, a: P.a, p: [pt(e)], id: e.pointerId, type: e.pointerType };
         redraw();
     };
     const move = (e) => {
@@ -29158,11 +29219,21 @@ function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass, hint, fo
         const evs = ne && ne.getCoalescedEvents ? ne.getCoalescedEvents() : null;
         const list = evs && evs.length ? evs.map((x) => ({ clientX: x.clientX, clientY: x.clientY, pressure: x.pressure, pointerType: e.pointerType })) : [e];
         if (c.erase) {
-            list.forEach((ev) => eraseAt(pt(ev)));
+            list.forEach((ev) => eraseAt(pt(ev), c));
             return;
         }
+        const from = c.p.length;
         list.forEach((ev) => c.p.push(pt(ev)));
-        redraw();
+        /* ふつうのペンは、増えたぶんだけを描く。マーカー（半透明）は重なりが濃くならないよう、描き直す */
+        const cv = cvRef.current;
+        if (cv && scale && !(c.a != null && c.a < 1)) {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+            const ctx = cv.getContext("2d");
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            inkDrawSeg(ctx, c, scale * dpr, from);
+        }
+        else
+            redraw();
     };
     const up = (e) => {
         if (pan.current && (!e || pan.current.id === e.pointerId)) {
@@ -29173,75 +29244,124 @@ function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass, hint, fo
         if (!s || (e && s.id !== e.pointerId))
             return;
         cur.current = null;
-        if (s.erase)
-            return;
-        commit([...strokesRef.current, { c: s.c, w: s.w, a: s.a, p: s.p }]);
+        finish(s);
     };
     const doUndo = () => {
-        if (!undo.length)
+        if (cur.current) {
+            const s = cur.current;
+            cur.current = null;
+            finish(s);
+        }
+        if (!undoRef.current.length)
             return;
-        const prev = undo[undo.length - 1];
-        setUndo(undo.slice(0, -1));
-        setRedo((r) => [...r, strokesRef.current]);
+        const prev = undoRef.current.pop();
+        redoRef.current.push(strokesRef.current);
         strokesRef.current = prev;
         setStrokes(prev);
+        bump((n) => n + 1);
         emit(prev);
     };
     const doRedo = () => {
-        if (!redo.length)
+        if (!redoRef.current.length)
             return;
-        const next = redo[redo.length - 1];
-        setRedo(redo.slice(0, -1));
-        setUndo((u) => [...u, strokesRef.current]);
+        const next = redoRef.current.pop();
+        undoRef.current.push(strokesRef.current);
         strokesRef.current = next;
         setStrokes(next);
+        bump((n) => n + 1);
         emit(next);
     };
-    const tool = (k, child, label) => react_1.default.createElement("button", { key: k, type: "button", onClick: () => setPen(k), "aria-label": label, "aria-pressed": pen === k, className: "ft-inktool ft-tap" + (pen === k ? " on" : "") }, child);
+    /* 道具のボタンは TapOnceButton（3.3.0〜）。**onClick で受けないこと。** 続けて素早く押すと、iPhone・iPad は
+       2回めを「ダブルタップ」とみなして click を配らず、戻すが1回ぶんしか効かなかった（引継書 6-③ と同じ理由） */
+    const tool = (k, child, label) => react_1.default.createElement(TapOnceButton, { key: k, onTap: () => setPen(k), "aria-label": label, "aria-pressed": pen === k, className: "ft-inktool ft-tap" + (pen === k ? " on" : "") }, child);
     /* **道具の帯は、紙の下（同じ枠の中）に置く（3.0.0〜）。** 上に置くと、となりの記録の札と枠の上がそろわない */
     return react_1.default.createElement("div", { className: "ft-ink" },
         react_1.default.createElement("div", { ref: wrapRef, className: "ft-inkbox " + (boxClass || ""), style: boxStyle },
-            react_1.default.createElement("canvas", { ref: cvRef, className: "ft-inkcv", onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up }),
+            react_1.default.createElement("canvas", { ref: cvRef, className: "ft-inkcv", onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up, onLostPointerCapture: up }),
             /* まだ何も書いていないあいだだけ、紙のまん中に「書くとどうなるか」を出す（押せない・書くと消える） */
             hint && !strokes.length && !touched ? react_1.default.createElement("div", { className: "ft-inkhint" }, react_1.default.createElement(lucide_react_1.Pencil, { size: 20 }), react_1.default.createElement("span", null, hint)) : null),
         react_1.default.createElement("div", { className: "ft-inkbar" },
             INK_PENS.map((P) => tool(P.k, react_1.default.createElement("span", { className: "ft-inkdot" + (P.k === "mark" ? " mark" : ""), style: { background: P.c } }), P.k === "mark" ? "マーカー" : "ペン")),
             tool("erase", react_1.default.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.9, strokeLinejoin: "round" }, react_1.default.createElement("path", { d: "M8 20h12M5.5 14.5l8-8a2 2 0 0 1 2.8 0l2.2 2.2a2 2 0 0 1 0 2.8L11 19H8.5z" })), "消しゴム"),
             react_1.default.createElement("span", { className: "ft-inksep" }),
-            react_1.default.createElement("button", { type: "button", onClick: doUndo, disabled: !undo.length, "aria-label": "元に戻す", className: "ft-inktool ft-tap" }, react_1.default.createElement(lucide_react_1.Undo2, { size: 19 })),
-            react_1.default.createElement("button", { type: "button", onClick: doRedo, disabled: !redo.length, "aria-label": "やり直す", className: "ft-inktool ft-tap" }, react_1.default.createElement(lucide_react_1.Redo2, { size: 19 })),
+            react_1.default.createElement(TapOnceButton, { onTap: doUndo, disabled: !undoRef.current.length, "aria-label": "元に戻す", className: "ft-inktool ft-tap" }, react_1.default.createElement(lucide_react_1.Undo2, { size: 19 })),
+            react_1.default.createElement(TapOnceButton, { onTap: doRedo, disabled: !redoRef.current.length, "aria-label": "やり直す", className: "ft-inktool ft-tap" }, react_1.default.createElement(lucide_react_1.Redo2, { size: 19 })),
             react_1.default.createElement("span", { className: "flex-1" }),
             toolbarRight || null),
         footer || null);
 }
 /* 手書きを書く画面（下から）。紙は画面いっぱい。新しく書くときも、書き直すときも */
-function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDetail }) {
+function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDetail, onAutoSave }) {
     const inkRef = (0, react_1.useRef)(initial || null);
     const [dirty, setDirty] = (0, react_1.useState)(false);
-    const save = () => {
+    /* 自動保存（3.3.0〜。onAutoSave を渡したときだけ）。書くのをやめて 1.2 秒たったら保存する。
+       "" ＝ まだ何もしていない／"wait" ＝ 保存待ち／"saved" ＝ 保存した。
+       **戻す・やり直すの積み重ねは、自動保存では消さないこと。** 消えるのは「保存」で閉じたときだけ */
+    const [st, setSt] = (0, react_1.useState)("");
+    const timer = (0, react_1.useRef)(null);
+    const pendingRef = (0, react_1.useRef)(false);
+    const result = () => {
         const v = inkRef.current;
         const s = v && v.s ? v.s : [];
-        if (!s.length) {
-            onCancel();
-            return;
-        }
+        if (!s.length)
+            return null;
         const out = inkToPng(s, v.w);
-        if (!out) {
+        return out ? { ink: { v: 1, w: v.w || INK_W, h: v.h || INK_H, ar: out.ar, s }, png: out.png } : null;
+    };
+    const flush = () => {
+        clearTimeout(timer.current);
+        timer.current = null;
+        if (!pendingRef.current || !onAutoSave)
+            return;
+        pendingRef.current = false;
+        const o = result();
+        if (!o)
+            return;
+        try {
+            onAutoSave(o);
+            setSt("saved");
+        }
+        catch (e) {
+            console.error("手書きを自動保存できませんでした", e);
+        }
+    };
+    const flushRef = (0, react_1.useRef)(flush);
+    flushRef.current = flush;
+    /* 画面が閉じるときに、待っている分を保存する */
+    (0, react_1.useEffect)(() => () => flushRef.current(), []);
+    const changed = (v) => {
+        inkRef.current = v;
+        setDirty(true);
+        if (!onAutoSave)
+            return;
+        pendingRef.current = true;
+        setSt("wait");
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => flushRef.current(), 1200);
+    };
+    const save = () => {
+        clearTimeout(timer.current);
+        pendingRef.current = false;
+        const o = result();
+        if (!o) {
             onCancel();
             return;
         }
-        onSave({ ink: { v: 1, w: v.w || INK_W, h: v.h || INK_H, ar: out.ar, s }, png: out.png });
+        onSave(o);
     };
+    const cancel = () => { flush(); onCancel(); };
     return react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60 },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-app flex flex-col ft-inkedit", "data-ft-overlay": "" },
             react_1.default.createElement("div", { className: "shrink-0 flex items-center gap-2 px-3 border-b border-neutral-200 bg-white", style: { paddingTop: "calc(env(safe-area-inset-top) + 8px)", paddingBottom: 8 } },
-                react_1.default.createElement("button", { type: "button", onClick: onCancel, "aria-label": "閉じる", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap" }, react_1.default.createElement(lucide_react_1.X, { size: 24 })),
-                react_1.default.createElement("span", { className: "flex-1 text-center fs-subhead font-bold text-neutral-900 flex items-center justify-center gap-1.5" }, react_1.default.createElement(lucide_react_1.Pencil, { size: 16, className: "text-th-800" }), title),
+                react_1.default.createElement("button", { type: "button", onClick: cancel, "aria-label": "閉じる", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap" }, react_1.default.createElement(lucide_react_1.X, { size: 24 })),
+                react_1.default.createElement("span", { className: "flex-1 min-w-0 text-center flex flex-col items-center justify-center" },
+                    react_1.default.createElement("span", { className: "fs-subhead font-bold text-neutral-900 flex items-center justify-center gap-1.5" }, react_1.default.createElement(lucide_react_1.Pencil, { size: 16, className: "text-th-800" }), title),
+                    onAutoSave && st ? react_1.default.createElement("span", { className: "fs-caption " + (st === "saved" ? "text-th-800" : "text-neutral-400") }, st === "saved" ? "自動保存しました" : "まもなく自動保存") : null),
                 onDetail ? react_1.default.createElement("button", { type: "button", onClick: () => { if (dirty)
                         save(); onDetail(); }, className: BTN_SECONDARY + " px-3 fs-body-sm", style: { minHeight: 42 } }, "タグ・詳細") : null,
                 react_1.default.createElement("button", { type: "button", onClick: save, disabled: !dirty, className: BTN_PRIMARY + " px-5 fs-body", style: { minHeight: 42 } }, "保存")),
             react_1.default.createElement("div", { className: "flex-1 min-h-0 ft-inkedit-body" },
-                react_1.default.createElement(InkCanvas, { value: initial, hint: "書いて右上の「保存」を押すと、メモの記録になります。タグや計画は、あとからそのメモに付けられます", onChange: (v) => { inkRef.current = v; setDirty(true); } }))));
+                react_1.default.createElement(InkCanvas, { value: initial, hint: onAutoSave ? "書いたものは、こまめに自動で保存されます。「保存」を押すと閉じます" : "書いて右上の「保存」を押すと、メモの記録になります。タグや計画は、あとからそのメモに付けられます", onChange: changed }))));
 }
 /* 手書きのメモを、書く画面から書き直すためのボタン（RecordForm の中） */
 function InkEditButton({ rec, onChange }) {
@@ -30679,6 +30799,26 @@ function AppMain() {
         setEditing(base);
     };
     const [inkNew, setInkNew] = (0, react_1.useState)(null);
+    /* 手書きの保存（3.3.0〜）。自動保存は何度も走るので、保存のたびに新しい絵が置き場に入る。
+       ・**一列に並べること。** 前の保存が終わる前に次が走ると、古い絵を消しそこねる
+       ・入れ替わった古い絵（photo:番号）は、その場で置き場から消す（この記録しか使っていない） */
+    const inkChainRef = (0, react_1.useRef)(Promise.resolve());
+    const saveInk = (id, base, ink, png, opts) => {
+        inkChainRef.current = inkChainRef.current.then(async () => {
+            const prev = recordsRef.current.find((r) => r.id === id);
+            const src = prev || base;
+            const old = prev && (prev.images || [])[0];
+            await saveRecord({ ...src, ink, images: [png, ...((src.images || []).slice(1))], updatedAt: new Date().toISOString() }, opts);
+            const now = recordsRef.current.find((r) => r.id === id);
+            const cur = now && (now.images || [])[0];
+            if (old && isPhotoRef(old) && old !== cur)
+                try {
+                    await photoDel(old.slice(6));
+                }
+                catch (e) { /* 片づけは、次の削除のときにも走る */ }
+        }).catch((e) => console.error("手書きを保存できませんでした", e));
+        return inkChainRef.current;
+    };
     /* 手書きノートで開いている記録（3.2.0〜） */
     const [noteOpen, setNoteOpen] = (0, react_1.useState)(null);
     const noteObj = noteOpen ? records.find((r) => r.id === noteOpen) || null : null;
@@ -30896,8 +31036,8 @@ function AppMain() {
                                         addScoped(a.scope, a.dateKey);
                                     } })),
                                 typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: [...(scoped ? SCOPED_TYPES : TYPES), "__ink"], labels: { __ink: "\u624B\u66F8\u304D" }, icons: { __ink: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }) }, colorKeys: { __ink: "memo" } })),
-                                noteObj && react_1.default.createElement(InkEditor, { key: noteObj.id, initial: noteObj.ink, title: fmtDate(noteObj.date), onCancel: () => setNoteOpen(null), onDetail: () => { const r = recordsRef.current.find((x) => x.id === noteObj.id) || noteObj; setNoteOpen(null); openEdit(r); }, onSave: ({ ink, png }) => { saveRecord({ ...noteObj, ink, images: [png, ...(noteObj.images || []).slice(1)], updatedAt: new Date().toISOString() }, { keepOpen: true }); setNoteOpen(null); tell("保存しました"); } }),
-                                inkNew && (react_1.default.createElement(InkEditor, { onCancel: () => setInkNew(null), onSave: ({ ink, png }) => { const r = { ...inkNew, ink, images: [png] }; setInkNew(null); saveRecord(r); } })),
+                                noteObj && react_1.default.createElement(InkEditor, { key: noteObj.id, initial: noteObj.ink, title: fmtDate(noteObj.date), onCancel: () => setNoteOpen(null), onDetail: () => { const r = recordsRef.current.find((x) => x.id === noteObj.id) || noteObj; setNoteOpen(null); openEdit(r); }, onAutoSave: ({ ink, png }) => saveInk(noteObj.id, noteObj, ink, png, { keepOpen: true }), onSave: ({ ink, png }) => { saveInk(noteObj.id, noteObj, ink, png, { keepOpen: true }); setNoteOpen(null); tell("保存しました"); } }),
+                                inkNew && (react_1.default.createElement(InkEditor, { key: inkNew.id, onCancel: () => setInkNew(null), onAutoSave: ({ ink, png }) => saveInk(inkNew.id, inkNew, ink, png, { keepOpen: true }), onSave: ({ ink, png }) => { const base = inkNew; setInkNew(null); saveInk(base.id, base, ink, png, { keepOpen: true }); tell("保存しました"); } })),
                                 addPlanOpen && (react_1.default.createElement(NameIconSheet, { title: "\u8A08\u753B\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: true, photo: true, placeholder: "\u82F1\u8A9E\uFF0F\u4F53\u3065\u304F\u308A \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), onCancel: () => setAddPlanOpen(false), onSave: (n, ic) => { addPlan(null, n, ic); setAddPlanOpen(false); } })),
                                 addFolderOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: false, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 28 }), onCancel: () => setAddFolderOpen(false), onSave: (n, ic) => { addFolder(n, ic); setAddFolderOpen(false); } })),
                                 editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => {

@@ -973,3 +973,6 @@ button.ft-wb-bar{pointer-events:auto}
 .ft-ncard.new .ft-nthumb b{font-size:calc(13.5px * var(--ft-scale))}
 .ft-nmeta{display:flex;flex-direction:column;gap:1px;padding:0 4px;font-size:calc(12px * var(--ft-scale));color:#4B5A64;min-width:0}
 .ft-ntags{color:#8A949C;font-size:calc(11px * var(--ft-scale));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 3.3.0：手書きの道具は、続けて押してもダブルタップの拡大や待ちが入らないように */
+.ft-inkbar button,.ft-inkcv{touch-action:manipulation}
+.ft-inkcv{touch-action:none}
