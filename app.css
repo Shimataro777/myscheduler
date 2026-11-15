@@ -1096,3 +1096,130 @@ button.ft-wb-bar{pointer-events:auto}
   .ft-cgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px}
   .ft-ctl > .ft-ctl-tabs{width:360px}
 }
+
+/* ===== 4.1.0 計画：伸びる字の欄・日付の札・並べ替え・期間の線 ===== */
+.ft-atext{display:block;width:100%;resize:none;overflow:hidden;border:0;outline:0;background:transparent;font-family:inherit;line-height:1.5;word-break:break-word;-webkit-appearance:none;appearance:none}
+.ft-ptask-row{align-items:flex-start;gap:10px;min-height:44px}
+.ft-ptask-row > .ft-pcheck{margin-top:10px}
+.ft-ptask-main{flex:1;min-width:0;display:flex;flex-direction:column}
+.ft-ptask-main .ft-ptask-in{padding:8px 0 8px}
+.ft-ptask.next .ft-ptask-in{font-weight:700}
+.ft-pmeta{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin:-4px 0 8px;min-width:0}
+.ft-pmeta .ft-pdate{height:22px;min-width:0;padding:0 8px;font-size:calc(11.5px * var(--ft-scale))}
+.ft-pnext{flex:none;height:auto;padding:0;background:none !important;font-size:calc(11.5px * var(--ft-scale));font-weight:700;letter-spacing:.04em}
+.ft-psubn{flex:none;padding:0;background:none !important;color:#6B7883 !important;font-size:calc(11.5px * var(--ft-scale));font-weight:700}
+.ft-pdoneat{font-size:calc(11.5px * var(--ft-scale));color:#8A949C}
+.ft-pnote1{flex:1 1 120px;min-width:0;font-size:calc(12px * var(--ft-scale));color:#8A949C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-pmore{margin-top:4px;height:36px}
+.ft-ptask.open{background:#F7F9FA;border-radius:14px;margin:0 -8px 4px;padding:0 8px}
+.ft-pdetail{margin:0 0 6px 0;padding:0 0 4px 34px;border:0}
+.ft-pnote{padding:2px 0 8px !important;color:#374151}
+.ft-psubs{margin:2px 0 4px}
+.ft-psub{display:flex;align-items:flex-start;gap:8px;min-height:38px}
+.ft-psub > .ft-pcheck{margin-top:9px}
+.ft-psub .ft-ptask-in.s{font-size:max(16px, calc(14px * var(--ft-scale)));padding:6px 0}
+.ft-psub.done .ft-ptask-in{color:#A3A3A3;text-decoration:line-through}
+.ft-psub > .ft-dchip{margin-top:5px}
+.ft-ptask-row.add.sub{min-height:38px;gap:8px}
+.ft-ptask-row.add.sub > .ft-pcheck{margin-top:9px}
+.ft-ptask-row.add > .ft-ptask-in{padding:9px 0}
+.ft-pwhen{display:flex;align-items:center;gap:8px;padding:6px 0 6px;flex-wrap:wrap}
+/* 日付の札：押すと日付をえらぶ。入っていれば ✕ で外せる */
+.ft-dchip{position:relative;display:inline-flex;align-items:center;min-height:34px;border-radius:999px;border:1px dashed #CDD5DB;color:#6B7883;background:#fff;overflow:hidden;flex:none}
+.ft-dchip.on{border-style:solid;border-color:transparent}
+.ft-dchip-l{position:relative;display:inline-flex;align-items:center;gap:5px;min-height:34px;padding:0 12px;font-size:calc(12.5px * var(--ft-scale));font-weight:700}
+.ft-dchip-l input{position:absolute;inset:0;width:100%;height:100%;opacity:0;-webkit-appearance:none;appearance:none}
+.ft-dchip.on .ft-dchip-l{padding-right:2px}
+.ft-dchip-x{display:grid;place-items:center;width:30px;height:34px;color:inherit;opacity:.7}
+.ft-dchip.s{min-height:28px}
+.ft-dchip.s .ft-dchip-l{min-height:28px;padding:0 9px;font-size:calc(11.5px * var(--ft-scale))}
+.ft-dchip.s.on .ft-dchip-l{padding-right:0}
+.ft-dchip.s .ft-dchip-x{width:26px;height:28px}
+/* 段階・グループを移す（ふつうのえらぶ欄を、札の形に重ねる） */
+.ft-psecsel{position:relative;display:inline-flex;align-items:center;gap:5px;min-height:34px;max-width:200px;padding:0 12px;border-radius:999px;border:1px solid #E1E6EA;background:#fff;color:#4B5A64;font-size:calc(12.5px * var(--ft-scale));font-weight:700;overflow:hidden}
+.ft-psecsel span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-psecsel select{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:16px;-webkit-appearance:none;appearance:none}
+.ft-pdel{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;color:#BE123C}
+/* 並べ替え */
+.ft-arr{margin:2px 0 12px}
+.ft-arr-top{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:calc(12px * var(--ft-scale));color:#8A949C;line-height:1.5}
+.ft-arr-top span{flex:1;min-width:0}
+.ft-arr-done{flex:none;min-height:36px;padding:0 16px;border-radius:999px;color:#fff;font-size:calc(13px * var(--ft-scale));font-weight:700}
+.ft-arr-row{display:flex;align-items:center;gap:10px;min-height:48px;padding:0 0 0 12px;margin-bottom:6px;background:#fff;border:1px solid #E6EAEE;border-radius:12px}
+.ft-arr-row.hd{background:#F3F6F8;border-color:#E6EAEE;margin-top:12px;color:#26323A;font-weight:700}
+.ft-arr-row.done .ft-arr-t{color:#A3A3A3}
+.ft-arr-row.drag{border-color:#B8C4CC}
+.ft-arr-dot{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid #C4C4C4}
+.ft-arr-ic{flex:none;display:flex;color:#6B7883}
+.ft-arr-t{flex:1;min-width:0;font-size:calc(14.5px * var(--ft-scale));line-height:1.45;padding:10px 0;word-break:break-word}
+.ft-arr-row > button{color:#8A949C}
+/* コレクション：出し分けと「並べ替え」を1段に */
+.ft-cbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;border-bottom:1px solid #E5EAEE}
+.ft-cbar .ft-cseg{flex:1;margin-bottom:0;border-bottom:0}
+.ft-cbar > .ft-plbl-add{flex:none;margin-bottom:5px}
+.ft-coll .ft-ptask{padding:2px 4px 2px 12px}
+.ft-coll .ft-ptask-row > .ft-pcheck{margin-top:9px}
+.ft-coll .ft-pdetail{padding-left:34px}
+.ft-cnote{display:none}
+/* ゴールの札：期間の線とステップの線 */
+.ft-goal-when{align-items:center;min-height:40px;margin-top:2px}
+.ft-goal-left b{font-size:calc(30px * var(--ft-scale))}
+.ft-goal-date.on{background:#fff;border:1px solid currentColor}
+.ft-road{margin-top:14px}
+.ft-road-row{display:flex;align-items:center;gap:10px}
+.ft-road-k{flex:none;width:58px;font-size:calc(11.5px * var(--ft-scale));font-weight:700;color:#8A949C}
+.ft-road-line{position:relative;flex:1;height:10px;margin:20px 0 0;border-radius:5px;background:#EEF1F4}
+.ft-road-fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;opacity:1}
+.ft-road-tick{position:absolute;top:0;bottom:0;width:1px;height:auto;background:rgba(255,255,255,.9)}
+.ft-road-tick small{position:absolute;top:-17px;left:0;transform:translateX(-50%);font-size:9.5px;color:#A3ABB2;white-space:nowrap}
+.ft-road-ms{width:10px;height:10px}
+.ft-road-today{position:absolute;top:50%;width:4px;height:20px;border-radius:2px;background:#26323A;border:0;box-shadow:0 0 0 2px #fff;transform:translate(-50%,-50%)}
+.ft-road-today b{position:absolute;bottom:100%;left:50%;transform:translate(-50%,-3px);font-size:10px;font-weight:700;color:#26323A;white-space:nowrap;background:#fff;padding:0 3px}
+.ft-road-ends{display:flex;margin:6px 0 0 68px;font-size:calc(11px * var(--ft-scale));color:#8A949C}
+.ft-road-row.step{margin-top:12px}
+.ft-road-row.solo{margin-top:14px}
+.ft-road-bar{flex:1;height:10px;border-radius:5px;background:#EEF1F4;overflow:hidden}
+.ft-road-bar i{display:block;height:100%;border-radius:5px}
+.ft-road-n{flex:none;min-width:34px;text-align:right;font-size:calc(12px * var(--ft-scale));font-weight:700;color:#4B5A64}
+.ft-road-row.step + *{margin-top:0}
+.ft-goal-prog{display:none}
+/* 目標の札（一覧）：期間の線 */
+.ft-gcard-per{margin-top:12px}
+.ft-gcard-bar{position:relative;height:6px;border-radius:3px;background:#EEF1F4}
+.ft-gcard-bar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+.ft-gcard-bar b{position:absolute;top:50%;width:3px;height:14px;border-radius:2px;background:#26323A;transform:translate(-50%,-50%);box-shadow:0 0 0 2px #fff}
+.ft-gcard-per .ft-gcard-foot{margin-top:8px}
+.ft-gcard-due{flex:none;font-size:calc(11.5px * var(--ft-scale));color:#8A949C}
+/* ステップの線（左の道すじ）：丸の中心を通す */
+.ft-steps .ft-ptask::before{top:0;bottom:0}
+.ft-steps .ft-ptask:first-child::before{top:22px}
+.ft-steps .ft-ptask.open::before{display:none}
+.ft-steps .ft-ptask + .ft-ptask-row.add::before{height:12px}
+.ft-pfin{margin-top:12px}
+.ft-ptask-main > .ft-atext{flex:none}
+
+/* ===== 4.1.0 横長：探す（左に条件の帯、右に結果） ===== */
+.ft-wfind{position:fixed;top:var(--ft-chrome-h, 72px);bottom:0;left:var(--ft-rail, 0px);right:0;display:grid;grid-template-columns:minmax(320px,36%) minmax(0,1fr);background:#fff;z-index:1}
+.ft-wfind-l{display:flex;flex-direction:column;min-height:0;background:#F6F8FA;border-right:1px solid #E5EAEE}
+.ft-wfind-form{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 20px 12px}
+.ft-wfind-sec{margin-bottom:20px}
+.ft-wfind-k{display:flex;align-items:center;min-height:40px;margin-bottom:6px;font-size:calc(12.5px * var(--ft-scale));font-weight:700;color:#6B7883;background:linear-gradient(#DDE3E8,#DDE3E8) 0 0/100% 1px no-repeat}
+.ft-wfind-sec:first-child .ft-wfind-k{background:none}
+.ft-wfind-chip{display:inline-flex;align-items:center;gap:5px;min-height:40px;padding:0 10px 0 12px;border-radius:999px;background:var(--th-800,#3E7EA6);color:#fff;font-size:calc(13px * var(--ft-scale));font-weight:700}
+.ft-wfind-add{display:inline-flex;align-items:center;gap:4px;min-height:40px;padding:0 14px;border-radius:999px;border:1px dashed #C9D2D8;background:#fff;color:#4B5A64;font-size:calc(13px * var(--ft-scale));font-weight:700}
+.ft-wfind-go{flex:none;display:flex;gap:8px;padding:12px 20px calc(env(safe-area-inset-bottom) + 16px);border-top:1px solid #E5EAEE;background:#F6F8FA}
+.ft-wfind-r{min-width:0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:16px 24px 96px}
+.ft-wfind-hd{display:flex;align-items:center;gap:10px;min-height:40px;margin-bottom:8px;font-size:calc(12.5px * var(--ft-scale));font-weight:700;color:#6B7883}
+.ft-wfind-hd-r > div{margin-bottom:0 !important}
+.ft-wfind .ft-noresult{padding-top:64px}
+
+/* ===== 4.1.0 横長：左右の列の上をそろえる（Today の日・週・月、計画、探す） =====
+   横に2つ並ぶ画面では、見出しの線を「見出しの上」に引く。右の列のいちばん上の線が、左の列の枠の上と同じ高さに来る。
+   **見出しの線を、字のまん中（横）へ戻さないこと。** 4.0.0 までは線が字のまん中にあり、左の枠の上より 10〜20px 下にずれて見えた */
+@media (min-width:820px) and (orientation:landscape){
+  .ft-wsplit .ft-sechd,.ft-wsplit .ft-seclbl,.ft-planwide .ft-plbl{min-height:40px;padding-top:0;padding-bottom:4px;align-items:center;background:linear-gradient(#DDE3E8,#DDE3E8) 0 0/100% 1px no-repeat;background-origin:content-box;background-clip:border-box}
+  .ft-wsplit .ft-sechd > i,.ft-wsplit .ft-seclbl > i,.ft-planwide .ft-plbl > i{visibility:hidden}
+  .ft-wsplit .ft-seclbl{margin-top:4px}
+  .ft-planwide > div > :first-child{margin-top:0}
+  .ft-planwide .ft-ptodo,.ft-planwide .ft-pblock{margin-top:0}
+}
