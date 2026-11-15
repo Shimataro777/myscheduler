@@ -22508,6 +22508,10 @@ function FilterPill({ on, onClick, children, color }) {
     return (react_1.default.createElement("button", { type: "button", onClick: onClick, "aria-pressed": on, style: style, className: "fs-body-sm font-bold px-3.5 min-h-[44px] rounded-full border ft-tap inline-flex items-center gap-1.5 "
             + (on ? (color ? "" : "border-th-800 bg-th-800 text-white") : "border-neutral-200 bg-white text-neutral-600") }, children));
 }
+/* 種類でしぼる（5.0.0〜）。「手書き」（INK_TYPE）は、手書きのメモだけ。字は探せないので、種類・フォルダ・期間で探す */
+const INK_TYPE = "__ink";
+const typeHit = (types, r) => !types.length || types.includes(r.type) || (types.includes(INK_TYPE) && r.type === "memo" && !!r.ink);
+const typeNames = (types, N) => types.map((t) => (t === INK_TYPE ? "手書き" : N[t] || TYPE_LABELS[t])).join("・");
 /* しぼりこみの欄。
    **探す・フォルダの条件・フォルダの手入れで、同じものを使うこと。**
    別々に書くと、少しずつ並びがずれていく。
@@ -22521,7 +22525,8 @@ function FilterFields({ q, onQ, onEnter, types, onToggleType, folders, onOpenFol
         react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5" }, TYPES.map((t) => (react_1.default.createElement(FilterPill, { key: t, on: types.includes(t), onClick: () => onToggleType(t) },
             typeIcon(t, 14),
             " ",
-            N[t] || TYPE_LABELS[t])))),
+            N[t] || TYPE_LABELS[t]))),
+            react_1.default.createElement(FilterPill, { on: types.includes(INK_TYPE), onClick: () => onToggleType(INK_TYPE) }, react_1.default.createElement(lucide_react_1.Pencil, { size: 14 }), " 手書き")),
         (onOpenFolders || extra) && react_1.default.createElement("div", { className: "flex gap-1.5" },
             onOpenFolders && react_1.default.createElement("button", { type: "button", onClick: onOpenFolders, className: BTN_SECONDARY + " flex-1 min-w-0 " + BTN_H + " fs-body" },
                 react_1.default.createElement(lucide_react_1.Folder, { size: 15 }),
@@ -23796,7 +23801,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                 /* 引用しているメモ（2.25.0〜）。✕で引用だけを外せる（もとのメモは消えない） */
                 /* 引用は 2.32.0 でやめた。quoteId は消さずに残すが、出さない */
                 /* ---- 計画を選択／フォルダに追加（どの画面でも、いちばん下に共通。4.0.0 でタグをフォルダに変えた） ---- */
-                rec.scope === "day" && (react_1.default.createElement("div", { className: "mt-3" },
+                rec.scope === "day" && rec.planId && (react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(PlanSelect, { value: rec.planId || "", onChange: (v) => set({ planId: v || null }), plans: plans || [], placeholder: "\u8A08\u753B\u3092\u9078\u629E", title: "\u8A08\u753B\u3092\u9078\u629E" }))),
                 react_1.default.createElement("div", { className: "mt-3" },
                     react_1.default.createElement(FolderField, { recId: rec.id, value: rec.__folders, onChange: (v) => set({ __folders: v }) }))),
@@ -23843,7 +23848,7 @@ function TypeRow({ t, onPick, label, icon, colorKey }) {
         react_1.default.createElement("span", { className: "flex-1 min-w-0 fs-subhead font-bold text-neutral-900" }, label || N[t] || TYPE_LABELS[t]),
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" })));
 }
-function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons, colorKeys }) {
+function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons, colorKeys, top }) {
     /* 選んだときも下へ滑らせる（2.17.2〜）。**onPick を素通しにしないこと** */
     const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
     const close = () => requestClose(onCancel);
@@ -23857,6 +23862,7 @@ function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TY
                 react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900" }, title),
                 react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100" },
                     react_1.default.createElement(lucide_react_1.X, { size: 28 }))),
+            top ? react_1.default.createElement("div", { className: "px-4 pt-3" }, top) : null,
             react_1.default.createElement("div", { className: "p-2" }, types.map((t) => (react_1.default.createElement(TypeRow, { key: t, t: t, onPick: pick, colorKey: colorKeys ? colorKeys[t] : null, label: labels ? labels[t] : null, icon: icons ? icons[t] : null })))))));
 }
 /* 前回、保存しないまま閉じられた記録を知らせるカード */
@@ -24955,7 +24961,7 @@ function DayTimeline({ date, records, onEdit, onToggleItem, selectMode, selected
     const hasPlanDay = !(hidden && hidden.includes("checklist")) && planDayTasks(planCtx.plans, date).length > 0;
     if (!list.length && !hasPlanDay) {
         return (react_1.default.createElement("div", { className: (compact ? "py-6" : "py-14") + " text-center ft-noresult" },
-            react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u3053\u306E\u65E5\u306F\u307E\u3060\u8A18\u9332\u304C\u3042\u308A\u307E\u305B\u3093")));
+            null));
     }
     const hasList = list.some((r) => dayGroup(r) === 1);
     const firstMemo = list.findIndex((r) => dayGroup(r) === 2);
@@ -25870,7 +25876,7 @@ function FindScreen({ records, onEdit, onToggleItem, onDeleteMany, onPin, onSele
         const words = aq.trim().toLowerCase().split(/[\s　]+/).filter(Boolean);
         const inSet = folderIdSet(fctx.folders, atags);
         return records.filter((r) => {
-            if (atypes.length && !atypes.includes(r.type))
+            if (!typeHit(atypes, r))
                 return false;
             if (afrom && (r.date || "") < afrom)
                 return false;
@@ -25900,7 +25906,7 @@ function FindScreen({ records, onEdit, onToggleItem, onDeleteMany, onPin, onSele
         if (a.q.trim())
             out.push(`「${a.q.trim()}」`);
         if (a.types.length)
-            out.push(a.types.map((t) => N[t] || TYPE_LABELS[t]).join("・"));
+            out.push(typeNames(a.types, N));
         if (a.tags.length)
             out.push(a.tags.map((id) => { const f = fctx.folders.find((x) => x.id === id); return f ? (f.name || "（名前なし）") : ""; }).filter(Boolean).join("・"));
         if (a.from || a.to)
@@ -25931,7 +25937,7 @@ function FindScreen({ records, onEdit, onToggleItem, onDeleteMany, onPin, onSele
                     ce("div", { className: "ft-wfind-form" },
                         sec("キーワード", ce(TextInput, { value: q, onChange: (e) => setQ(e.target.value), placeholder: "言葉で探す", onKeyDown: (e) => { if (e.key === "Enter")
                                 search(); } })),
-                        sec("種類", ce("div", { className: "flex flex-wrap gap-1.5" }, TYPES.map((t) => ce(FilterPill, { key: t, on: types.includes(t), onClick: () => toggleType(t) }, typeIcon(t, 14), " ", N[t] || TYPE_LABELS[t])))),
+                        sec("種類", ce("div", { className: "flex flex-wrap gap-1.5" }, TYPES.map((t) => ce(FilterPill, { key: t, on: types.includes(t), onClick: () => toggleType(t) }, typeIcon(t, 14), " ", N[t] || TYPE_LABELS[t])), ce(FilterPill, { on: types.includes(INK_TYPE), onClick: () => toggleType(INK_TYPE) }, ce(lucide_react_1.Pencil, { size: 14 }), " 手書き"))),
                         sec("フォルダ", ce("div", { className: "flex flex-wrap gap-1.5" },
                             folderNames.map((f) => ce("button", { key: f.id, type: "button", onClick: () => setTags(tags.filter((x) => x !== f.id)), className: "ft-wfind-chip ft-tap" }, ce(lucide_react_1.Folder, { size: 13 }), f.name || "（名前なし）", ce(lucide_react_1.X, { size: 13 }))),
                             ce("button", { type: "button", onClick: () => setTagOpen(true), className: "ft-wfind-add ft-tap" }, ce(lucide_react_1.Plus, { size: 14 }), folderNames.length ? "追加" : "フォルダを選ぶ"))),
@@ -26308,83 +26314,32 @@ function planNext(p) {
 function planDayLabel(date, today) {
     return !date ? "" : date === today ? "今日" : date === addDays(today, 1) ? "明日" : fmtDateShort(date);
 }
-/* 目標の札 */
-function GoalCard({ plan, records, onOpen, onPin, pressProps, hitQ }) {
+/* 計画の札（5.0.0）。**フォルダの札と同じ形**（四角い絵＋名前＋ひとこと）。つぎのステップ・線は出さない。
+   目標＝「ステップ 1/5」と「あと154日」。コレクション＝「済み 2/6」 */
+function PlanCard({ plan, records, onOpen, onPin, pressProps, hitQ }) {
     const p = plan;
     const hits = (0, react_1.useMemo)(() => planHits(p, hitQ), [p, hitQ]);
     const hitWords = hits ? [String(hitQ).trim().toLowerCase()] : null;
     const c = planColorOf(p, useTypeColor(PLAN_TYPE));
-    const S = planSummary(p, records);
     const ce = react_1.default.createElement;
     const art = p.icon && ICON_ART[p.icon];
+    const isList = planKindOf(p) === "list";
+    const todo = planTodo(p);
+    const nDone = todo.filter((t) => t.done).length;
     const done = !!p.doneAt;
-    const next = done ? null : planNext(p);
-    const goalLine = (p.note || "").split("\n")[0];
-    const sub = done ? `${fmtDate(p.doneAt)} に達成` : goalLine;
-    const P = planPeriod(p, S);
-    const leftText = !P ? "" : P.left === 0 ? "今日まで" : P.left < 0 ? `${-P.left}日過ぎ` : `あと${P.left}日`;
-    const nd = next ? planDayLabel(next.date, S.today) : "";
+    const left = !isList && !done && p.goalDate ? daysBetween(todayStr(), p.goalDate) : null;
     return ce("div", { onClick: onOpen, role: "button", tabIndex: 0, ...(pressProps || {}), onKeyDown: (e) => { if (e.key === "Enter")
-            onOpen(); }, className: "ft-gcard text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer bg-white" + (done ? " done" : "") },
-        ce("div", { className: "ft-gcard-head" },
-            ce("span", { className: "ft-gcard-ic", style: { background: art ? art.bg : c.soft, color: c.deep, borderColor: c.line } },
-                ce(ItemIcon, { icon: p.icon, size: 26, fallback: ce(lucide_react_1.Target, { size: 26 }), color: c }),
-                done && ce("span", { className: "ft-pcard-done", style: { background: c.deep } }, ce(lucide_react_1.Check, { size: 12, strokeWidth: 3.5, className: "thick" }))),
-            ce("span", { className: "ft-gcard-tt" },
-                ce("span", { className: "ft-gcard-name font-display text-neutral-900" }, p.name ? (hits && hits.name ? ce(HitText, { text: p.name, words: hitWords }) : p.name) : "（名前なし）"),
-                sub ? ce("span", { className: "ft-gcard-sub", style: done ? { color: c.deep, fontWeight: 700 } : undefined }, sub) : null),
-            onPin && ce(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } })),
-        /* つぎのステップ。**ここがこの札の主役。** 開かなくても、つぎに何をするかが分かる */
-        !done && next ? ce("div", { className: "ft-gcard-next", style: { background: c.soft } },
-            ce("span", { className: "ft-gcard-nk", style: { color: c.deep } }, "つぎ"),
-            ce("span", { className: "ft-gcard-nt" }, next.t.text, next.s ? ce("small", null, " › " + next.s.text) : null),
-            nd ? ce("span", { className: "ft-gcard-nd tabular-nums", style: next.date === S.today ? { background: c.mid, color: "#fff" } : next.date < S.today ? { background: "#FDECEC", color: "#BE123C" } : { background: "#fff", color: c.deep } }, nd) : null) : null,
-        !done && !next && S.total > 0 ? ce("div", { className: "ft-gcard-next", style: { background: c.soft } }, ce("span", { className: "ft-gcard-nt", style: { color: c.deep, fontWeight: 700 } }, "ステップはすべて完了")) : null,
-        /* 期間（4.1.0〜）。ゴールの日があれば、始まり〜ゴールの線に今日の位置。下に「ステップ 1/5」と「4/18 まで あと154日」。
-           ゴールの日が無ければ、ステップの線だけ */
-        !done && P ? ce("div", { className: "ft-gcard-per" },
-            ce("div", { className: "ft-gcard-bar" },
-                ce("i", { style: { width: P.pos * 100 + "%", background: c.line } }),
-                ce("b", { style: { left: P.pos * 100 + "%" } })),
-            ce("div", { className: "ft-gcard-foot" },
-                ce("span", { className: "ft-gcard-n tabular-nums" }, S.total ? `ステップ ${S.done}/${S.total}` : "ステップなし"),
-                ce("span", { className: "flex-1" }),
-                ce("span", { className: "ft-gcard-due tabular-nums" }, `${fmtDateShort(p.goalDate)} まで`),
-                ce("span", { className: "ft-gcard-left tabular-nums", style: P.left < 0 ? { color: "#BE123C" } : { color: c.deep } }, leftText))) : null,
-        !done && !P && S.total > 0 ? ce("div", { className: "ft-gcard-foot" },
-            ce(TaskSquares, { todo: S.todo, color: c, small: true }),
-            ce("span", { className: "ft-gcard-n tabular-nums" }, `ステップ ${S.done}/${S.total}`)) : null,
+            onOpen(); }, className: "ft-fcard bg-white text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer" },
+        ce("span", { className: "ft-fthumb", style: { background: art ? art.bg : c.soft, border: `1px solid ${c.line}`, color: c.deep } },
+            ce(ItemIcon, { icon: p.icon, fallback: ce(isList ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 40 }), color: c }),
+            done ? ce("span", { className: "ft-pcard-done", style: { background: c.deep } }, ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })) : null,
+            onPin ? ce("span", { className: "ft-fpin" }, ce(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } })) : null),
+        ce("span", { className: "ft-fbody" },
+            ce("span", { className: "ft-fname font-display fs-subhead text-neutral-900" }, p.name ? (hits && hits.name ? ce(HitText, { text: p.name, words: hitWords }) : p.name) : "（名前なし）"),
+            ce("span", { className: "ft-fmeta" },
+                ce("span", { className: "fs-label font-bold text-neutral-500 tabular-nums" }, isList ? `済み ${nDone}/${todo.length}` : done ? `${fmtDateShort(p.doneAt)} 達成` : `ステップ ${nDone}/${todo.length}`),
+                left != null ? ce("span", { className: "fs-label font-bold tabular-nums", style: { color: left < 0 ? "#BE123C" : c.deep, marginLeft: "auto" } }, left === 0 ? "今日まで" : left < 0 ? `${-left}日過ぎ` : `あと${left}日`) : null)),
         hits && ce(PlanHitBox, { plan: p, hits: hits, words: hitWords }));
-}
-/* コレクションの札（小さな四角） */
-function CollectionCard({ plan, onOpen, onPin, pressProps, hitQ }) {
-    const p = plan;
-    const hits = (0, react_1.useMemo)(() => planHits(p, hitQ), [p, hitQ]);
-    const hitWords = hits ? [String(hitQ).trim().toLowerCase()] : null;
-    const c = planColorOf(p, useTypeColor(PLAN_TYPE));
-    const ce = react_1.default.createElement;
-    const art = p.icon && ICON_ART[p.icon];
-    const todo = planTodo(p).filter((t) => String(t.text || "").trim());
-    const live = todo.filter((t) => !t.done);
-    const nDone = todo.length - live.length;
-    return ce("div", { onClick: onOpen, role: "button", tabIndex: 0, ...(pressProps || {}), onKeyDown: (e) => { if (e.key === "Enter")
-            onOpen(); }, className: "ft-ccard text-left ft-tap ft-tap-card ft-press card-soft cursor-pointer bg-white" },
-        ce("div", { className: "ft-ccard-head" },
-            ce("span", { className: "ft-ccard-ic", style: { background: art ? art.bg : c.soft, color: c.deep, borderColor: c.line } },
-                ce(ItemIcon, { icon: p.icon, size: 22, fallback: ce(lucide_react_1.ListTodo, { size: 22 }), color: c })),
-            ce("span", { className: "flex-1" }),
-            onPin && ce(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } })),
-        ce("span", { className: "ft-ccard-name font-display text-neutral-900" }, p.name ? (hits && hits.name ? ce(HitText, { text: p.name, words: hitWords }) : p.name) : "（名前なし）"),
-        ce("span", { className: "ft-ccard-n tabular-nums" },
-            ce("b", { style: { color: c.deep } }, `これから ${live.length}`),
-            ce("span", null, `済み ${nDone}`)),
-        live.length > 0 ? ce("ul", { className: "ft-ccard-list" }, live.slice(0, 3).map((t) => ce("li", { key: t.id }, ce("i", { style: { borderColor: c.mid } }), ce("span", null, t.text)))) : null,
-        live.length > 3 ? ce("span", { className: "ft-ccard-more" }, `ほか ${live.length - 3}`) : null,
-        !todo.length ? ce("span", { className: "ft-ccard-more" }, "まだ空です") : null,
-        hits && ce(PlanHitBox, { plan: p, hits: hits, words: hitWords }));
-}
-function PlanCard(props) {
-    return react_1.default.createElement(planKindOf(props.plan) === "list" ? CollectionCard : GoalCard, props);
 }
 /* 上に固定する押しピン。記録・計画・カテゴリ・フォルダで同じものを使う。
    **札ごとに書き写さないこと。** 見た目と当たりの大きさがずれる */
@@ -26394,133 +26349,73 @@ function PinButton({ on, onClick, color }) {
         react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") },
             react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: on ? "currentColor" : "none" }))));
 }
-function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onChangePlan, onDeletePlan, kind = "goal", onKind, resetSig = 0 }) {
-    /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
-    const [menu, setMenu] = (0, react_1.useState)(null); // { plan }
+function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onChangePlan, onDeletePlan, resetSig = 0 }) {
+    /* 5.0.0：この画面は目標だけ。コレクションはフォルダの画面に並ぶ。札はフォルダと同じ格子（.ft-fgrid） */
+    const [menu, setMenu] = (0, react_1.useState)(null);
     const [edit, setEdit] = (0, react_1.useState)(null);
     const [del, setDel] = (0, react_1.useState)(null);
-    /* **くり返しの中でフックを呼ばないこと。** 札ごとに使えるよう、素の handler を作る */
+    const press = usePressMenu(setMenu);
+    const ce = react_1.default.createElement;
+    const [q, setQ] = (0, react_1.useState)("");
+    const [doneOpen, setDoneOpen] = (0, react_1.useState)(false);
+    const shown = (0, react_1.useMemo)(() => matchPlan(plans.filter((p) => planKindOf(p) === "goal"), q), [plans, q]);
+    const pinFirst = (a, b) => (!!a.pinned === !!b.pinned ? 0 : (a.pinned ? -1 : 1));
+    const live = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => !p.doneAt), sort).sort(pinFirst), [shown, sort]);
+    const done = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => !!p.doneAt), sort).sort(pinFirst), [shown, sort]);
+    useTabReturn(resetSig, { viewKey: q, atDefault: !q, toDefault: () => setQ("") });
+    const card = (p) => ce(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: press({ plan: p }), hitQ: q.trim() ? q : "" });
+    return (ce("div", { className: "pad-fab" },
+        ce(TopChrome, null,
+            ce(ScreenHeader, { title: "目標" }),
+            ce(ListSearchBar, { value: q, onChange: setQ, placeholder: "目標を検索", right: ce(SortToggle, { value: sort, onChange: onSort }) })),
+        ce("div", { className: "px-4 pt-1 ft-col ft-fgrid ft-seq" },
+            (q.trim() ? [...live, ...done] : live).map(card),
+            q.trim() && !live.length && !done.length ? ce("div", { className: "py-14 text-center ft-noresult" }, ce("p", { className: "fs-body text-neutral-400" }, "見つかりません")) : null),
+        !q.trim() && done.length > 0 ? ce("div", { className: "px-4 ft-col ft-pdonebox" },
+            ce("button", { type: "button", onClick: () => setDoneOpen((v) => !v), "aria-expanded": doneOpen, className: "ft-pdonebtn ft-tap" },
+                ce("span", null, "達成済み"), ce("small", { className: "tabular-nums" }, done.length), ce("i", null),
+                ce("span", { className: "flex ft-chev " + (doneOpen ? "rotate-180" : "") }, ce(lucide_react_1.ChevronDown, { size: 18 }))),
+            ce(Collapse, { open: doneOpen }, ce("div", { className: "pt-2 ft-fgrid" }, done.map(card)))) : null,
+        ce(PlanMenus, { menu, setMenu, edit, setEdit, del, setDel, onChangePlan, onDeletePlan })));
+}
+/* 長押しで出す小窓（計画・コレクションの札で共通）。**くり返しの中でフックを呼ばないこと。** 素の handler を返す */
+function usePressMenu(setMenu) {
     const press = (0, react_1.useRef)({ t: null, from: null, fired: false });
-    const stopPress = () => { if (press.current.t) {
+    const stop = () => { if (press.current.t) {
         clearTimeout(press.current.t);
         press.current.t = null;
     } };
-    const longPressProps = (item) => ({
+    return (item) => ({
         onPointerDown: (e) => {
             if (e.pointerType === "mouse" && e.button !== 0)
                 return;
             press.current.fired = false;
             press.current.from = { x: e.clientX, y: e.clientY };
-            stopPress();
-            press.current.t = setTimeout(() => {
-                press.current.fired = true;
-                try {
-                    if (navigator.vibrate)
-                        navigator.vibrate(8);
-                }
-                catch (err) { /* 使えなくても構わない */ }
-                setMenu(item);
-            }, 480);
-        },
-        onPointerMove: (e) => {
-            const f = press.current.from;
-            if (!f)
-                return;
-            if (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10)
-                stopPress();
-        },
-        onPointerUp: stopPress,
-        onPointerCancel: stopPress,
-        /* 長押しの吹き出し（コピーなど）を出させない */
-        onContextMenu: (e) => e.preventDefault(),
-        onClickCapture: (e) => {
-            if (press.current.fired) {
-                e.preventDefault();
-                e.stopPropagation();
-                press.current.fired = false;
+            stop();
+            press.current.t = setTimeout(() => { press.current.fired = true; try {
+                if (navigator.vibrate)
+                    navigator.vibrate(8);
             }
+            catch (err) { /* noop */ } setMenu(item); }, 480);
         },
+        onPointerMove: (e) => { const f = press.current.from; if (f && (Math.abs(e.clientX - f.x) > 10 || Math.abs(e.clientY - f.y) > 10))
+            stop(); },
+        onPointerUp: stop,
+        onPointerCancel: stop,
+        onContextMenu: (e) => e.preventDefault(),
+        onClickCapture: (e) => { if (press.current.fired) {
+            e.preventDefault();
+            e.stopPropagation();
+            press.current.fired = false;
+        } },
     });
+}
+function PlanMenus({ menu, setMenu, edit, setEdit, del, setDel, onChangePlan, onDeletePlan }) {
     const ce = react_1.default.createElement;
-    const [q, setQ] = (0, react_1.useState)("");
-    const searching = !!q.trim();
-    /* 達成済みの目標は、下にたたんでおく（4.0.0〜。前は「完了済」のタブ） */
-    const [doneOpen, setDoneOpen] = (0, react_1.useState)(false);
-    /* 名前だけでなく、ゴール・ステップ・手順もヒットする対象に含める。
-       当たった場所は、札の下の「見つかった場所」に出す（PlanHitBox） */
-    const shown = (0, react_1.useMemo)(() => matchPlan(plans, q), [plans, q]);
-    const pinFirst = (a, b) => (!!a.pinned === !!b.pinned ? 0 : (a.pinned ? -1 : 1));
-    const goals = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => planKindOf(p) === "goal" && !p.doneAt), sort).sort(pinFirst), [shown, sort]);
-    const goalsDone = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => planKindOf(p) === "goal" && !!p.doneAt), sort).sort(pinFirst), [shown, sort]);
-    const colls = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => planKindOf(p) === "list"), sort).sort(pinFirst), [shown, sort]);
-    const nGoal = (0, react_1.useMemo)(() => plans.filter((p) => planKindOf(p) === "goal" && !p.doneAt).length, [plans]);
-    const nColl = (0, react_1.useMemo)(() => plans.filter((p) => planKindOf(p) === "list").length, [plans]);
-    const KIND_TABS = [
-        { key: "goal", label: ce(react_1.default.Fragment, null, ce(lucide_react_1.Target, { size: 16 }), PLAN_KIND_LABEL.goal), count: nGoal },
-        { key: "list", label: ce(react_1.default.Fragment, null, ce(lucide_react_1.ListTodo, { size: 16 }), PLAN_KIND_LABEL.list), count: nColl },
-    ];
-    const goKind = (k) => { if (searching)
-        setQ(""); if (onKind)
-        onKind(k); };
-    /* 左右に払って、目標とコレクションを行き来する */
-    const { areaRef } = useSwipePages(() => goKind("goal"), () => goKind("list"));
-    /* 下タブ「計画」をもう一度押したとき（useTabReturn）。1回め＝いまの表示の上へ、2回め＝検索を外す。
-       **目標／コレクションのどちらを見ていたか・並び順は戻さないこと。** 選んだ人の好みとして残す */
-    useTabReturn(resetSig, {
-        viewKey: kind + "|" + q,
-        atDefault: !q,
-        toDefault: () => setQ(""),
-    });
-    const card = (p) => ce(PlanCard, { key: p.id, plan: p, records: records, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: longPressProps({ plan: p }), hitQ: searching ? q : "" });
-    const goalGrid = (list) => ce(Masonry, { className: "ft-seq", cols: (w) => (w ? 2 : 1), gap: 12 }, list.map(card));
-    /* **コレクションは、縦長でも2列。** 小さな札を並べて、目標の札と見た目で区別する */
-    const collGrid = (list) => ce(Masonry, { className: "ft-seq", cols: (w) => (w ? 4 : 2), gap: 12 }, list.map(card));
-    const empty = (icon, title, text) => ce("div", { className: "ft-pempty" }, ce("span", { className: "ft-pempty-ic" }, icon), ce("b", null, title), ce("p", null, text));
-    const head = (text, n) => ce("div", { className: "ft-plisthd" }, ce("span", null, text), ce("small", { className: "tabular-nums" }, n), ce("i", null));
-    let body;
-    if (searching) {
-        /* 検索しているあいだは、2種類とも出す（タブを合わせないと、足りないように見える） */
-        const none = !goals.length && !goalsDone.length && !colls.length;
-        body = none ? ce("div", { className: "py-14 text-center ft-noresult" }, ce("p", { className: "fs-body text-neutral-400" }, "見つかりません")) : ce(react_1.default.Fragment, null,
-            goals.length + goalsDone.length > 0 ? ce("div", { className: "mb-5" }, head(PLAN_KIND_LABEL.goal, goals.length + goalsDone.length), goalGrid([...goals, ...goalsDone])) : null,
-            colls.length > 0 ? ce("div", null, head(PLAN_KIND_LABEL.list, colls.length), collGrid(colls)) : null);
-    }
-    else if (kind === "list") {
-        body = colls.length ? collGrid(colls)
-            : empty(ce(lucide_react_1.ListTodo, { size: 26 }), "コレクションはまだありません", "行きたい場所・見たいアニメ・読みたい本など、書きためておきたいものを1つにまとめます。済んだものも「済み」に残るので、これまで行った場所・見たものの記録にもなります。右下の＋から作れます。");
-    }
-    else {
-        body = ce(react_1.default.Fragment, null,
-            goals.length ? goalGrid(goals)
-                : empty(ce(lucide_react_1.Target, { size: 26 }), goalsDone.length ? "進行中の目標はありません" : "目標はまだありません", "「いつまでに・どうなりたいか」を決めて、そこまでのステップを書き出します。やる日を決めたステップは、その日の Today に出ます。右下の＋から作れます。"),
-            goalsDone.length > 0 ? ce("div", { className: "ft-pdonebox" },
-                ce("button", { type: "button", onClick: () => setDoneOpen((v) => !v), "aria-expanded": doneOpen, className: "ft-pdonebtn ft-tap" },
-                    ce(lucide_react_1.Check, { size: 15, strokeWidth: 3 }),
-                    ce("span", null, "達成済み"),
-                    ce("small", { className: "tabular-nums" }, goalsDone.length),
-                    ce("i", null),
-                    ce("span", { className: "flex ft-chev " + (doneOpen ? "rotate-180" : "") }, ce(lucide_react_1.ChevronDown, { size: 18 }))),
-                ce(Collapse, { open: doneOpen }, ce("div", { className: "pt-2" }, goalGrid(goalsDone)))) : null);
-    }
-    return (ce("div", { className: "pad-fab" },
-        ce(TopChrome, null,
-            ce(ScreenHeader, { title: "計画" }),
-            /* **検索バーとタブを、ふたつの帯にしないこと。** ひとつの帯にまとめる（Today の見出しと同じ決まり） */
-            ce("div", { className: "px-4 pt-3 pb-2 bg-app ft-col ft-ctl" },
-                ce("div", { className: "flex items-center gap-1.5" },
-                    ce("div", { className: "flex-1 min-w-0 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white px-3 min-h-[46px]" },
-                        ce(lucide_react_1.Search, { size: 17, className: q ? "text-th-800 shrink-0" : "text-neutral-400 shrink-0" }),
-                        ce("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "計画を検索", className: "flex-1 min-w-0 bg-transparent outline-none fs-body text-neutral-900 placeholder-neutral-400" }),
-                        q && ce("button", { type: "button", onClick: () => setQ(""), "aria-label": "消す", className: "w-8 h-8 shrink-0 flex items-center justify-center rounded-full text-neutral-400 ft-tap ft-tap-icon" },
-                            ce(lucide_react_1.X, { size: 16 }))),
-                    ce(SortToggle, { value: sort, onChange: onSort })),
-                ce(PillTabs, { tabs: KIND_TABS, value: searching ? "" : kind, onChange: goKind, className: "mt-2 ft-ctl-tabs" }))),
-        ce("div", { ref: areaRef, className: "px-4 pt-2 ft-col", style: { minHeight: "60vh" } }, body),
-        menu && (ce(TypePickSheet, { title: menu.plan.name || "計画", types: planKindOf(menu.plan) === "list" ? ["__rename", "__delete"] : menu.plan.doneAt ? ["__undone", "__rename", "__delete"] : ["__done", "__rename", "__delete"], labels: {
-                __done: "この目標を達成済みにする", __undone: "達成を取り消す",
-                __rename: "名前とアイコン", __delete: planKindOf(menu.plan) === "list" ? "このコレクションを削除" : "この目標を削除"
-            }, icons: { __done: ce(lucide_react_1.Check, { size: 22 }), __undone: ce(lucide_react_1.RotateCcw, { size: 22 }),
-                __rename: ce(lucide_react_1.Pencil, { size: 22 }), __delete: ce(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => {
+    const isList = (m) => planKindOf(m.plan) === "list";
+    return ce(react_1.default.Fragment, null,
+        menu && ce(TypePickSheet, { title: menu.plan.name || "計画", types: isList(menu) ? ["__rename", "__delete"] : menu.plan.doneAt ? ["__undone", "__rename", "__delete"] : ["__done", "__rename", "__delete"], labels: { __done: "達成済みにする", __undone: "達成を取り消す", __rename: "名前とアイコン", __delete: "削除" },
+            icons: { __done: ce(lucide_react_1.Check, { size: 22 }), __undone: ce(lucide_react_1.RotateCcw, { size: 22 }), __rename: ce(lucide_react_1.Pencil, { size: 22 }), __delete: ce(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => {
                 const m = menu;
                 setMenu(null);
                 if (k === "__rename")
@@ -26531,9 +26426,9 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
                     onChangePlan(m.plan.id, (p) => ({ ...p, doneAt: "", updatedAt: new Date().toISOString() }));
                 else
                     setDel(m);
-            } })),
-        edit && (ce(PlanSettingsSheet, { plan: edit.plan, onCancel: () => setEdit(null), onSave: (v) => { onChangePlan({ ...v, updatedAt: new Date().toISOString() }); setEdit(null); } })),
-        del && (ce(ConfirmDialog, { title: planKindOf(del.plan) === "list" ? "このコレクションを削除しますか" : "この目標を削除しますか", body: "結びついた記録は消えません。", confirmLabel: "削除", onCancel: () => setDel(null), onConfirm: () => { const m = del; setDel(null); onDeletePlan(m.plan.id); } }))));
+            } }),
+        edit && ce(PlanSettingsSheet, { plan: edit.plan, onCancel: () => setEdit(null), onSave: (v) => { onChangePlan({ ...v, updatedAt: new Date().toISOString() }); setEdit(null); } }),
+        del && ce(ConfirmDialog, { title: isList(del) ? "このコレクションを削除しますか" : "この目標を削除しますか", body: "記録は消えません。", confirmLabel: "削除", onCancel: () => setDel(null), onConfirm: () => { const m = del; setDel(null); onDeletePlan(m.plan.id); } }));
 }
 /* カテゴリをひらいた画面。そのカテゴリの計画だけが並ぶ */
 /* イベントの札（読むだけ）。
@@ -26995,7 +26890,7 @@ function FolderSetupSheet({ folder, records, onCancel, onSave }) {
             .filter((r) => {
             if (a.mine && !picked.has(r.id))
                 return false;
-            if (a.types.length && !a.types.includes(r.type))
+            if (!typeHit(a.types, r))
                 return false;
             if (a.from && (r.date || "") < a.from)
                 return false;
@@ -27038,7 +26933,7 @@ function FolderSetupSheet({ folder, records, onCancel, onSave }) {
         return; openBar(); };
     const summary = !applied ? "" : [
         applied.q.trim() ? `「${applied.q.trim()}」` : "",
-        applied.types.map((t) => N[t] || TYPE_LABELS[t]).join("・"),
+        typeNames(applied.types, N),
         applied.folders.map((id) => { const f = fctx.folders.find((x) => x.id === id); return f ? (f.name || "（名前なし）") : ""; }).filter(Boolean).join("・"),
         applied.mine ? "入れたものだけ" : "",
         (applied.from || applied.to) ? `${applied.from ? shortDate(applied.from) : ""}〜${applied.to ? shortDate(applied.to) : ""}` : "",
@@ -27126,23 +27021,11 @@ function FolderDetail({ folder, records, onClose, onChange, onDelete, onAddRecor
             ce("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             ce(OverlayHeader, { title: folder.name || "（名前なし）", onBack: close, hideMenu: true, right: ce("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "設定", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
                     ce(lucide_react_1.Settings, { size: 20 })) }),
-            ce("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col pad-fab" },
-                /* 入れ方は2つ。左＝ここで新しく書く（右下の＋と同じ）、右＝いまある記録から選ぶ */
-                ce("div", { className: "-mx-5 px-4 ft-fadd mb-4" },
-                    ce("button", { type: "button", onClick: () => onAddRecord(folder), className: "ft-faddbtn ft-tap ft-tap-card", style: { background: fc.soft, borderColor: fc.line } },
-                        ce("span", { className: "ft-faddic", style: { background: fc.deep, color: "#fff" } }, ce(lucide_react_1.Plus, { size: 20 })),
-                        ce("span", { className: "ft-faddtx" },
-                            ce("b", { style: { color: fc.deep } }, "新しく書く"),
-                            ce("small", null, "このフォルダへ"))),
-                    ce("button", { type: "button", onClick: () => setSetup(true), className: "ft-faddbtn ft-tap ft-tap-card" },
-                        ce("span", { className: "ft-faddic" }, ce(lucide_react_1.Search, { size: 18 })),
-                        ce("span", { className: "ft-faddtx" },
-                            ce("b", null, "選んで入れる"),
-                            ce("small", null, "いまある記録から")))),
-                list.length > 0 && ce("div", { className: "-mx-5 px-4" },
-                    ce(ListHeadRow, { sel: sel, list: list, right: `${list.length}件`, sort: ce(OrderToggle, { value: order, onChange: onOrder }) })),
-                list.length === 0 ? (ce("div", { className: "py-12 text-center ft-noresult" },
-                    ce("p", { className: "fs-body text-neutral-400 leading-relaxed" }, "まだ記録が入っていません。", ce("br", null), "上の「新しく書く」「選んで入れる」か、", ce("br", null), "記録を書くときの「フォルダに追加」から入れられます。"))) : (ce(CardWall, null, list.map((r) => (ce(RecordRow, { key: r.id, r: r, showDate: true, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, hideFolder: folder.id, selectMode: sel.on, onLongSelect: (r2) => sel.startWith(r2), selected: sel.ids.has(r.id), onSelect: sel.toggle })))))),
+            ce("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col ft-colwide pad-fab" },
+                /* 5.0.0：新しく書くのは右下の＋だけ。いまある記録は、見出しの行の「選んで入れる」から */
+                ce("div", { className: "-mx-5 px-4" },
+                    ce(ListHeadRow, { sel: sel, list: list, right: `${list.length}件`, sort: ce(react_1.default.Fragment, null, sel.on ? null : ce("button", { type: "button", onClick: () => setSetup(true), className: "ft-plbl-add ft-tap mr-1" }, ce(lucide_react_1.Plus, { size: 14 }), "選んで入れる"), ce(OrderToggle, { value: order, onChange: onOrder })) })),
+                list.length ? ce(CardWall, null, list.map((r) => (ce(RecordRow, { key: r.id, r: r, showDate: true, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, hideFolder: folder.id, selectMode: sel.on, onLongSelect: (r2) => sel.startWith(r2), selected: sel.ids.has(r.id), onSelect: sel.toggle })))) : null),
             !sel.on && (ce("button", { type: "button", onClick: () => onAddRecord(folder), "aria-label": "このフォルダに新しく書く", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 ce(lucide_react_1.Plus, { size: 26 }))),
             ce(SelectBar, { sel: sel, list: list, extraLabel: "フォルダから外す", onExtra: removeFromFolder }),
@@ -27158,7 +27041,12 @@ function FolderDetail({ folder, records, onClose, onChange, onDelete, onAddRecor
             renameOpen && (ce(NameIconSheet, { title: "フォルダの設定", presets: false, initialName: folder.name, initialIcon: folder.icon, placeholder: "ゲーム／旅 など", fallback: ce(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setRenameOpen(false), onSave: (n, ic) => { onChange({ ...folder, name: n, icon: ic }); setRenameOpen(false); } })),
             delOpen && (ce(ConfirmDialog, { title: "このフォルダを削除しますか", body: "記録そのものは残ります", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(folder.id); } })))));
 }
-function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange, onDelete, resetSig = 0 }) {
+function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange, onDelete, plans = [], onOpenPlan, onPinPlan, onChangePlan, onDeletePlan, resetSig = 0 }) {
+    /* コレクション（5.0.0〜）。フォルダと同じ格子に、同じ形の札で並べる */
+    const [pm, setPm] = (0, react_1.useState)(null);
+    const [pe, setPe] = (0, react_1.useState)(null);
+    const [pd, setPd] = (0, react_1.useState)(null);
+    const ppress = usePressMenu(setPm);
     /* 長押しで出す設定。**ひらかないと直せない、をなくすこと** */
     const [menu, setMenu] = (0, react_1.useState)(null);
     const [edit, setEdit] = (0, react_1.useState)(null);
@@ -27217,7 +27105,13 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
             m.set(f.id, folderRecords(f, records).length);
         return m;
     }, [folders, records]);
-    const sorted = (0, react_1.useMemo)(() => sortItems(matchName(folders, q), sort, counts), [folders, sort, q, counts]);
+    const sorted = (0, react_1.useMemo)(() => {
+        const colls = plans.filter((p) => planKindOf(p) === "list");
+        const cm = new Map(counts);
+        colls.forEach((p) => cm.set(p.id, planTodo(p).length));
+        const pinFirst = (a, b) => (!!a.pinned === !!b.pinned ? 0 : (a.pinned ? -1 : 1));
+        return sortItems(matchName([...folders, ...colls], q), sort, cm).sort(pinFirst);
+    }, [folders, plans, sort, q, counts]);
     /* 下タブ「フォルダ」をもう一度押したとき（useTabReturn）。デフォルト＝検索なし。並び順は戻さない */
     useTabReturn(resetSig, {
         viewKey: q,
@@ -27235,6 +27129,8 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
             sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
             sorted.map((f) => {
+                if (Array.isArray(f.todo))
+                    return react_1.default.createElement(PlanCard, { key: f.id, plan: f, records: records, onOpen: () => onOpenPlan(f), onPin: onPinPlan, pressProps: ppress({ plan: f }) });
                 const myc = fc;
                 const n = counts.get(f.id) || 0;
                 const art = f.icon && ICON_ART[f.icon];
@@ -27250,11 +27146,10 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
                         react_1.default.createElement("span", { className: "ft-fmeta" },
                             react_1.default.createElement("span", { className: "fs-label font-bold text-neutral-500 tabular-nums" },
                                 n,
-                                "\u4EF6"),
-                            n === 0 && react_1.default.createElement("span", { className: "fs-caption text-neutral-400" }, "まだ空です")))));
+                                "\u4EF6")))));
             }),
-            folders.length === 0 && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
-                react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u307E\u3060\u30D5\u30A9\u30EB\u30C0\u306F\u3042\u308A\u307E\u305B\u3093")))),
+            null),
+        react_1.default.createElement(PlanMenus, { menu: pm, setMenu: setPm, edit: pe, setEdit: setPe, del: pd, setDel: setPd, onChangePlan: onChangePlan, onDeletePlan: onDeletePlan }),
         menu && (react_1.default.createElement(TypePickSheet, { title: menu.name || "フォルダ", types: ["__rename", "__delete"], labels: { __rename: "フォルダの設定", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => { const f = menu; setMenu(null); if (k === "__rename")
                 setEdit(f);
             else
@@ -28936,7 +28831,7 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 const TABS = [
     { key: "today", label: "Today", icon: lucide_react_1.CalendarDays },
     { key: "find", label: "探す", icon: lucide_react_1.Search },
-    { key: "plan", label: "計画", icon: lucide_react_1.Target },
+    { key: "plan", label: "目標", icon: lucide_react_1.Target },
     { key: "folder", label: "フォルダ", icon: lucide_react_1.Folder },
     { key: "note", label: "ノート", icon: lucide_react_1.Pencil },
 ];
@@ -28963,17 +28858,13 @@ function NoteScreen({ records, onOpen, onNew }) {
         ce(TopChrome, null,
             ce(ScreenHeader, { title: "ノート" }),
             tags.length > 0 && ce("div", { className: "px-4 pt-2 pb-2 bg-app ft-col" }, ce("div", { className: "ft-stchips" }, chip("", "すべて"), tags.map((f) => chip(f.id, f.name || "（名前なし）"))))),
-        ce("div", { className: "px-4 pt-2 ft-col" },
-            ce("div", { className: "ft-ngrid" },
-                ce("button", { type: "button", onClick: onNew, className: "ft-ncard new ft-tap ft-tap-card" },
-                    ce("span", { className: "ft-nthumb" }, ce(lucide_react_1.Plus, { size: 30 }), ce("b", null, "新しいページ")),
-                    ce("span", { className: "ft-nmeta" }, "思いついたことを手書きで")),
-                shown.map((r) => ce("button", { key: r.id, type: "button", onClick: () => onOpen(r), className: "ft-ncard ft-tap ft-tap-card" },
-                    ce("span", { className: "ft-nthumb" }, ce(Photo, { src: r.images[0], className: "block w-full h-full", style: { objectFit: "contain", objectPosition: "top" } })),
-                    ce("span", { className: "ft-nmeta" },
-                        ce("span", { className: "tabular-nums" }, fmtDate(r.date)),
-                        fctx.of(r.id).length ? ce("span", { className: "ft-ntags" }, fctx.of(r.id).map((f) => f.name || "（名前なし）").join("・")) : null)))),
-            notes.length === 0 && ce("p", { className: "fs-body-sm text-neutral-400 text-center py-8 leading-relaxed" }, "まだ手書きのノートはありません。", ce("br", null), "「新しいページ」か右下の＋から書けます。")));
+        ce("div", { className: "px-4 pt-3 ft-col" },
+            ce("div", { className: "ft-fgrid ft-seq" },
+                shown.map((r) => ce("div", { key: r.id, role: "button", tabIndex: 0, onClick: () => onOpen(r), className: "ft-fcard bg-white text-left ft-tap ft-tap-card card-soft cursor-pointer" },
+                    ce("span", { className: "ft-fthumb ft-nthumb5" }, ce(Photo, { src: r.images[0], className: "block w-full h-full", style: { objectFit: "contain", objectPosition: "top" } })),
+                    ce("span", { className: "ft-fbody" },
+                        ce("span", { className: "ft-fname fs-body-sm font-bold text-neutral-900 tabular-nums" }, fmtDate(r.date)),
+                        fctx.of(r.id).length ? ce("span", { className: "ft-fmeta" }, ce("span", { className: "ft-ntags" }, fctx.of(r.id).map((f) => f.name || "（名前なし）").join("・"))) : null))))));
 }
 /* **下タブを onClick だけで受けないこと**（2.11.1〜）。Today は「1回め＝上へ」「2回め＝今日へ」と続けて押す作り。
    iOS では、①続けて素早く押した2回めを「ダブルタップ」とみなして click を配らない、
@@ -29949,7 +29840,7 @@ function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDet
                         save(); onDetail(); }, className: BTN_SECONDARY + " px-3 fs-body-sm", style: { minHeight: 42 } }, "フォルダ・詳細") : null,
                 react_1.default.createElement("button", { type: "button", onClick: save, disabled: !dirty, className: BTN_PRIMARY + " px-5 fs-body", style: { minHeight: 42 } }, "保存")),
             react_1.default.createElement("div", { className: "flex-1 min-h-0 ft-inkedit-body" },
-                react_1.default.createElement(InkCanvas, { value: initial, hint: onAutoSave ? "書いたものは、こまめに自動で保存されます。「保存」を押すと閉じます" : "書いて右上の「保存」を押すと、メモの記録になります。フォルダや計画は、あとからそのメモに付けられます", onChange: changed, busyRef: busyRef, shotRef: shotRef }))));
+                react_1.default.createElement(InkCanvas, { value: initial, onChange: changed, busyRef: busyRef, shotRef: shotRef }))));
 }
 /* 手書きのメモを、書く画面から書き直すためのボタン（RecordForm の中） */
 function InkEditButton({ rec, onChange }) {
@@ -30190,7 +30081,7 @@ function PeriodNotes({ date, scopes, records, onEdit, onToggleItem, onPin, onAdd
             ce("div", { className: "ft-sechd" },
                 ce("span", { className: "fs-label font-bold" }, label),
                 ce("i", null),
-                ce("button", { type: "button", onClick: () => onAdd(scope, key), "aria-label": (scope === "week" ? "週" : "月") + "の記録を追加", className: "ft-sechd-btn ft-tap" }, ce(lucide_react_1.Plus, { size: 15 }), "追加")),
+                list.length ? ce("span", { className: "fs-caption text-neutral-400 tabular-nums" }, list.length) : null),
             list.length ? ce("div", { className: CARD_LIST }, list.map((r) => ce(RecordRow, { key: r.id + (r.__repeat ? "-rep" : ""), r: r, repeated: r.__repeat, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin }))) : null);
     }));
 }
@@ -30329,42 +30220,37 @@ function DateChip({ value, onChange, color, label = "日付", small }) {
         ce("label", { className: "ft-dchip-l ft-tap" }, ce(lucide_react_1.CalendarDays, { size: small ? 13 : 14 }), ce("span", null, txt), ce("input", { type: "date", value: value || "", onChange: (e) => onChange(e.target.value) })),
         value ? ce("button", { type: "button", onClick: () => onChange(""), "aria-label": "日付を外す", className: "ft-dchip-x ft-tap" }, ce(lucide_react_1.X, { size: 13 })) : null);
 }
-/* 1件（4.1.0 で作り直した）。目標のステップと、コレクションの項目で同じ部品を使い、見せ方だけを変える。
-   ・字は伸びる欄（AutoText）。押せばその場で直せる
-   ・右の ∨ で開くと：メモ・手順（目標）・日付・グループの移しかえ・削除
-   ・目標のステップ：左の線でつながる。next ＝ つぎのステップ
-   ・コレクションの項目：1件ずつ札。済んでも線で消さず、済ませた日を出す */
-function PlanTaskRow({ t, color, onPatch, onRemove, list, next, secs, onMoveSec }) {
+/* 1行（5.0.0 で作り直した）。目標のステップと、コレクションの項目で同じ行。**行の中で開かない。**
+   左＝印、まん中＝字（長ければ折り返す）、右端＝日付（押すと選ぶ）と、くわしく（メモ・手順・移す・消す は紙で）。
+   4.1.0 までは行を開いてメモや日付を出していて、一覧が間のびした */
+function PlanTaskRow({ t, color, onPatch, onRemove, list, secs, onMoveSec }) {
     const [open, setOpen] = (0, react_1.useState)(false);
     const today = todayStr();
     const ce = react_1.default.createElement;
-    const lbl = planDayLabel(t.date, today);
     const sub = planSub(t);
     const subDone = sub.filter((s) => s.done).length;
     const patchSub = (id, d) => { const nx = sub.map((s) => (s.id === id ? { ...s, ...d } : s)); const all = nx.length > 0 && nx.every((s) => s.done); onPatch({ sub: nx, ...("done" in d ? { done: all, doneAt: all ? (t.doneAt || today) : "" } : {}) }); };
-    /* コレクションの日付は「その日のこと」（公開日など）。過ぎても赤くしない */
-    const chipStyle = (date) => (list ? { background: color.soft, color: color.deep } : date === today ? { background: color.mid, color: "#fff" } : date && date < today ? { background: "#FDECEC", color: "#BE123C" } : { background: color.soft, color: color.deep });
-    const what = list ? "項目" : "ステップ";
+    const late = !list && !t.done && t.date && t.date < today;
+    const dl = t.done ? (t.doneAt ? fmtDateShort(t.doneAt) : "") : planDayLabel(t.date, today);
     const sec = t.sec || "";
-    return ce("div", { className: "ft-ptask" + (t.done ? " done" : "") + (open ? " open" : "") + (next ? " next" : "") },
-        ce("div", { className: "ft-ptask-row" },
-            ce("button", { type: "button", onClick: () => onPatch({ done: !t.done, doneAt: !t.done ? today : "", ...(sub.length ? { sub: sub.map((s) => ({ ...s, done: !t.done })) } : {}) }), "aria-label": t.done ? "済みを外す" : "済みにする", "aria-pressed": !!t.done, className: "ft-pcheck ft-tap", style: t.done ? { background: color.mid, borderColor: color.mid } : next ? { borderColor: color.deep, boxShadow: `0 0 0 3px ${color.soft}` } : undefined }, t.done ? ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, color: "#fff" }) : null),
-            ce("div", { className: "ft-ptask-main" },
-                ce(AutoText, { value: t.text, onChange: (v) => onPatch({ text: v }), onBlur: () => { if (!String(t.text || "").trim() && !sub.length)
-                        onRemove(); }, className: "ft-ptask-in", label: what }),
-                /* 字の下に、小さく添えるもの（つぎ・手順の数・日付・済ませた日・メモの1行目） */
-                (next || sub.length || (lbl && !t.done) || (t.done && t.doneAt) || (t.note && !open)) ? ce("div", { className: "ft-pmeta" },
-                    next ? ce("span", { className: "ft-pnext", style: { color: color.deep } }, "つぎ") : null,
-                    lbl && !t.done ? ce("span", { className: "ft-pdate on", style: chipStyle(t.date) }, lbl) : null,
-                    sub.length > 0 ? ce("span", { className: "ft-psubn tabular-nums" }, `手順 ${subDone}/${sub.length}`) : null,
-                    t.done && t.doneAt ? ce("span", { className: "ft-pdoneat tabular-nums" }, `${fmtDateShort(t.doneAt)} 済み`) : null,
-                    t.note && !open ? ce("span", { className: "ft-pnote1" }, String(t.note).split("\n")[0]) : null) : null),
-            ce("button", { type: "button", onClick: () => setOpen((v) => !v), "aria-label": "くわしく", "aria-expanded": open, className: "ft-pmore ft-tap" }, ce(lucide_react_1.ChevronDown, { size: 18 }))),
-        open && ce("div", { className: "ft-pdetail" },
-            ce(TextArea, { bare: true, value: t.note || "", onChange: (e) => onPatch({ note: e.target.value }), minRows: 1, rows: 1, placeholder: "メモ", className: "ft-pnote" }),
+    return ce("div", { className: "ft-prow" + (t.done ? " done" : "") },
+        ce("button", { type: "button", onClick: () => onPatch({ done: !t.done, doneAt: !t.done ? today : "", ...(sub.length ? { sub: sub.map((s) => ({ ...s, done: !t.done })) } : {}) }), "aria-label": t.done ? "済みを外す" : "済みにする", "aria-pressed": !!t.done, className: "ft-pcheck ft-tap", style: t.done ? { background: color.mid, borderColor: color.mid } : undefined }, t.done ? ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, color: "#fff" }) : null),
+        ce("div", { className: "ft-prow-main" },
+            ce(AutoText, { value: t.text, onChange: (v) => onPatch({ text: v }), onBlur: () => { if (!String(t.text || "").trim() && !sub.length)
+                    onRemove(); }, className: "ft-prow-in", label: list ? "項目" : "ステップ" }),
+            sub.length ? ce("span", { className: "ft-prow-sub tabular-nums" }, `手順 ${subDone}/${sub.length}`) : null),
+        /* 日付。入っていれば日付、無ければ小さなカレンダーの絵。済んだものは済ませた日（押せない） */
+        t.done ? (dl ? ce("span", { className: "ft-prow-date done tabular-nums" }, dl) : null)
+            : ce("label", { className: "ft-prow-date ft-tap" + (t.date ? " on" : ""), style: t.date ? (late ? { background: "#FDECEC", color: "#BE123C" } : t.date === today && !list ? { background: color.mid, color: "#fff" } : { background: color.soft, color: color.deep }) : undefined, "aria-label": list ? "日付" : "やる日" },
+                t.date ? dl : ce(lucide_react_1.CalendarDays, { size: 17 }),
+                ce("input", { type: "date", value: t.date || "", onChange: (e) => onPatch({ date: e.target.value }) })),
+        ce("button", { type: "button", onClick: () => setOpen(true), "aria-label": "メモ・くわしく", className: "ft-prow-more ft-tap", style: t.note ? { color: color.deep } : undefined }, ce(lucide_react_1.StickyNote, { size: 17, fill: t.note ? color.soft : "none" })),
+        open && ce(SheetDialog, { title: t.text || (list ? "項目" : "ステップ"), onCancel: () => setOpen(false), hideConfirm: true },
+            ce(TextArea, { value: t.note || "", onChange: (e) => onPatch({ note: e.target.value }), minRows: 3, placeholder: "メモ" }),
             !list || sub.length ? ce("div", { className: "ft-psubs" },
+                ce("p", { className: "ft-psheet-k" }, "手順"),
                 sub.map((s) => ce("div", { key: s.id, className: "ft-psub" + (s.done ? " done" : "") },
-                    ce("button", { type: "button", onClick: () => patchSub(s.id, { done: !s.done }), "aria-label": s.done ? "済みを外す" : "済みにする", "aria-pressed": !!s.done, className: "ft-pcheck s ft-tap", style: s.done ? { background: color.mid, borderColor: color.mid } : undefined }, s.done ? ce(lucide_react_1.Check, { size: 11, strokeWidth: 3.5, color: "#fff" }) : null),
+                    ce("button", { type: "button", onClick: () => patchSub(s.id, { done: !s.done }), "aria-pressed": !!s.done, "aria-label": "済み", className: "ft-pcheck s ft-tap", style: s.done ? { background: color.mid, borderColor: color.mid } : undefined }, s.done ? ce(lucide_react_1.Check, { size: 11, strokeWidth: 3.5, color: "#fff" }) : null),
                     ce(AutoText, { value: s.text, onChange: (v) => patchSub(s.id, { text: v }), onBlur: () => { if (!String(s.text || "").trim())
                             onPatch({ sub: sub.filter((x) => x.id !== s.id) }); }, className: "ft-ptask-in s", label: "手順" }),
                     list ? null : ce(DateChip, { small: true, value: s.date, color: color, label: "日付", onChange: (v) => patchSub(s.id, { date: v }) }))),
@@ -30374,11 +30260,11 @@ function PlanTaskRow({ t, color, onPatch, onRemove, list, next, secs, onMoveSec 
                 secs && secs.length ? ce("label", { className: "ft-psecsel ft-tap" },
                     ce(lucide_react_1.Layers, { size: 14 }),
                     ce("span", null, sec || (list ? "グループなし" : "段階なし")),
-                    ce("select", { value: sec, onChange: (e) => onMoveSec(e.target.value), "aria-label": list ? "グループを移す" : "段階を移す" },
+                    ce("select", { value: sec, onChange: (e) => onMoveSec(e.target.value) },
                         ce("option", { value: "" }, list ? "グループなし" : "段階なし"),
                         secs.map((x) => ce("option", { key: x, value: x }, x)))) : null,
                 ce("span", { className: "flex-1" }),
-                ce("button", { type: "button", onClick: onRemove, "aria-label": "消す", className: "ft-pdel ft-tap" }, ce(lucide_react_1.Trash2, { size: 16 })))));
+                ce("button", { type: "button", onClick: () => { setOpen(false); onRemove(); }, "aria-label": "消す", className: "ft-pdel ft-tap" }, ce(lucide_react_1.Trash2, { size: 16 })))));
 }
 /* ステップ・手順を足す欄。**Enter で足したあと、欄から離れないこと**（続けて書ける。data-ft-stay） */
 function PlanAddRow({ onAdd, placeholder, small }) {
@@ -30438,9 +30324,6 @@ function PlanArrange({ plan, color, onSave, onDone, list }) {
     };
     const { dragId, setRow, handleProps, rowStyle } = useReorder(rows, save);
     return ce("div", { className: "ft-arr" },
-        ce("div", { className: "ft-arr-top" },
-            ce("span", null, "つまんで運ぶと並びが変わります。見出しの下へ運ぶと、そこへ移ります"),
-            ce("button", { type: "button", onClick: onDone, className: "ft-arr-done ft-tap", style: { background: color.deep } }, "完了")),
         rows.map((r) => ce("div", { key: r.id, ref: setRow(r.id), style: rowStyle(r.id), className: "ft-arr-row" + (r.sec != null ? " hd" : "") + (r.t && r.t.done ? " done" : "") + (dragId === r.id ? " drag" : "") },
             r.sec != null ? ce("span", { className: "ft-arr-ic" }, ce(lucide_react_1.Layers, { size: 15 })) : ce("span", { className: "ft-arr-dot", style: r.t.done ? { background: color.mid, borderColor: color.mid } : undefined }),
             ce("span", { className: "ft-arr-t" }, r.sec != null ? r.sec : (r.t.text || "（名前なし）")),
@@ -30478,7 +30361,7 @@ function PlanRoad({ plan, S, color }) {
             ce("div", { className: "ft-road-line" },
                 ce("span", { className: "ft-road-fill", style: { width: P.pos * 100 + "%", background: color.line } }),
                 months.map((mo) => ce("span", { key: mo.k, className: "ft-road-tick", style: { left: x(mo.k) + "%" } }, Math.abs(x(mo.k) - P.pos * 100) < 9 ? null : ce("small", null, mo.l))),
-                S.scheds.filter((r) => r.date >= P.a && r.date <= P.b).map((r) => ce("i", { key: r.id, className: "ft-road-ms", title: r.title, style: { left: x(r.date) + "%", background: r.joy ? "#D0664C" : color.deep } })),
+                planEvents(plan).filter((r) => r.date && r.date >= P.a && r.date <= P.b).map((r) => ce("i", { key: r.id, className: "ft-road-ms", title: r.title, style: { left: x(r.date) + "%", background: color.deep } })),
                 ce("span", { className: "ft-road-today", style: { left: P.pos * 100 + "%" } }, ce("b", null, "今日")))),
         ce("div", { className: "ft-road-ends" }, ce("span", null, md(P.a)), ce("span", { className: "flex-1" }), ce("span", { style: { color: color.deep, fontWeight: 700 } }, md(P.b))),
         S.total ? ce("div", { className: "ft-road-row step" },
@@ -30486,19 +30369,34 @@ function PlanRoad({ plan, S, color }) {
             ce("div", { className: "ft-road-bar" }, ce("i", { style: { width: stepPct * 100 + "%", background: color.mid } })),
             ce("span", { className: "ft-road-n tabular-nums" }, `${S.done}/${S.total}`)) : null);
 }
-/* 計画の中身（3.4.0 で目標とコレクションを分け、4.1.0 でもっと簡単にした）。
-   ・目標 ＝ ゴールの札（どうなったら達成か・あと何日・期間の線・ステップの線）→ ステップ → 予定・メモ → 達成
-   ・コレクション ＝ 書く欄 → これから／済み／すべて → 項目の札 → メモ・予定
-   ・どちらも、見出しの横の「並べ替え」で、並びと段階（グループ）を変えられる（PlanArrange）
-   **片方に足したものを、もう片方へそのまま足さないこと。** */
-function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, onPin, onAdd, onDone, onIcon }) {
+/* 計画が自分で持つ予定（5.0.0〜）。plan.events ＝ [{ id, title, date }]。日付を入れたものは、その日の Today・週・月に計画の札で出る。
+   **ふつうの記録（スケジュール）を計画に結びつける形には戻さないこと。** 計画の中で書いて、計画の中で完結する */
+function planEvents(p) { return Array.isArray(p && p.events) ? p.events : []; }
+function PlanEvents({ plan, color, patch }) {
+    const ce = react_1.default.createElement;
+    const list = planEvents(plan).slice().sort((a, b) => (a.date || "9999").localeCompare(b.date || "9999"));
+    const set = (id, d) => patch((p) => ({ ...p, events: planEvents(p).map((e) => (e.id === id ? { ...e, ...d } : e)) }));
+    const del = (id) => patch((p) => ({ ...p, events: planEvents(p).filter((e) => e.id !== id) }));
+    return ce("div", { className: "ft-pblock" },
+        ce("div", { className: "ft-plbl" }, ce("span", null, "予定"), ce("i", null)),
+        list.map((e) => ce("div", { key: e.id, className: "ft-pev" },
+            ce(DateChip, { small: true, value: e.date, color: color, label: "日付", onChange: (v) => set(e.id, { date: v }) }),
+            ce(AutoText, { value: e.title, onChange: (v) => set(e.id, { title: v }), onBlur: () => { if (!String(e.title || "").trim())
+                    del(e.id); }, className: "ft-prow-in", label: "予定" }),
+            ce("button", { type: "button", onClick: () => del(e.id), "aria-label": "消す", className: "ft-prow-more ft-tap" }, ce(lucide_react_1.X, { size: 16 })))),
+        ce(PlanAddRow, { onAdd: (text) => patch((p) => ({ ...p, events: [...planEvents(p), { id: uid(), title: text, date: "" }] })), placeholder: "予定を追加" }));
+}
+/* 計画の中身（5.0.0）。
+   ・目標 ＝ ゴールの札 → ステップ → 予定（計画が持つ）→ メモ（計画が持つ、1つの欄）→ 達成
+   ・コレクション ＝ 書く欄 → 1本の一覧（これからが上、済みが下。切り替えない）→ メモ
+   ・前の版で結びつけた記録（planId）があれば、いちばん下に「関連する記録」として出すだけ（足す入口は無い） */
+function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, onPin, onDone, onIcon }) {
     const S = planSummary(plan, records);
     const wide = useWideLand();
     const ce = react_1.default.createElement;
     const patch = (fn) => onChange(plan.id, (p) => ({ ...fn(p), updatedAt: new Date().toISOString() }));
     const patchTask = (id, d) => patch((p) => ({ ...p, todo: planTodo(p).map((t) => (t.id === id ? { ...t, ...d } : t)) }));
     const removeTask = (id) => patch((p) => ({ ...p, todo: planTodo(p).filter((t) => t.id !== id) }));
-    /* 別の段階（グループ）へ移す。移した先のいちばん下（コレクションはいちばん上）に入る */
     const moveSec = (id, sec) => patch((p) => {
         const todo = planTodo(p);
         const it = todo.find((t) => t.id === id);
@@ -30520,74 +30418,52 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
     const renameSec = (old, name) => patch((p) => ({ ...p, secs: planSecs(p).map((s) => (s === old ? name : s)), todo: planTodo(p).map((t) => (t.sec === old ? { ...t, sec: name } : t)) }));
     const [newSec, setNewSec] = (0, react_1.useState)(null);
     const [arrange, setArrange] = (0, react_1.useState)(false);
-    const [show, setShow] = (0, react_1.useState)("live");
-    const shown = (t) => (show === "all" ? true : show === "done" ? !!t.done : !t.done);
-    const card = (r) => ce(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true });
-    const lbl = (text, right) => ce("div", { className: "ft-plbl" }, ce("span", null, text), ce("i", null), right || null);
-    const addBtn = (type, text) => ce("button", { type: "button", onClick: () => onAdd(type), className: "ft-plbl-add ft-tap" }, ce(lucide_react_1.Plus, { size: 14 }), text);
-    const recBox = (list) => (list.length ? ce("div", { className: "ft-precs" }, list.map(card)) : null);
-    const sch = ce("div", { className: "ft-pblock" }, lbl("予定", addBtn("schedule", "予定")), recBox(S.scheds));
-    const memo = ce("div", { className: "ft-pblock" }, lbl("メモ", addBtn("memo", "メモ")), recBox(S.memos));
-    const lists = S.lists.length ? ce("div", { className: "ft-pblock" }, lbl("リスト"), recBox(S.lists)) : null;
-    const secInput = (sec) => ce("input", { defaultValue: sec, key: "h:" + sec, onBlur: (e) => { const n = e.target.value.trim(); if (n && n !== sec)
-            renameSec(sec, n);
+    const linked = S.recs.length ? ce("div", { className: "ft-pblock" }, ce("div", { className: "ft-plbl" }, ce("span", null, "関連する記録"), ce("i", null)), ce("div", { className: "ft-precs" }, S.recs.map((r) => ce(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true })))) : null;
+    const memo = ce("div", { className: "ft-pblock" }, ce("div", { className: "ft-plbl" }, ce("span", null, "メモ"), ce("i", null)),
+        ce(TextArea, { bare: true, value: plan.memo || "", onChange: (e) => patch((p) => ({ ...p, memo: e.target.value })), minRows: 2, placeholder: "メモ", className: "ft-pmemo" }));
+    const secInput = (sec, n) => ce("div", { className: "ft-psec-hd" }, ce("input", { defaultValue: sec, key: "h:" + sec, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== sec)
+            renameSec(sec, v);
         else
-            e.target.value = sec; }, className: "ft-psec-h", "aria-label": "見出し" });
+            e.target.value = sec; }, className: "ft-psec-h", "aria-label": "見出し" }), ce("span", { className: "ft-psec-n tabular-nums" }, n));
     const newSecRow = (ph, btn) => (newSec != null ? ce("input", { autoFocus: true, value: newSec, onChange: (e) => setNewSec(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing)
             e.target.blur(); }, onBlur: () => { const n = newSec.trim(); if (n)
             patch((p) => ({ ...p, secs: [...planSecs(p).filter((s) => s !== n), n] })); setNewSec(null); }, placeholder: ph, className: "ft-psec-h new" })
         : ce("button", { type: "button", onClick: () => setNewSec(""), className: "ft-psec-add ft-tap" }, ce(lucide_react_1.Plus, { size: 14 }), btn));
-    const arrBtn = (S.total > 1 || (S.total > 0 && secs.length)) && !arrange ? ce("button", { type: "button", onClick: () => setArrange(true), className: "ft-plbl-add ft-tap" }, ce(lucide_react_1.ArrowRightLeft, { size: 13, style: { transform: "rotate(90deg)" } }), "並べ替え") : null;
-    const arrangeView = arrange ? ce(PlanArrange, { plan, color, list: isList, onDone: () => setArrange(false), onSave: (todo, sx) => patch((p) => ({ ...p, todo, secs: sx })) }) : null;
-    const rowProps = (t, extra) => ({ key: t.id, t, color, secs, onMoveSec: (s) => moveSec(t.id, s), onPatch: (d) => patchTask(t.id, d), onRemove: () => removeTask(t.id), ...extra });
+    const arrBtn = (S.total > 1 || (S.total > 0 && secs.length)) ? ce("button", { type: "button", onClick: () => setArrange((v) => !v), className: "ft-plbl-add ft-tap" }, arrange ? "完了" : "並べ替え") : null;
+    const arrangeView = arrange ? ce(PlanArrange, { plan, color, list: isList, onSave: (todo, sx) => patch((p) => ({ ...p, todo, secs: sx })) }) : null;
+    const rowProps = (t) => ({ key: t.id, t, color, list: isList, secs, onMoveSec: (s) => moveSec(t.id, s), onPatch: (d) => patchTask(t.id, d), onRemove: () => removeTask(t.id) });
     const art = plan.icon && ICON_ART[plan.icon];
     const hero = ce("div", { className: "ft-phero" },
         ce("button", { type: "button", onClick: onIcon, "aria-label": "名前とアイコンを変える", className: "ft-phero-ic ft-tap", style: { background: art ? art.bg : color.soft, color: color.deep, borderColor: color.line } },
             ce(ItemIcon, { icon: plan.icon, size: 28, fallback: ce(isList ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), color: color })),
         ce("span", { className: "min-w-0 flex-1" },
-            ce("span", { className: "ft-phero-kind", style: { color: color.deep } }, PLAN_KIND_LABEL[isList ? "list" : "goal"]),
-            ce("span", { className: "ft-phero-name font-display" }, plan.name || "（名前なし）")));
-    /* ---------------- コレクション ---------------- */
+            ce("span", { className: "ft-phero-name font-display" }, plan.name || "（名前なし）"),
+            isList ? ce("span", { className: "ft-phero-kind tabular-nums" }, `${S.total}件 ・ 済み ${S.done}`) : null));
+    /* 段階（グループ）ごとの一覧。コレクションは、これからを上・済みを下に（同じ一覧の中で。切り替えない） */
+    const block = (sec) => {
+        let items = S.todo.filter((t) => (t.sec || "") === sec);
+        if (isList)
+            items = [...items.filter((t) => !t.done), ...items.filter((t) => t.done).sort((a, b) => String(b.doneAt || "").localeCompare(String(a.doneAt || "")))];
+        if (!sec && !items.length && (secs.length || isList))
+            return null;
+        return ce("div", { key: "s:" + sec, className: "ft-psec" },
+            sec ? secInput(sec, `${items.filter((t) => t.done).length}/${items.length}`) : null,
+            ce("div", { className: "ft-plist" }, items.map((t) => ce(PlanTaskRow, rowProps(t)))),
+            !isList || sec ? ce(PlanAddRow, { onAdd: (text) => addTask(text, sec), placeholder: sec ? `「${sec}」に追加` : "ステップを追加" }) : null);
+    };
+    const listing = arrange ? arrangeView : ce(react_1.default.Fragment, null, block(""), secs.map(block), newSecRow(isList ? "グループの名前" : "段階の名前", isList ? "グループを作る" : "段階で分ける"));
     if (isList) {
-        const liveN = S.total - S.done;
-        const group = (sec) => {
-            let items = S.todo.filter((t) => (t.sec || "") === sec).filter(shown);
-            /* 済みは、済ませた日の新しい順（これまでの記録として読める）。すべて＝これからが上 */
-            if (show === "done")
-                items = items.slice().sort((a, b) => String(b.doneAt || "").localeCompare(String(a.doneAt || "")));
-            else if (show === "all")
-                items = [...items.filter((t) => !t.done), ...items.filter((t) => t.done)];
-            if (!sec && !items.length)
-                return null;
-            if (sec && show !== "live" && !items.length)
-                return null;
-            return ce("div", { key: "g:" + sec, className: "ft-cgroup" },
-                sec ? ce("div", { className: "ft-cgroup-h" }, secInput(sec), ce("span", { className: "tabular-nums" }, items.length)) : null,
-                ce("div", { className: "ft-cgrid" }, items.map((t) => ce(PlanTaskRow, rowProps(t, { list: true })))),
-                sec && show !== "done" ? ce(PlanAddRow, { onAdd: (text) => addTask(text, sec), placeholder: `「${sec}」に追加` }) : null);
-        };
-        const groups = arrange ? [] : [group(""), ...secs.map(group)].filter(Boolean);
-        const none = !arrange && !groups.length ? ce("p", { className: "ft-cnone" }, S.total === 0 ? "まだ何もありません" : show === "done" ? "済みにしたものは、ここに残ります" : show === "live" ? "ぜんぶ済みました" : "") : null;
         const main = ce("div", { className: "ft-coll" },
-            arrange ? null : ce(CollAddBox, { color: color, onAdd: (text) => { addTask(text, ""); if (show === "done")
-                    setShow("live"); }, placeholder: "書いて Enter で追加" }),
-            arrange ? null : ce("div", { className: "ft-cbar" },
-                ce("div", { className: "ft-cseg", role: "group", "aria-label": "出し分け" }, [["live", "これから", liveN], ["done", "済み", S.done], ["all", "すべて", S.total]].map(([k, l, n]) => ce("button", { key: k, type: "button", onClick: () => setShow(k), "aria-pressed": show === k, className: "ft-tap" + (show === k ? " on" : ""), style: show === k ? { color: color.deep, borderColor: color.mid } : undefined }, l, ce("small", { className: "tabular-nums" }, n)))),
-                arrBtn),
-            arrangeView,
-            groups, none,
-            arrange ? null : newSecRow("グループの名前（例：関西）", "グループを作る"));
-        const side = ce("div", null, memo, S.scheds.length ? sch : null, lists);
+            arrange ? null : ce(CollAddBox, { color: color, onAdd: (text) => addTask(text, ""), placeholder: "書いて Enter で追加" }),
+            arrBtn ? ce("div", { className: "ft-plbl" }, ce("i", null), arrBtn) : null,
+            listing);
         if (wide)
-            return ce("div", null, hero, ce("div", { className: "ft-planwide coll" }, main, side));
-        return ce("div", null, hero, main, side);
+            return ce("div", null, hero, ce("div", { className: "ft-planwide coll" }, main, ce("div", null, memo, linked)));
+        return ce("div", null, hero, main, memo, linked);
     }
-    /* ---------------- 目標 ---------------- */
-    const nextStep = plan.doneAt ? null : planNext(plan);
     const P = planPeriod(plan, S);
     const goal = ce("div", { className: "ft-goal", style: { borderColor: color.line } },
-        ce("div", { className: "ft-goal-k", style: { color: color.deep } }, "ゴール"),
-        ce(TextArea, { bare: true, value: plan.note || "", onChange: (e) => patch((p) => ({ ...p, note: e.target.value })), minRows: 1, rows: 1, placeholder: "どうなったら達成か", className: "ft-goal-in" }),
+        ce(TextArea, { bare: true, value: plan.note || "", onChange: (e) => patch((p) => ({ ...p, note: e.target.value })), minRows: 1, rows: 1, placeholder: "ゴール（どうなったら達成か）", className: "ft-goal-in" }),
         ce("div", { className: "ft-goal-when" },
             P && !plan.doneAt ? ce("span", { className: "ft-goal-left", style: { color: P.left < 0 ? "#BE123C" : color.deep } },
                 P.left === 0 ? ce("b", { className: "w" }, "今日まで") : ce(react_1.default.Fragment, null, ce("small", null, P.left < 0 ? "" : "あと"), ce("b", null, Math.abs(P.left)), ce("small", null, P.left < 0 ? "日過ぎ" : "日"))) : null,
@@ -30598,32 +30474,24 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
                 ce("input", { type: "date", value: plan.goalDate || "", onChange: (e) => patch((p) => ({ ...p, goalDate: e.target.value })) }))),
         ce(PlanRoad, { plan: plan, S: S, color: color }),
         !P && S.total > 0 ? ce("div", { className: "ft-road-row step solo" }, ce("span", { className: "ft-road-k" }, "ステップ"), ce("div", { className: "ft-road-bar" }, ce("i", { style: { width: (S.done / S.total) * 100 + "%", background: color.mid } })), ce("span", { className: "ft-road-n tabular-nums" }, `${S.done}/${S.total}`)) : null);
-    const secBlock = (sec) => {
-        const items = S.todo.filter((t) => (t.sec || "") === sec);
-        if (!sec && !items.length && secs.length)
-            return null;
-        return ce("div", { key: "s:" + sec, className: "ft-psec" },
-            sec ? ce("span", { className: "ft-psec-n tabular-nums" }, `${items.filter((t) => t.done).length}/${items.length}`) : null,
-            sec ? secInput(sec) : null,
-            ce("div", { className: "ft-steps" },
-                items.map((t) => ce(PlanTaskRow, rowProps(t, { next: !!nextStep && nextStep.t.id === t.id }))),
-                ce(PlanAddRow, { onAdd: (text) => addTask(text, sec), placeholder: sec ? `「${sec}」に追加` : "ステップを追加" })));
-    };
-    const todo = ce("div", { className: "ft-ptodo" },
-        lbl("ステップ", arrBtn),
-        arrange ? arrangeView : ce(react_1.default.Fragment, null, secBlock(""), secs.map(secBlock), newSecRow("段階の名前（例：申し込みまで）", "段階で分ける")));
+    const todo = ce("div", { className: "ft-ptodo" }, ce("div", { className: "ft-plbl" }, ce("span", null, "ステップ"), ce("i", null), arrBtn), listing);
+    const ev = ce(PlanEvents, { plan, color, patch });
     const fin = !plan.doneAt ? ce("button", { type: "button", onClick: onDone, className: "ft-pfin ft-tap", style: { color: color.deep, borderColor: color.line } }, ce(lucide_react_1.Check, { size: 16 }), "達成した") : null;
     if (wide)
-        return ce("div", null, hero, ce("div", { className: "ft-planwide" }, ce("div", null, goal, sch, memo, lists, fin), ce("div", null, todo)));
-    return ce("div", null, hero, goal, todo, sch, memo, lists, fin);
+        return ce("div", null, hero, ce("div", { className: "ft-planwide" }, ce("div", null, goal, ev, memo, linked, fin), ce("div", null, todo)));
+    return ce("div", null, hero, goal, todo, ev, memo, linked, fin);
 }
 /* その日にやると決めた計画のやること・手順（Today の「やること」に、計画ごとの札で出る）。
    その日が「いつまでに」の計画も、ここに出す（3.0.0〜。週・月のマスにも同じものが出る） */
 function planDayTasks(plans, date) {
     const m = new Map();
     planGoalsOn(plans, date).forEach((p) => m.set(p.id, { p, items: [], goal: true }));
-    planDayItems(plans, date).forEach((x) => { if (!m.has(x.p.id))
-        m.set(x.p.id, { p: x.p, items: [] }); m.get(x.p.id).items.push({ id: x.t.id, text: x.label, done: !!x.t.done }); });
+    const slot = (p) => { if (!m.has(p.id))
+        m.set(p.id, { p, items: [] }); return m.get(p.id); };
+    /* 計画が持つ予定（5.0.0〜）。印は付けない（ev） */
+    (plans || []).filter((p) => !p.doneAt).forEach((p) => planEvents(p).forEach((e) => { if (e.date === date)
+        slot(p).items.push({ id: e.id, text: e.title || "（名前なし）", ev: true }); }));
+    planDayItems(plans, date).forEach((x) => slot(x.p).items.push({ id: x.t.id, text: x.label, done: !!x.t.done }));
     return [...m.values()];
 }
 function PlanDayCards({ date, withLabel }) {
@@ -30641,7 +30509,7 @@ function PlanDayCards({ date, withLabel }) {
                 ce("div", { className: "flex-1 min-w-0 rounded-2xl bg-white card-soft ft-pday" },
                     ce("button", { type: "button", onClick: () => ctx.open(p.id), className: "ft-pday-h ft-tap", style: { color: c.deep } },
                         ce(lucide_react_1.Target, { size: 14 }), ce("span", null, p.name || "（名前なし）"), goal ? ce("em", { style: { background: c.soft } }, "ゴールの日") : null, ce(lucide_react_1.ChevronRight, { size: 15, className: "opacity-60" })),
-                    items.length ? ce("div", { className: "-ml-1.5" }, items.map((t) => ce(CheckRow, { key: t.id, item: t, size: "l", onToggle: () => ctx.toggle(p.id, t.id) }))) : null));
+                    items.length ? ce("div", { className: "-ml-1.5" }, items.map((t) => t.ev ? ce("div", { key: t.id, className: "ft-pday-ev" }, ce(lucide_react_1.CalendarDays, { size: 16, style: { color: c.deep } }), ce("span", null, t.text)) : ce(CheckRow, { key: t.id, item: t, size: "l", onToggle: () => ctx.toggle(p.id, t.id) }))) : null));
         }));
 }
 function BottomNav({ active, onChange, badges }) {
@@ -31323,8 +31191,9 @@ function AppMain() {
     /* **色を持たせないこと。** 計画も種類も、色は表示設定でひとつだけ決める */
     const togglePinFolder = (f) => setFolders((prev) => prev.map((x) => (x.id === f.id ? { ...x, pinned: !x.pinned } : x)));
     /* 計画のタブで、目標とコレクションのどちらを見ているか（4.0.0〜。端末に覚える）。右下の＋は、見ているほうを作る */
-    const [planKind, setPlanKindState] = (0, react_1.useState)(() => (uiGet("plankind") === "list" ? "list" : "goal"));
-    const setPlanKind = (k) => { setPlanKindState(k); uiSet("plankind", k); };
+    /* これから作る計画の種類（5.0.0〜）。目標のタブの＋＝目標、フォルダのタブの＋で「コレクション」を選んだとき＝コレクション */
+    const [planKind, setPlanKind] = (0, react_1.useState)("goal");
+    const [folderAdd, setFolderAdd] = (0, react_1.useState)(false);
     const addPlan = (_unused, name, icon) => {
         const p = { ...emptyPlan(), kind: planKind, name: name || (planKind === "list" ? "新しいコレクション" : "新しい目標"), icon: icon || "" };
         setPlans((prev) => [...prev, p]);
@@ -31598,15 +31467,25 @@ function AppMain() {
     /* 種類を入れ替える。いまの中身は消えるので、**だまって消さないこと** */
     const [swapAsk, setSwapAsk] = (0, react_1.useState)(null);
     const swapScoped = (rec, scope, dateKey) => setSwapAsk({ rec, scope, dateKey });
+    /* 記録を足す入口は、右下の＋ひとつ（5.0.0〜）。紙の上で「日・週・月」のどれに書くかをえらぶ。
+       **週の記録・月の記録の見出しに「追加」を戻さないこと。** 足す場所があちこちにあって、何を足せるのかが分かりにくかった */
+    const scopeDate = viewDate || todayStr();
+    const scopeNow = scoped ? scoped.scope : "day";
+    const scopeSeg = react_1.default.createElement("div", { className: "ft-scopeseg", role: "group", "aria-label": "どこに書くか" }, [
+        ["day", "日", fmtDateShort(scopeDate)],
+        ["week", "週", `${fmtDateShort(weekKeyOf(scopeDate))}–${fmtDateShort(addDays(weekKeyOf(scopeDate), 6))}`],
+        ["month", "月", `${Number(monthKeyOf(scopeDate).slice(5, 7))}月`],
+    ].map(([k, l, d]) => react_1.default.createElement("button", { key: k, type: "button", "aria-pressed": scopeNow === k, onClick: () => setScoped(k === "day" ? null : { scope: k, dateKey: k === "week" ? weekKeyOf(scopeDate) : monthKeyOf(scopeDate) }), className: "ft-tap" + (scopeNow === k ? " on" : "") }, react_1.default.createElement("b", null, l), react_1.default.createElement("small", { className: "tabular-nums" }, d))));
     /* 右下の＋。押したときの働きは、いま見ている画面によって変わる */
     const onFab = () => {
         /* **何を作るか聞かないこと。** 計画タブの＋は、いつも計画 */
         if (tab === "plan") {
+            setPlanKind("goal");
             setAddPlanOpen(true);
             return;
         }
         if (tab === "folder") {
-            setAddFolderOpen(true);
+            setFolderAdd(true);
             return;
         }
         if (tab === "note") {
@@ -31804,9 +31683,9 @@ function AppMain() {
                                             react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped, onSaveRecord: saveRecord, onNewInk: () => setInkNew({ ...emptyRecord("memo", viewDate || todayStr()) }), resetSig: todayReset }))),
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, resetSig: tabReset.find || 0 })),
                                         tab === "note" && react_1.default.createElement(NoteScreen, { records: records, onOpen: (r) => setNoteOpen(r.id), onNew: () => setInkNew({ ...emptyRecord("memo", todayStr()) }) }),
-                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), kind: planKind, onKind: setPlanKind, resetSig: tabReset.plan || 0 })),
-                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, sort: prefs.folderSortOrder, onSort: (v) => savePrefs((p) => ({ ...p, folderSortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
-                                loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? (planKind === "list" ? "コレクションを追加" : "目標を追加") : tab === "folder" ? "フォルダを追加" : tab === "note" ? "新しいページ" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft" + (tab === "today" ? " ft-fab-today" : ""), style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, tab === "plan" ? react_1.default.createElement("span", { className: "ft-fab-plus" }, react_1.default.createElement(planKind === "list" ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 24 }), react_1.default.createElement("i", null, react_1.default.createElement(lucide_react_1.Plus, { size: 12, strokeWidth: 3.5 }))) : tab === "note" ? react_1.default.createElement(lucide_react_1.Pencil, { size: 24 }) : tab === "folder" ? react_1.default.createElement(lucide_react_1.FolderPlus, { size: 24 }) : react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
+                                        tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), resetSig: tabReset.plan || 0 })),
+                                        tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, plans: plans, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.folderSortOrder, onSort: (v) => savePrefs((p) => ({ ...p, folderSortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
+                                loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "目標を追加" : tab === "folder" ? "フォルダ・コレクションを追加" : tab === "note" ? "新しいページ" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft" + (tab === "today" ? " ft-fab-today" : ""), style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
                                 loaded && react_1.default.createElement(BottomNav, { active: tab, badges: { plan: planBadge }, onChange: (k) => {
                                         if (k === "today")
                                             setTodayReset((n) => n + 1);
@@ -31830,10 +31709,16 @@ function AppMain() {
                                         setRecords((prev) => prev.filter((r) => r.id !== a.rec.id));
                                         addScoped(a.scope, a.dateKey);
                                     } })),
-                                typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: [...(scoped ? SCOPED_TYPES : TYPES), "__ink"], labels: { __ink: "\u624B\u66F8\u304D" }, icons: { __ink: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }) }, colorKeys: { __ink: "memo" } })),
+                                typePick && (react_1.default.createElement(TypePickSheet, { top: tab === "today" && !inPlan && !inFolder ? scopeSeg : null, title: tab === "today" && !inPlan && !inFolder ? "記録する" : "記録の種類", onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: [...(scoped ? SCOPED_TYPES : TYPES), "__ink"], labels: { __ink: "\u624B\u66F8\u304D" }, icons: { __ink: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }) }, colorKeys: { __ink: "memo" } })),
                                 noteObj && react_1.default.createElement(InkEditor, { key: noteObj.id, initial: noteObj.ink, title: fmtDate(noteObj.date), onCancel: () => setNoteOpen(null), onDetail: () => { const r = recordsRef.current.find((x) => x.id === noteObj.id) || noteObj; setNoteOpen(null); openEdit(r); }, onAutoSave: ({ ink, png }) => saveInk(noteObj.id, noteObj, ink, png, { keepOpen: true }), onSave: ({ ink, png }) => { saveInk(noteObj.id, noteObj, ink, png, { keepOpen: true }); setNoteOpen(null); tell("保存しました"); } }),
                                 inkNew && (react_1.default.createElement(InkEditor, { key: inkNew.id, onCancel: () => setInkNew(null), onAutoSave: ({ ink, png }) => saveInk(inkNew.id, inkNew, ink, png, { keepOpen: true }), onSave: ({ ink, png }) => { const base = inkNew; setInkNew(null); saveInk(base.id, base, ink, png, { keepOpen: true }); tell("保存しました"); } })),
                                 addPlanOpen && (react_1.default.createElement(NameIconSheet, { title: planKind === "list" ? "コレクションを追加" : "目標を追加", confirmLabel: "\u4F5C\u6210", presets: true, photo: true, placeholder: planKind === "list" ? "行きたい場所／見たいアニメ など" : "資格をとる／体づくり など", fallback: react_1.default.createElement(planKind === "list" ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), onCancel: () => setAddPlanOpen(false), onSave: (n, ic) => { addPlan(null, n, ic); setAddPlanOpen(false); } })),
+                                folderAdd && react_1.default.createElement(TypePickSheet, { title: "追加", types: ["__folder", "__coll"], labels: { __folder: "フォルダ", __coll: "コレクション" }, icons: { __folder: react_1.default.createElement(lucide_react_1.Folder, { size: 22 }), __coll: react_1.default.createElement(lucide_react_1.ListTodo, { size: 22 }) }, colorKeys: { __folder: FOLDER_TYPE, __coll: PLAN_TYPE }, onCancel: () => setFolderAdd(false), onPick: (k) => { setFolderAdd(false); if (k === "__coll") {
+                                        setPlanKind("list");
+                                        setAddPlanOpen(true);
+                                    }
+                                    else
+                                        setAddFolderOpen(true); } }),
                                 addFolderOpen && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u3092\u8FFD\u52A0", confirmLabel: "\u4F5C\u6210", presets: false, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 28 }), onCancel: () => setAddFolderOpen(false), onSave: (n, ic) => { addFolder(n, ic); setAddFolderOpen(false); } })),
                                 editingLive && (react_1.default.createElement(RecordForm, { initial: editingLive, plans: plans, knownTags: knownTags, onCreateTag: addTagToMaster, onSave: saveRecord, onCancel: () => {
                                         /* 「保存せずに閉じる」＝書いた内容は残さない。**端末の書きかけも消すこと（2.11.11〜）。**

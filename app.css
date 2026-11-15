@@ -1223,3 +1223,49 @@ button.ft-wb-bar{pointer-events:auto}
   .ft-planwide > div > :first-child{margin-top:0}
   .ft-planwide .ft-ptodo,.ft-planwide .ft-pblock{margin-top:0}
 }
+
+/* ===== 5.0.0 計画・コレクション：1行の一覧（右端に日付とメモ）／計画の予定とメモ／足す紙の「日・週・月」 ===== */
+.ft-plist{border-top:1px solid #E9EDF0}
+.ft-prow{display:flex;align-items:flex-start;gap:10px;min-height:48px;border-bottom:1px solid #E9EDF0}
+.ft-prow > .ft-pcheck{margin-top:12px}
+.ft-prow-main{flex:1;min-width:0;display:flex;flex-direction:column;padding:11px 0 10px}
+.ft-prow-in{flex:none;padding:0;color:#171717;font-size:max(16px, calc(15px * var(--ft-scale)));line-height:1.55}
+.ft-prow.done .ft-prow-in{color:#9AA3AA}
+.ft-prow-sub{margin-top:2px;font-size:calc(11.5px * var(--ft-scale));font-weight:700;color:#8A949C}
+.ft-prow-date{position:relative;flex:none;display:grid;place-items:center;min-width:36px;height:30px;margin-top:9px;padding:0 9px;border-radius:999px;color:#B4BBC1;font-size:calc(12px * var(--ft-scale));font-weight:700;overflow:hidden;white-space:nowrap}
+.ft-prow-date input{position:absolute;inset:0;width:100%;height:100%;opacity:0;-webkit-appearance:none;appearance:none}
+.ft-prow-date.done{color:#9AA3AA;font-weight:400;padding:0 2px}
+.ft-prow-more{flex:none;display:grid;place-items:center;width:36px;height:48px;color:#B4BBC1}
+.ft-psheet-k{margin:14px 0 2px;font-size:calc(12.5px * var(--ft-scale));font-weight:700;color:#6B7883}
+.ft-psec{margin-bottom:14px}
+.ft-psec-hd{display:flex;align-items:baseline;gap:8px}
+.ft-psec-hd .ft-psec-h{border-bottom:0;margin:0;padding:10px 0 6px}
+.ft-psec-hd .ft-psec-n{position:static;flex:none}
+.ft-psec > .ft-ptask-row.add{min-height:46px}
+.ft-psec > .ft-ptask-row.add > .ft-pcheck{margin-top:11px}
+.ft-pev{display:flex;align-items:flex-start;gap:10px;min-height:46px;border-bottom:1px solid #E9EDF0}
+.ft-pev > .ft-dchip{margin-top:9px}
+.ft-pev > .ft-prow-in{flex:1;padding:11px 0 10px}
+.ft-pev > .ft-prow-more{height:46px}
+.ft-pmemo{display:block;width:100%;padding:4px 0 8px !important;font-size:max(16px, calc(14.5px * var(--ft-scale))) !important;line-height:1.7 !important;color:#26323A}
+.ft-pday-ev{display:flex;align-items:center;gap:10px;min-height:40px;padding:6px 8px 6px 10px;font-size:calc(15px * var(--ft-scale));color:#26323A}
+.ft-phero{margin-bottom:14px}
+.ft-phero-kind{display:block;margin:2px 0 0;font-size:calc(12px * var(--ft-scale));font-weight:700;color:#8A949C;letter-spacing:0}
+.ft-coll .ft-cadd{margin-bottom:6px}
+.ft-coll > .ft-plbl{padding:0;min-height:40px}
+.ft-goal .ft-goal-in{margin-bottom:4px}
+.ft-arr{margin-top:4px}
+.ft-pdonebox{margin-top:20px}
+.ft-fmeta{flex-wrap:nowrap}
+.ft-fmeta > span{white-space:nowrap}
+.ft-nthumb5{aspect-ratio:1/1;background:#fff !important;border:1px solid #E6EAEE}
+/* 足す紙の上：日・週・月 */
+.ft-scopeseg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:16px;background:#F1F4F6}
+.ft-scopeseg button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-height:52px;border-radius:12px;color:#6B7883}
+.ft-scopeseg button b{font-size:calc(14.5px * var(--ft-scale))}
+.ft-scopeseg button small{font-size:calc(11.5px * var(--ft-scale))}
+.ft-scopeseg button.on{background:#fff;color:var(--th-900,#2F6E9B);box-shadow:0 1px 2px rgba(20,30,40,.12)}
+@media (min-width:820px) and (orientation:landscape){
+  .ft-planwide.coll{grid-template-columns:minmax(0,3fr) minmax(0,2fr)}
+  .ft-planwide .ft-goal{margin-bottom:18px}
+}
