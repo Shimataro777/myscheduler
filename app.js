@@ -29810,15 +29810,16 @@ function InkCanvas({ value, onChange, toolbarRight, boxStyle, boxClass, hint, fo
         footer || null);
 }
 /* 手書きを書く画面（下から）。紙は画面いっぱい。新しく書くときも、書き直すときも */
-function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDetail, onAutoSave, initialTitle = "", sub }) {
+function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDetail, onDraft, onDiscard, initialTitle = "", onDelete, startDirty }) {
+    const [askDel, askNode] = useAskDel();
     /* タイトル（5.2.0〜）。手書きのメモは、字の本文を持たず、タイトルだけを持つ（record.title）。ノートの画面で、これで探せる */
     const [ttl, setTtl] = (0, react_1.useState)(initialTitle || "");
     const ttlRef = (0, react_1.useRef)(ttl);
     ttlRef.current = ttl;
     const [ttlAsk, setTtlAsk] = (0, react_1.useState)(false);
     const inkRef = (0, react_1.useRef)(initial || null);
-    const [dirty, setDirty] = (0, react_1.useState)(false);
-    /* 自動保存（3.3.0〜。onAutoSave を渡したときだけ）。書くのをやめて 1.2 秒たったら保存する。
+    const [dirty, setDirty] = (0, react_1.useState)(!!startDirty); /* 書きかけから開いたときは、はじめから「変えた」扱い（保存できる・閉じるとき確かめる） */
+    /* 【7.3.0〜 自動保存はやめた。下の flush は「書きかけ」を置くだけ】以前の説明：書くのをやめて 1.2 秒たったら保存する。
        "" ＝ まだ何もしていない／"wait" ＝ 保存待ち／"saved" ＝ 保存した。
        **戻す・やり直すの積み重ねは、自動保存では消さないこと。** 消えるのは「保存」で閉じたときだけ */
     const [st, setSt] = (0, react_1.useState)("");
@@ -29889,49 +29890,56 @@ function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDet
             fr.readAsDataURL(blob);
         }, "image/png");
     };
+    /* 書きかけ（7.3.0〜）。**記録へは保存しないこと。** ほかの記録と同じく、保存ボタンを押すまでは記録にならない。
+       止まって 1.6 秒・アプリが背面へ回ったときに、線とタイトルだけを端末の「書きかけ」へ置く（onDraft）。
+       次にアプリを開いたとき、ほかの記録と同じ「書きかけの記録があります」から続きを開ける。
+       絵（PNG）は置かない（重い）。保存するときに線から作る */
+    const dirtyRef = (0, react_1.useRef)(false);
+    dirtyRef.current = dirty;
     const flush = (force) => {
         clearTimeout(timer.current);
         timer.current = null;
-        if (!pendingRef.current || !onAutoSave)
+        if (!pendingRef.current || !onDraft)
             return;
-        /* まだ書いている（ペンが紙の上にある・離したばかり）なら、もう少し待つ。閉じるときだけは待たない */
+        /* まだ書いている（ペンが紙の上にある・離したばかり）なら、もう少し待つ。背面へ回るときだけは待たない */
         if (!force && busyRef.current && busyRef.current()) {
             timer.current = setTimeout(() => flushRef.current(), 500);
             return;
         }
         pendingRef.current = false;
-        const put = (o) => {
-            if (!o)
-                return;
-            try {
-                onAutoSave(o);
-                if (aliveRef.current)
-                    setSt((x) => (pendingRef.current ? x : "saved"));
-            }
-            catch (e) {
-                console.error("手書きを自動保存できませんでした", e);
-            }
-        };
-        if (force) {
-            genRef.current++;
-            put(result());
+        const v = inkRef.current;
+        try {
+            onDraft({ ink: v && v.s ? inkOf(v, v.ar || (initial && initial.ar) || null) : (initial || null), title: ttlRef.current.trim() });
         }
-        else
-            resultLater(put);
+        catch (e) {
+            console.error("書きかけを置けませんでした", e);
+        }
     };
     const aliveRef = (0, react_1.useRef)(true);
     (0, react_1.useEffect)(() => () => { aliveRef.current = false; }, []);
     const flushRef = (0, react_1.useRef)(flush);
     flushRef.current = flush;
-    /* 画面が閉じるときに、待っている分を保存する */
-    (0, react_1.useEffect)(() => () => flushRef.current(true), []);
+    /* 閉じたら、待っている書きかけは捨てる（保存せずに閉じた／保存した、のどちらでも要らない） */
+    (0, react_1.useEffect)(() => () => { clearTimeout(timer.current); pendingRef.current = false; }, []);
+    (0, react_1.useEffect)(() => {
+        if (!onDraft)
+            return undefined;
+        const out = () => { if (dirtyRef.current) {
+            pendingRef.current = true;
+            flushRef.current(true);
+        } };
+        const onVis = () => { if (document.visibilityState === "hidden")
+            out(); };
+        document.addEventListener("visibilitychange", onVis);
+        window.addEventListener("pagehide", out);
+        return () => { document.removeEventListener("visibilitychange", onVis); window.removeEventListener("pagehide", out); };
+    }, [onDraft]);
     const changed = (v) => {
         inkRef.current = v;
         setDirty(true);
-        if (!onAutoSave)
+        if (!onDraft)
             return;
         pendingRef.current = true;
-        setSt("wait");
         clearTimeout(timer.current);
         timer.current = setTimeout(() => flushRef.current(), 1600);
     };
@@ -29946,22 +29954,31 @@ function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDet
         }
         onSave(o);
     };
-    const cancel = () => { flush(true); onCancel(); };
+    /* 保存せずに閉じる：ほかの記録と同じ。書き足していたら確かめてから、書いたものを残さずに閉じる */
+    const [confirmLeave, setConfirmLeave] = (0, react_1.useState)(false);
+    const leave = () => { clearTimeout(timer.current); pendingRef.current = false; genRef.current++; (onDiscard || onCancel)(); };
+    const cancel = () => { if (dirty)
+        setConfirmLeave(true);
+    else
+        onCancel(); };
     return react_1.default.createElement(OverlayScreen, { from: "bottom", zIndex: 60 },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-app flex flex-col ft-inkedit", "data-ft-overlay": "" },
-            react_1.default.createElement("div", { className: "shrink-0 flex items-center gap-2 px-3 border-b border-neutral-200 bg-white", style: { paddingTop: "max(calc(env(safe-area-inset-top) + 8px), 22px)", paddingBottom: 8 } },
-                react_1.default.createElement("button", { type: "button", onClick: cancel, "aria-label": "閉じる", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap" }, react_1.default.createElement(lucide_react_1.X, { size: 24 })),
-                react_1.default.createElement("span", { className: "flex-1 min-w-0 text-center flex flex-col items-center justify-center" },
+            react_1.default.createElement("div", { className: "shrink-0 flex items-center gap-2 px-3 border-b border-neutral-200 bg-white ft-inkhead", style: { paddingTop: "max(calc(env(safe-area-inset-top) + 8px), 22px)", paddingBottom: 8 } },
+                react_1.default.createElement("button", { type: "button", onClick: cancel, "aria-label": "閉じる", className: "ft-inkhead-x w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap" }, react_1.default.createElement(lucide_react_1.X, { size: 24 })),
+                react_1.default.createElement("span", { className: "ft-inkhead-tt flex-1 min-w-0 text-center flex flex-col items-center justify-center" },
                     /* タイトル。押すと直せる（小窓）。**右の鉛筆のしるしを外さないこと**（直せることが伝わらない） */
                     react_1.default.createElement("button", { type: "button", onClick: () => setTtlAsk(true), className: "ft-inktitle ft-tap", "aria-label": "タイトルを変える" }, react_1.default.createElement("span", { className: ttl ? "" : "none" }, ttl || "タイトル"), react_1.default.createElement(lucide_react_1.Pencil, { size: 13 })),
-                    sub ? react_1.default.createElement("span", { className: "fs-caption text-neutral-400 tabular-nums" }, sub) : null,
-                    onAutoSave && st ? react_1.default.createElement("span", { className: "fs-caption " + (st === "saved" ? "text-th-800" : "text-neutral-400") }, st === "saved" ? "自動保存しました" : "まもなく自動保存") : null),
+                    /* 自動保存の知らせ（「まもなく自動保存」など）は出さない（7.3.0〜）。タイトルの段は、いつも1行だけ */
+                    null),
+                /* 削除（7.2.0〜）。書いている画面から、そのまま消せる。**かならず確かめてから** */
+                onDelete ? react_1.default.createElement("button", { type: "button", onClick: () => askDel("このノートを削除しますか", () => { clearTimeout(timer.current); pendingRef.current = false; genRef.current++; onDelete(); }), "aria-label": "削除", className: "ft-inkdel ft-tap" }, react_1.default.createElement(lucide_react_1.Trash2, { size: 20 })) : null,
                 /* フォルダ・詳細（7.0.0〜、いつも出す）。書いたものがあれば、いまの絵を渡す（受け取る側が保存してから開く） */
                 onDetail ? react_1.default.createElement("button", { type: "button", onClick: () => { clearTimeout(timer.current); pendingRef.current = false; genRef.current++; onDetail(inkRef.current && inkRef.current.s && inkRef.current.s.length ? result() : null, ttlRef.current.trim()); }, className: BTN_SECONDARY + " px-3 fs-body-sm", style: { minHeight: 42 } }, "フォルダ・詳細") : null,
                 react_1.default.createElement("button", { type: "button", onClick: save, disabled: !dirty, className: BTN_PRIMARY + " px-5 fs-body", style: { minHeight: 42 } }, "保存")),
-            ttlAsk ? react_1.default.createElement(NameDialog, { title: "タイトル", placeholder: "タイトル", initial: ttl, confirmLabel: "決定", onCancel: () => setTtlAsk(false), onConfirm: (v) => { setTtlAsk(false); setTtl(v); ttlRef.current = v; setDirty(true); if (onAutoSave) {
+            askNode,
+            confirmLeave ? react_1.default.createElement(ConfirmDialog, { title: "保存せずに閉じますか", body: "書いた内容は残りません。", danger: false, confirmLabel: "閉じる", onCancel: () => setConfirmLeave(false), onConfirm: () => { setConfirmLeave(false); leave(); } }) : null,
+            ttlAsk ? react_1.default.createElement(NameDialog, { title: "タイトル", placeholder: "タイトル", initial: ttl, confirmLabel: "決定", onCancel: () => setTtlAsk(false), onConfirm: (v) => { setTtlAsk(false); setTtl(v); ttlRef.current = v; setDirty(true); if (onDraft) {
                     pendingRef.current = true;
-                    setSt("wait");
                     clearTimeout(timer.current);
                     timer.current = setTimeout(() => flushRef.current(), 600);
                 } } }) : null,
@@ -30425,8 +30442,8 @@ function PlanTaskRow({ t, color, onPatch, onRemove, onChecked, just }) {
             ce(DateTap, { value: t.date, onChange: (v) => onPatch({ date: v }), label: "やる日", className: "ft-scard-date ft-tap" + (t.date ? " on" : ""), style: t.date ? (late ? { background: "#FDECEC", color: "#BE123C" } : t.date === today ? { background: color.mid, color: "#fff" } : { background: color.soft, color: color.deep }) : undefined }, t.date ? (t.done && t.doneAt ? fmtDateShort(t.date) : planDayLabel(t.date, today)) : ce(lucide_react_1.CalendarDays, { size: 17 })),
             ce("button", { type: "button", onClick: () => askDel(`「${t.text || "（名前なし）"}」を削除しますか`, onRemove), "aria-label": "削除", className: "ft-mlist-x ft-tap" }, ce(lucide_react_1.X, { size: 16 }))),
         ce("div", { className: "ft-scard-body" },
-            ce(AutoText, { value: t.note || "", onChange: (v) => onPatch({ note: v }), className: "ft-scard-note", label: "メモ", placeholder: "メモ" }),
-            ce(MiniList, { items: sub, onChange: setSub, color, placeholder: "手順を追加" })),
+            ce(MiniList, { items: sub, onChange: setSub, color, placeholder: "手順を追加" }),
+            ce(AutoText, { value: t.note || "", onChange: (v) => onPatch({ note: v }), className: "ft-scard-note", label: "メモ", placeholder: "メモ" })),
         askNode);
 }
 /* ステップ・手順を足す欄。**Enter で足したあと、欄から離れないこと**（続けて書ける。data-ft-stay） */
@@ -31899,6 +31916,15 @@ function AppMain() {
         }).catch((e) => console.error("手書きを保存できませんでした", e));
         return inkChainRef.current;
     };
+    /* 手書きの書きかけ（7.3.0〜）。ほかの記録の書きかけ（DRAFT_KEY）と同じ置き場・同じ形。目印は __ink。
+       絵（images）は置かない。続きを開いて保存するとき、線から作り直す */
+    const putInkDraft = (base, o) => {
+        const prev = recordsRef.current.find((r) => r.id === base.id);
+        const { images, __fromDraft, __ink, __existed, ...rest } = prev || base;
+        const d = { ...rest, ...(base.__folders ? { __folders: base.__folders } : {}), ink: o.ink, title: o.title, __ink: true, __existed: !!prev };
+        draftIdRef.current = d.id;
+        storageSet(DRAFT_KEY, JSON.stringify(d));
+    };
     /* 手書きノートで開いている記録（3.2.0〜） */
     const [noteOpen, setNoteOpen] = (0, react_1.useState)(null);
     const noteObj = noteOpen ? records.find((r) => r.id === noteOpen) || null : null;
@@ -32147,7 +32173,12 @@ function AppMain() {
                                     footer: react_1.default.createElement("p", { className: "fs-body-sm font-bold text-neutral-500 tabular-nums" },
                                         "My\u624B\u5E33 v",
                                         APP_VERSION) }),
-                                draft && !editing && (react_1.default.createElement(DraftCard, { draft: draft, onResume: () => { setEditing({ ...draft, __fromDraft: true }); setDraft(null); }, onDiscard: () => { draftIdRef.current = null; setDraft(null); storageSet(DRAFT_KEY, ""); } })),
+                                draft && !editing && (react_1.default.createElement(DraftCard, { draft: draft, onResume: () => { if (draft.__ink) {
+                                            const { __ink, __existed, __fromDraft, ...rest } = draft;
+                                            setInkNew(rest);
+                                        }
+                                        else
+                                            setEditing({ ...draft, __fromDraft: true }); setDraft(null); }, onDiscard: () => { draftIdRef.current = null; setDraft(null); storageSet(DRAFT_KEY, ""); } })),
                                 swapAsk && (react_1.default.createElement(ConfirmDialog, { title: "\u7A2E\u985E\u3092\u5909\u3048\u307E\u3059\u304B", body: "\u3044\u307E\u5165\u3063\u3066\u3044\u308B\u4E2D\u8EAB\u306F\u6D88\u3048\u307E\u3059\u3002", danger: true, confirmLabel: "\u5909\u3048\u308B", onCancel: () => setSwapAsk(null), onConfirm: () => {
                                         const a = swapAsk;
                                         setSwapAsk(null);
@@ -32155,10 +32186,10 @@ function AppMain() {
                                         addScoped(a.scope, a.dateKey);
                                     } })),
                                 typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: [...(scoped ? SCOPED_TYPES : TYPES), "__ink"], labels: { __ink: "\u624B\u66F8\u304D" }, icons: { __ink: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }) }, colorKeys: { __ink: "memo" } })),
-                                noteObj && react_1.default.createElement(InkEditor, { key: noteObj.id, initial: noteObj.ink, initialTitle: noteObj.title || "", sub: fmtDate(noteObj.date), onCancel: () => setNoteOpen(null), onDetail: async (o, t) => { if (o)
-                                        await saveInk(noteObj.id, noteObj, o.ink, o.png, { keepOpen: true }, t); const r = recordsRef.current.find((x) => x.id === noteObj.id) || noteObj; setNoteOpen(null); openEdit(r); }, onAutoSave: ({ ink, png, title }) => saveInk(noteObj.id, noteObj, ink, png, { keepOpen: true }, title), onSave: ({ ink, png, title }) => { saveInk(noteObj.id, noteObj, ink, png, { keepOpen: true }, title); setNoteOpen(null); tell("保存しました"); } }),
-                                inkNew && (react_1.default.createElement(InkEditor, { key: inkNew.id, initialTitle: inkNew.title || "", sub: fmtDate(inkNew.date), onDetail: async (o, t) => { const base = inkNew; if (o)
-                                        await saveInk(base.id, base, o.ink, o.png, { keepOpen: true }, t); const r = recordsRef.current.find((x) => x.id === base.id) || { ...base, title: t }; setInkNew(null); openEdit(r); }, onCancel: () => setInkNew(null), onAutoSave: ({ ink, png, title }) => saveInk(inkNew.id, inkNew, ink, png, { keepOpen: true }, title), onSave: ({ ink, png, title }) => { const base = inkNew; setInkNew(null); saveInk(base.id, base, ink, png, { keepOpen: true }, title); tell("保存しました"); } })),
+                                noteObj && react_1.default.createElement(InkEditor, { key: noteObj.id, initial: noteObj.ink, initialTitle: noteObj.title || "", onDelete: () => { const id = noteObj.id; setNoteOpen(null); deleteRecord(id); tell("削除しました"); }, onCancel: () => setNoteOpen(null), onDiscard: () => { clearDraftOf(new Set([noteObj.id])); setNoteOpen(null); }, onDraft: (o) => putInkDraft(noteObj, o), onDetail: async (o, t) => { if (o)
+                                        await saveInk(noteObj.id, noteObj, o.ink, o.png, { keepOpen: true }, t); const r = recordsRef.current.find((x) => x.id === noteObj.id) || noteObj; setNoteOpen(null); openEdit(r); }, onSave: ({ ink, png, title }) => { saveInk(noteObj.id, noteObj, ink, png, { keepOpen: true }, title); setNoteOpen(null); tell("保存しました"); } }),
+                                inkNew && (react_1.default.createElement(InkEditor, { key: inkNew.id, initial: inkNew.ink || null, startDirty: !!(inkNew.ink && inkNew.ink.s && inkNew.ink.s.length), initialTitle: inkNew.title || "", onDraft: (o) => putInkDraft(inkNew, o), onDiscard: () => { clearDraftOf(new Set([inkNew.id])); setInkNew(null); }, onDelete: () => { const id = inkNew.id; setInkNew(null); deleteRecord(id); tell("削除しました"); }, onDetail: async (o, t) => { const base = inkNew; if (o)
+                                        await saveInk(base.id, base, o.ink, o.png, { keepOpen: true }, t); const r = recordsRef.current.find((x) => x.id === base.id) || { ...base, title: t }; setInkNew(null); openEdit(r); }, onCancel: () => setInkNew(null), onSave: ({ ink, png, title }) => { const base = inkNew; setInkNew(null); saveInk(base.id, base, ink, png, { keepOpen: true }, title); tell("保存しました"); } })),
                                 addPlanOpen && (react_1.default.createElement(NameIconSheet, { title: planKind === "list" ? "コレクションを追加" : "計画を追加", confirmLabel: "\u4F5C\u6210", presets: true, photo: true, placeholder: planKind === "list" ? "行きたい場所／見たいアニメ など" : "資格をとる／体づくり など", fallback: react_1.default.createElement(planKind === "list" ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), onCancel: () => setAddPlanOpen(false), onSave: (n, ic) => { addPlan(null, n, ic); setAddPlanOpen(false); } })),
                                 folderAdd && react_1.default.createElement(TypePickSheet, { title: "追加", types: ["__folder", "__coll"], labels: { __folder: "フォルダ", __coll: "コレクション" }, icons: { __folder: react_1.default.createElement(lucide_react_1.Folder, { size: 22 }), __coll: react_1.default.createElement(lucide_react_1.ListTodo, { size: 22 }) }, colorKeys: { __folder: FOLDER_TYPE, __coll: PLAN_TYPE }, onCancel: () => setFolderAdd(false), onPick: (k) => { setFolderAdd(false); if (k === "__coll") {
                                         setPlanKind("list");

@@ -1540,3 +1540,19 @@ button.ft-ccell-date{border:0}
 /* 紙の中の欄に触れているあいだ、下に余白を足す（キーボードの上まで送れるように） */
 /* **:focus-within にしないこと。** ボタンを押した瞬間にも余白が付いて紙が伸び、指の下からボタンが逃げて、押しても効かなかった */
 .ft-sheet-body:has(input:focus, textarea:focus){padding-bottom:42vh}
+
+/* ===== 7.2.0 ステップの札：手順が上、メモが下 ===== */
+.ft-scard-note{padding:4px 0 8px}
+/* 手書きの画面の削除ボタン */
+.ft-inkdel{flex:none;display:grid;place-items:center;width:40px;height:42px;border-radius:999px;color:#8A949C}
+/* 手書きの画面の上の帯：せまい画面では、タイトルをボタンの下の段へ（ボタンに押されて「旅…」のように切れていた） */
+@media (max-width:640px){
+  .ft-inkhead{flex-wrap:wrap}
+  .ft-inkhead-x{margin-right:auto}
+  .ft-inkhead-tt{order:9;flex:0 0 100% !important;flex-direction:row !important;gap:10px;padding:4px 4px 0;min-height:32px}
+  .ft-inkhead-tt > .ft-inktitle{min-width:0;flex:0 1 auto}
+  .ft-inkhead-tt > .fs-caption{flex:none}
+}
+/* 7.3.0 手書きの画面のタイトル：いつも1行（長いときは末尾を…） */
+.ft-inkhead-tt{flex-direction:row !important}
+.ft-inkhead-tt > button.ft-inktitle{max-width:100%;flex:0 1 auto;min-width:0}
