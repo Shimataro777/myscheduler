@@ -1385,9 +1385,8 @@ button.ft-wb-bar{pointer-events:auto}
 /* 表のマス：字を入れられるマスは、空のとき短い点線。触れているマスは枠が付く */
 .ft-ctbl-c.in{position:relative;cursor:text}
 .ft-ctbl-c.in:focus-within{box-shadow:inset 0 0 0 2px var(--th-800,#3E7EA6);border-radius:6px;background:#fff}
-.ft-ctbl-c.in:not(:focus-within) .ft-ccell-in.bare:placeholder-shown{background:linear-gradient(90deg,#CCD4DA 50%,transparent 0) 0 22px/8px 1.5px repeat-x}
 .ft-ctbl-c.tap{cursor:pointer}
-.ft-cblank{display:block;width:28px;height:1.5px;background:linear-gradient(90deg,#CCD4DA 50%,transparent 0) 0 0/8px 1.5px repeat-x}
+.ft-cblank{display:none}
 .ft-cstep{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .ft-cstep-bar{display:block;width:40px;height:6px;border-radius:3px;background:#E7EBEE;overflow:hidden}
 .ft-cstep-bar i{display:block;height:100%;border-radius:3px}
@@ -1425,3 +1424,57 @@ button.ft-wb-bar{pointer-events:auto}
 .ft-ctbl-c .ft-cstep{margin-top:9px}
 .ft-cline > .ft-cchip,.ft-cline > .ft-cstep{justify-self:start}
 .ft-cline > .ft-pcheck{justify-self:start}
+
+/* ===== 7.0.0 ===== */
+/* 表：列を区切る線。マスの中身は、どれも行のまん中（上下）にそろえる */
+.ft-ctbl-c,.ft-ctbl-c.c{align-items:center;padding-top:8px;padding-bottom:8px;border-right:1px solid #EEF1F3}
+.ft-ctbl-h{border-right:1px solid #E3E9EE}
+.ft-ctbl-c .ft-cstep{margin-top:0}
+.ft-ctbl-c.name > .ft-crow-more{margin-top:0}
+.ft-curl{align-items:center}
+/* 列の紙：えらぶ丸・幅 */
+.ft-ccol-pick{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:2px solid #C4C4C4;background:#fff}
+.ft-ccol-pick.on{background:#E5484D;border-color:#E5484D}
+.ft-ccol-pick.none{visibility:hidden}
+.ft-ccol-w{flex:none;width:52px;height:36px;border:1px solid #E1E6EA;border-radius:10px;background:#fff;text-align:center;font-size:16px;color:#171717;outline:0;padding:0}
+.ft-ccol-w::placeholder{color:#B4BBC1;font-size:12px}
+.ft-ccol-sum{margin:8px 0 0;text-align:right;font-size:calc(12px * var(--ft-scale));font-weight:700;color:#6B7883}
+/* 縦長の札：その場で入れる */
+.ft-cline .ft-ccell-in.bare{font-size:max(16px, calc(14px * var(--ft-scale)));line-height:1.6;padding-top:1px;color:#26323A}
+.ft-cline .ft-ccell-in.num{text-align:left}
+.ft-cline .ft-ccell-date{justify-self:start}
+.ft-cblanks label,.ft-cblanks button{position:relative;display:inline-flex;align-items:center;gap:2px;min-height:30px;padding:0 10px;border-radius:999px;border:1px dashed #C3CDD5;color:#6B7883;font-size:calc(12px * var(--ft-scale));font-weight:700;overflow:hidden}
+.ft-cblanks label input{position:absolute;inset:0;width:100%;height:100%;opacity:0;-webkit-appearance:none;appearance:none}
+/* 行の紙 */
+.ft-crow-f{padding:2px 0}
+.ft-crow-f .ft-psheet-k{margin-top:12px}
+.ft-crow-f.inline .ft-psheet-k{margin-top:0}
+/* 同期の進み具合 */
+.gs-prog{margin:14px 0 4px}
+.gs-prog-bar{height:8px;border-radius:4px;background:#E7EBEE;overflow:hidden}
+.gs-prog-bar i{display:block;height:100%;border-radius:4px;background:var(--th-800,#3E7EA6);transition:width .35s ease}
+.gs-prog-t{display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:calc(12.5px * var(--ft-scale));color:#6B7883}
+.gs-prog-t b{color:#26323A}
+/* 横長の見出し：上の白い帯（14px 以上）より下に置く（雲のしるしの数が切れないように） */
+@media (min-width:820px) and (orientation:landscape){
+  .ft-topchrome .bg-head{padding-top:max(calc(env(safe-area-inset-top) + 8px), 22px) !important;padding-bottom:6px}
+}
+/* 手書き：ペンのみ・タイトル */
+.ft-inkfinger{width:auto;padding:0 10px;gap:4px}
+.ft-inkfinger.on{background:var(--th-800,#3E7EA6);color:#fff}
+button.ft-inktitle{display:inline-flex;align-items:center;justify-content:center;gap:6px;width:auto;max-width:100%;min-height:30px;padding:0 8px;border-radius:8px;color:#8A949C}
+button.ft-inktitle span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:calc(16px * var(--ft-scale));font-weight:700;color:#171717}
+button.ft-inktitle span.none{color:#B4BBC1;font-weight:400}
+/* 記録：日・週・月、折りたたみの範囲 */
+.ft-whenbox.open{background:#F4F6F8;border-radius:18px;padding:0 0 8px}
+.ft-whenbox.open > button{background:transparent;border-color:transparent}
+.ft-whenbox.open .ft-when-body{padding:0 8px}
+.ft-scope{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ft-scope-seg{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:#E6EAEE}
+.ft-scope-seg button{min-width:52px;min-height:36px;padding:0 14px;border-radius:999px;font-size:calc(13.5px * var(--ft-scale));font-weight:700;color:#6B7883}
+.ft-scope-seg button.on{background:#fff;color:var(--th-900,#2F6E9B);box-shadow:0 1px 2px rgba(20,30,40,.12)}
+.ft-scope-step{flex:1;min-width:190px;display:flex;align-items:center;justify-content:space-between;min-height:42px;border-radius:999px;background:#fff;border:1px solid #E1E6EA;font-size:calc(13.5px * var(--ft-scale));font-weight:700;color:#26323A}
+.ft-scope-step button{display:grid;place-items:center;width:42px;height:42px;color:#4B5A64}
+/* 週・月の右の「えらんだ日」：日付とボタンを基調の色に */
+.ft-daybox .ft-sechd b{color:var(--th-900,#2F6E9B)}
+.ft-daybox .ft-sechd-btn{background:var(--th-800,#3E7EA6);color:#fff}

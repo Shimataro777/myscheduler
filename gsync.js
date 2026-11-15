@@ -644,7 +644,14 @@ var GSync = (() => {
         const id = photoIdOfName(f.name);
         if (id) onDrive.set(id, f);
       }
+      /* 進み具合（7.0.0〜）。写真1枚＝1こま。画面には progress（0〜1）と step（いましていること）で知らせる */
+      const __need = refs.filter((id) => !onDrive.has(id));
+      const __tot = 4 + refs.length + __need.length;
+      let __n = 2, __at = 0;
+      const __p = (label, force) => { const t = Date.now(); if (!force && t - __at < 150) return; __at = t; setStatus({ progress: Math.min(0.97, __n / __tot), step: label }); };
+      __p("受け取っています", true);
       for (const id of refs) {
+        __n++; __p("受け取っています");
         if (await opts.photoHas(id)) continue;
         const f = onDrive.get(id);
         if (!f) continue;
@@ -658,12 +665,14 @@ var GSync = (() => {
       }
       for (const id of refs) {
         if (onDrive.has(id)) continue;
+        __n++; __p("送っています");
         const data = await opts.photoGet(id);
         if (typeof data === "string" && data) {
           const up = await drive.upload(PHOTO_PREFIX + id + ".txt", data, "text/plain", folderId);
           onDrive.set(id, { id: up.id, name: PHOTO_PREFIX + id + ".txt", modifiedTime: up.modifiedTime });
         }
       }
+      __n = __tot - 2; __p("送っています", true);
       let modified = dataFile ? dataFile.modifiedTime : "";
       if (res.remoteChanged || !dataFile) {
         const payload = { app: "bible-tracker-sync", format: FORMAT, updatedAt: new Date(now()).toISOString(), ...res.merged, tombs: res.tombs };
@@ -676,6 +685,7 @@ var GSync = (() => {
           }
         }
       }
+      __n = __tot - 1; __p("仕上げています", true);
       await saveState({ base: res.base, tombs: res.tombs, lastRemoteModified: modified, lastLocalHash: contentHash(res.merged, schema), baseAt: now() });
       lastMoved = { sent, received };
       await cleanOrphans(drive, files, refs, res.merged);
@@ -753,7 +763,7 @@ var GSync = (() => {
         }
       }
       const drive = createDrive(fetchFn, () => auth.getStored() || token);
-      setStatus({ phase: "syncing", message: "", askLogin: false });
+      setStatus({ phase: "syncing", message: "", askLogin: false, progress: 0.05, step: "つないでいます" });
       try {
         if (!cfg.email) {
           try {

@@ -557,7 +557,14 @@ export function createGoogleSync(opts) {
     const refs = Array.from(new Set(opts.listPhotoRefs(res.merged)));
     const onDrive = new Map();
     for (const f of files) { const id = photoIdOfName(f.name); if (id) onDrive.set(id, f); }
+    /* 進み具合（7.0.0〜）。写真1枚＝1こま。画面には progress（0〜1）と step（いましていること）で知らせる */
+    const __need = refs.filter((id) => !onDrive.has(id));
+    const __tot = 4 + refs.length + __need.length;
+    let __n = 2, __at = 0;
+    const __p = (label, force) => { const t = Date.now(); if (!force && t - __at < 150) return; __at = t; setStatus({ progress: Math.min(0.97, __n / __tot), step: label }); };
+    __p("受け取っています", true);
     for (const id of refs) {
+      __n++; __p("受け取っています");
       if (await opts.photoHas(id)) continue;
       const f = onDrive.get(id);
       if (!f) continue;
@@ -575,6 +582,7 @@ export function createGoogleSync(opts) {
     /* 写真：ドライブに無いものを上げる（記録のデータより先に） */
     for (const id of refs) {
       if (onDrive.has(id)) continue;
+      __n++; __p("送っています");
       const data = await opts.photoGet(id);
       if (typeof data === "string" && data) {
         const up = await drive.upload(PHOTO_PREFIX + id + ".txt", data, "text/plain", folderId);
@@ -582,6 +590,7 @@ export function createGoogleSync(opts) {
       }
     }
 
+    __n = __tot - 2; __p("送っています", true);
     let modified = dataFile ? dataFile.modifiedTime : "";
     if (res.remoteChanged || !dataFile) {
       const payload = { app: "bible-tracker-sync", format: FORMAT, updatedAt: new Date(now()).toISOString(), ...res.merged, tombs: res.tombs };
@@ -591,6 +600,7 @@ export function createGoogleSync(opts) {
       for (const extra of dataFiles.slice(1)) { try { await drive.remove(extra.id); } catch (e) { /* 消せなくてもよい */ } }
     }
 
+    __n = __tot - 1; __p("仕上げています", true);
     await saveState({ base: res.base, tombs: res.tombs, lastRemoteModified: modified, lastLocalHash: contentHash(res.merged, schema), baseAt: now() });
     lastMoved = { sent, received };
     await cleanOrphans(drive, files, refs, res.merged);
@@ -672,7 +682,7 @@ export function createGoogleSync(opts) {
       }
     }
     const drive = createDrive(fetchFn, () => auth.getStored() || token);
-    setStatus({ phase: "syncing", message: "", askLogin: false });
+    setStatus({ phase: "syncing", message: "", askLogin: false, progress: 0.05, step: "つないでいます" });
     try {
       if (!cfg.email) {
         try { const u = await drive.about(); cfg.email = u.emailAddress || ""; saveCfg(); } catch (e) { if (e instanceof SyncError && e.kind === "auth") throw e; }
