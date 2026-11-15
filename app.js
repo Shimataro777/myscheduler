@@ -22569,7 +22569,7 @@ function FilterFields({ q, onQ, onEnter, types, onToggleType, folders, onOpenFol
    **設定を変えたら「保存」で決める形にすること。**
    さわるたびに反映すると、決めたつもりがないのに変わってしまう
    ============================================================ */
-function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保存", disabled, hideConfirm }) {
+function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保存", disabled, hideConfirm, leftBtn, closeLabel, closePrimary }) {
     /* ✕・キャンセル・背景・保存、どれで閉じても下へ滑らせる（2.17.2〜）。
        **保存だけ別扱いにしないこと。** 保存のときだけパッと消えて見える */
     const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
@@ -22588,7 +22588,9 @@ function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保
                送れないと中身（アイコンの一覧など）が切れる */
             react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-4" }, children),
             react_1.default.createElement("div", { className: "flex gap-2 px-4 py-3 border-t border-neutral-200 shrink-0", style: SAFE_BOTTOM(12) },
-                react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + (hideConfirm ? " w-full " : " flex-1 ") + "btn-h-lg fs-subhead" }, hideConfirm ? "閉じる" : "キャンセル"),
+                /* leftBtn（7.3.2〜）：下の帯の左に置く手前のボタン（行を削除 など）。closeLabel / closePrimary：1つだけのボタンの字と色 */
+                leftBtn || null,
+                react_1.default.createElement("button", { type: "button", onClick: close, className: (closePrimary ? BTN_PRIMARY : BTN_SECONDARY) + (hideConfirm && !leftBtn ? " w-full " : " flex-1 ") + "btn-h-lg fs-subhead" }, hideConfirm ? (closeLabel || "閉じる") : "キャンセル"),
                 !hideConfirm && (react_1.default.createElement("button", { type: "button", onClick: confirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" }, confirmLabel))))));
 }
 function ConfirmDialog({ title, body, confirmLabel = "削除する", danger = true, onConfirm, onCancel }) {
@@ -23841,7 +23843,7 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
                 /* 手書きのメモ（2.33.0〜）：絵と「手書きを直す」。写真の欄は出さない */
                 rec.type === "memo" && rec.ink && (react_1.default.createElement("div", { className: "mb-3" },
                     (rec.images || []).length > 0 && react_1.default.createElement("div", { className: "ft-inkthumb mb-2" }, react_1.default.createElement(Photo, { src: rec.images[0], className: "block w-full", style: { aspectRatio: String(rec.ink.ar || 1), objectFit: "contain", objectPosition: "top", maxHeight: 360 } })),
-                    react_1.default.createElement(InkEditButton, { rec: rec, onChange: set }))),
+                    react_1.default.createElement(InkEditButton, { rec: rec, onChange: set, onDelete: onDelete ? () => { doneRef.current = true; onDelete(); } : null }))),
                 /* 手書きのメモは、字の本文を持たない（5.2.0〜）。タイトルだけ */
                 rec.type === "memo" && !rec.ink && (react_1.default.createElement(TextArea, { bare: true, value: rec.text, onChange: (e) => set({ text: e.target.value }), minRows: 6, placeholder: "\u30E1\u30E2", className: "mb-3" })),
                 rec.type === "memo" && !rec.ink && (react_1.default.createElement("div", { className: "mb-3" },
@@ -29966,8 +29968,8 @@ function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDet
             react_1.default.createElement("div", { className: "shrink-0 flex items-center gap-2 px-3 border-b border-neutral-200 bg-white ft-inkhead", style: { paddingTop: "max(calc(env(safe-area-inset-top) + 8px), 22px)", paddingBottom: 8 } },
                 react_1.default.createElement("button", { type: "button", onClick: cancel, "aria-label": "閉じる", className: "ft-inkhead-x w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap" }, react_1.default.createElement(lucide_react_1.X, { size: 24 })),
                 react_1.default.createElement("span", { className: "ft-inkhead-tt flex-1 min-w-0 text-center flex flex-col items-center justify-center" },
-                    /* タイトル。押すと直せる（小窓）。**右の鉛筆のしるしを外さないこと**（直せることが伝わらない） */
-                    react_1.default.createElement("button", { type: "button", onClick: () => setTtlAsk(true), className: "ft-inktitle ft-tap", "aria-label": "タイトルを変える" }, react_1.default.createElement("span", { className: ttl ? "" : "none" }, ttl || "タイトル"), react_1.default.createElement(lucide_react_1.Pencil, { size: 13 })),
+                    /* タイトル。押すと直せる（小窓）。鉛筆のしるしは付けない（7.3.1〜。タイトルがしっかり読めることを優先） */
+                    react_1.default.createElement("button", { type: "button", onClick: () => setTtlAsk(true), className: "ft-inktitle ft-tap", "aria-label": "タイトルを変える" }, react_1.default.createElement("span", { className: ttl ? "" : "none" }, ttl || "タイトル")),
                     /* 自動保存の知らせ（「まもなく自動保存」など）は出さない（7.3.0〜）。タイトルの段は、いつも1行だけ */
                     null),
                 /* 削除（7.2.0〜）。書いている画面から、そのまま消せる。**かならず確かめてから** */
@@ -29986,11 +29988,11 @@ function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDet
                 react_1.default.createElement(InkCanvas, { value: initial, onChange: changed, busyRef: busyRef, shotRef: shotRef }))));
 }
 /* 手書きのメモを、書く画面から書き直すためのボタン（RecordForm の中） */
-function InkEditButton({ rec, onChange }) {
+function InkEditButton({ rec, onChange, onDelete }) {
     const [open, setOpen] = (0, react_1.useState)(false);
     return react_1.default.createElement(react_1.default.Fragment, null,
         react_1.default.createElement("button", { type: "button", onClick: () => setOpen(true), className: BTN_SECONDARY + " w-full btn-h-lg fs-body mb-3 flex items-center justify-center gap-2" }, react_1.default.createElement(lucide_react_1.Pencil, { size: 17 }), "手書きを編集"),
-        open && react_1.default.createElement(InkEditor, { initial: rec.ink, onCancel: () => setOpen(false), onSave: ({ ink, png }) => { onChange({ ink, images: [png, ...(rec.images || []).slice(1)] }); setOpen(false); } }));
+        open && react_1.default.createElement(InkEditor, { initial: rec.ink, initialTitle: rec.title || "", onDelete: onDelete || undefined, onCancel: () => setOpen(false), onSave: ({ ink, png, title }) => { onChange({ ink, images: [png, ...(rec.images || []).slice(1)], title }); setOpen(false); } }));
 }
 /* 日ごとの手書きのページ（横長の Today の右）。書くたびに、少し待ってから保存する */
 function DayInkPanel({ date, records, onSave, onEdit }) {
@@ -30677,8 +30679,11 @@ function CollCell({ t, c, color, onPatch, bare, auto }) {
             v ? (() => { const d = parseYmd(v); return d ? `${d.getFullYear() === new Date().getFullYear() ? "" : d.getFullYear() + "/"}${d.getMonth() + 1}/${d.getDate()}` : v; })() : ce(lucide_react_1.CalendarDays, { size: 16 }));
     if (c.type === "steps") {
         const nd = v.filter((x) => x.done).length;
+        /* 表のマス（7.5.0〜）：ステップをそのまま並べ、印でチェックできる。字を直す・足すのは行の紙（マスの空いたところを押す） */
         if (bare)
-            return v.length ? ce("span", { className: "ft-cstep" }, ce("span", { className: "ft-cstep-bar" }, ce("i", { style: { width: (nd / v.length) * 100 + "%", background: color.mid } })), ce("b", { className: "tabular-nums" }, `${nd}/${v.length}`)) : ce("span", { className: "ft-cblank" });
+            return v.length ? ce("span", { className: "ft-csteps" }, v.map((x) => ce("span", { key: x.id, className: "ft-csteps-r" + (x.done ? " done" : "") },
+                ce("button", { type: "button", onClick: (e) => { e.stopPropagation(); set(v.map((y) => (y.id === x.id ? { ...y, done: !y.done } : y))); }, "aria-pressed": !!x.done, "aria-label": x.done ? "済みを外す" : "済みにする", className: "ft-csteps-ck ft-tap", style: x.done ? { background: color.mid, borderColor: color.mid } : undefined }, x.done ? ce(lucide_react_1.Check, { size: 11, strokeWidth: 3.5, color: "#fff" }) : null),
+                ce("span", { className: "ft-csteps-t" }, x.text)))) : ce("span", { className: "ft-csteps-add" }, ce(lucide_react_1.Plus, { size: 13 }), "ステップ");
         return ce(MiniList, { items: v, onChange: set, color, auto });
     }
     if (c.type === "url" && bare)
@@ -30787,16 +30792,16 @@ function CollTable({ plan, color, patch }) {
            字の列（テキスト・リンク・数）：その列でいちばん長い中身（と列の名前）が入る幅。テキストは 120〜300px、数は 72〜120px（こえるぶんは折り返す）。
            名前の列：いちばん長い名前が入る幅を下限（180〜360px）に、**余った幅をぜんぶ取る**。足りないときは表を横に送る */
         const fit = (c, lo, hi, per) => Math.round(Math.max(lo, Math.min(hi, Math.max(emLen(c.name) * 13, ...todo.map((t) => emLen(colGet(t, c)) * per)) + 26)));
-        const W = (c) => (c.type === "check" ? "56px" : c.type === "star" ? "128px" : c.type === "date" ? "104px" : c.type === "steps" ? "96px" : c.type === "number" ? fit(c, 72, 120, 9.5) + "px" : fit(c, 120, 300, 15.5) + "px");
+        const W = (c) => (c.type === "check" ? "56px" : c.type === "star" ? "128px" : c.type === "date" ? "104px" : c.type === "steps" ? Math.round(Math.max(150, Math.min(280, Math.max(emLen(c.name) * 13, ...todo.flatMap((t) => (colGet(t, c) || []).map((x) => emLen(x.text) * 14))) + 44))) + "px" : c.type === "number" ? fit(c, 72, 120, 9.5) + "px" : fit(c, 120, 300, 15.5) + "px");
         /* 自分で決めた比率（7.0.0〜。「列」の紙の「幅」）。ぜんたいを 100 として、名前と各列に割り当てる。
            1つでも決めてあれば、ぜんぶの列を比率で分ける（決めていない列は、種類ごとのめやす）。**表は画面の幅ちょうどに収まる** */
-        const DEF = { check: 6, star: 13, date: 11, steps: 10, number: 9, text: 16, url: 16 };
+        const DEF = { check: 6, star: 13, date: 11, steps: 18, number: 9, text: 16, url: 16 };
         const ratio = (c) => Math.max(3, Number(c.w) || DEF[c.type] || 12);
         const custom = Number(plan.nameW) > 0 || cols.some((c) => Number(c.w) > 0);
         const tpl = custom
-            ? [lead ? `minmax(44px,${ratio(lead)}fr)` : null, `minmax(120px,${Math.max(3, Number(plan.nameW) || 28)}fr)`, ...rest.map((c) => `minmax(${c.type === "star" ? 124 : c.type === "check" ? 44 : 64}px,${ratio(c)}fr)`), "40px"].filter(Boolean).join(" ")
+            ? [lead ? `minmax(44px,${ratio(lead)}fr)` : null, `minmax(120px,${Math.max(3, Number(plan.nameW) || 28)}fr)`, ...rest.map((c) => `minmax(${c.type === "star" ? 124 : c.type === "check" ? 44 : c.type === "steps" ? 140 : 64}px,${ratio(c)}fr)`), "40px"].filter(Boolean).join(" ")
             : [lead ? "44px" : null, `minmax(${fit(COL_NAME, 180, 360, 16) + 40}px,1fr)`, ...rest.map(W), "40px"].filter(Boolean).join(" ");
-        const hd = (c) => ce("button", { key: c.id, type: "button", onClick: () => headTap(c), className: "ft-ctbl-h ft-tap" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "steps" ? " c" : c.type === "number" ? " r" : "") }, ce("span", null, c.name), arrow(c));
+        const hd = (c) => ce("button", { key: c.id, type: "button", onClick: () => headTap(c), className: "ft-ctbl-h ft-tap" + (c.type === "check" || c.type === "star" || c.type === "date" ? " c" : c.type === "number" ? " r" : "") }, ce("span", null, c.name), arrow(c));
         body = ce("div", { className: "ft-ctbl-wrap" }, ce("div", { className: "ft-ctbl", style: { gridTemplateColumns: tpl } },
             lead ? hd(lead) : null, hd(COL_NAME), rest.map(hd),
             ce("button", { type: "button", onClick: () => setColOpen(true), "aria-label": "列を足す・直す", className: "ft-ctbl-h add ft-tap" }, ce(lucide_react_1.Plus, { size: 16 })),
@@ -30804,7 +30809,7 @@ function CollTable({ plan, color, patch }) {
                 lead ? ce("div", { className: "ft-ctbl-c c" }, ce(CollCell, { t, c: lead, color, onPatch: (d) => patchRow(t.id, d), bare: true })) : null,
                 /* 行を開く ＞ は、名前のマスの右はし（表を横へ送っても、いつも見える場所） */
                 ce("div", { className: "ft-ctbl-c name" + (lead && colGet(t, lead) ? " dim" : "") }, nameCell(t), moreBtn(t)),
-                rest.map((c) => ce("div", { key: c.id, className: "ft-ctbl-c" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "steps" ? " c" : " in") + (c.type === "steps" ? " tap" : ""), onClick: c.type === "steps" ? () => setRowOpen(t.id) : undefined }, ce(CollCell, { t, c, color, onPatch: (d) => patchRow(t.id, d), bare: true }))),
+                rest.map((c) => ce("div", { key: c.id, className: "ft-ctbl-c" + (c.type === "check" || c.type === "star" || c.type === "date" ? " c" : c.type === "steps" ? " st" : " in") + (c.type === "steps" ? " tap" : ""), onClick: c.type === "steps" ? () => setRowOpen(t.id) : undefined }, ce(CollCell, { t, c, color, onPatch: (d) => patchRow(t.id, d), bare: true }))),
                 ce("div", { className: "ft-ctbl-c" })))));
     }
     else {
@@ -30830,14 +30835,14 @@ function CollTable({ plan, color, patch }) {
         ce(TextArea, { bare: true, value: plan.memo || "", onChange: (e) => patch((p) => ({ ...p, memo: e.target.value })), minRows: 1, rows: 1, placeholder: "メモ", className: "ft-cmemo" }),
         ce(CollAddBox, { color: color, onAdd: add, placeholder: "書いて Enter で追加" }),
         tools, body,
-        openRow ? ce(SheetDialog, { title: openRow.text || "（名前なし）", onCancel: () => setRowOpen(null), hideConfirm: true },
+        openRow ? ce(SheetDialog, { title: openRow.text || "（名前なし）", onCancel: () => setRowOpen(null), hideConfirm: true, closeLabel: "保存", closePrimary: true,
+            leftBtn: ce("button", { type: "button", onClick: () => { const id = openRow.id; askDel(`「${openRow.text || "（名前なし）"}」を削除しますか`, () => { setRowOpen(null); delRow(id); }); }, className: BTN_DANGER_SOFT + " flex-1 btn-h-lg fs-subhead ft-tap" }, "行を削除") },
             /* 行を行き来する（閉じずに、つぎの行を続けて入れられる） */
             (() => { const i = rows.findIndex((t) => t.id === openRow.id); const go = (k) => { const n = rows[i + k]; if (n)
                 setRowOpen(n.id); }; return ce("div", { className: "ft-crow-nav" }, ce("button", { type: "button", onClick: () => go(-1), disabled: i <= 0, "aria-label": "前の行", className: "ft-tap" }, ce(lucide_react_1.ChevronLeft, { size: 20 })), ce("span", { className: "tabular-nums" }, `${i + 1} / ${rows.length}`), ce("button", { type: "button", onClick: () => go(1), disabled: i >= rows.length - 1, "aria-label": "次の行", className: "ft-tap" }, ce(lucide_react_1.ChevronRight, { size: 20 }))); })(),
             ce("p", { className: "ft-psheet-k first" }, "名前"),
             ce(TextArea, { value: openRow.text, onChange: (e) => patchRow(openRow.id, { text: e.target.value.replace(/\n/g, " ") }), minRows: 1, rows: 1 }),
-            cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) }))),
-            ce("button", { type: "button", onClick: () => { const id = openRow.id; askDel(`「${openRow.text || "（名前なし）"}」を削除しますか`, () => { setRowOpen(null); delRow(id); }); }, className: "ft-crow-del ft-tap" }, ce(lucide_react_1.Trash2, { size: 16 }), "この行を削除")) : null,
+            cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) })))) : null,
         askNode,
         colOpen ? ce(SheetDialog, { title: "列", onCancel: () => setColOpen(false), hideConfirm: true },
             ce("div", { className: "ft-ccol base" }, ce("span", { className: "ft-ccol-pick none" }), ce("span", { className: "ft-ccol-n" }, "名前"), ce("span", { className: "ft-ccol-t" }, "テキスト"),
