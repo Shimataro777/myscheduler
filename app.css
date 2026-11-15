@@ -1478,3 +1478,65 @@ button.ft-inktitle span.none{color:#B4BBC1;font-weight:400}
 /* 週・月の右の「えらんだ日」：日付とボタンを基調の色に */
 .ft-daybox .ft-sechd b{color:var(--th-900,#2F6E9B)}
 .ft-daybox .ft-sechd-btn{background:var(--th-800,#3E7EA6);color:#fff}
+
+/* ===== 7.1.0 計画：横長の札・ステップの札・小さなチェックの並び ===== */
+.ft-glist{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.ft-glist > .ft-noresult{grid-column:1/-1}
+@media (min-width:820px){.ft-glist{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}}
+.ft-grow{display:block;border-radius:18px;padding:14px}
+.ft-grow.done{background:#FAFBFC}
+.ft-grow-top{display:flex;align-items:center;gap:12px}
+.ft-grow-ic{position:relative;flex:none;width:56px;height:56px;border-radius:16px;border:1px solid;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.ft-grow-ic .ft-pcard-done{right:3px;bottom:3px;width:20px;height:20px}
+.ft-grow-tt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ft-grow-name{font-size:calc(16.5px * var(--ft-scale));font-weight:700;line-height:1.35;color:#171717;word-break:break-word}
+.ft-grow-memo{font-size:calc(12.5px * var(--ft-scale));line-height:1.5;color:#6B7883;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-grow-left{flex:none;display:flex;align-items:baseline;gap:2px;white-space:nowrap}
+.ft-grow-left b{font-size:calc(28px * var(--ft-scale));font-weight:300;line-height:1}
+.ft-grow-left b.w{font-size:calc(18px * var(--ft-scale));font-weight:700}
+.ft-grow-left small{font-size:calc(11.5px * var(--ft-scale));font-weight:700}
+.ft-grow-left.done{flex-direction:column;align-items:flex-end;gap:0}
+.ft-grow-top > button{flex:none;margin-right:-4px}
+.ft-grow-foot{display:flex;align-items:center;gap:10px;margin-top:12px}
+.ft-grow-bar{flex:1;display:block;height:6px;border-radius:3px;background:#EEF1F4;overflow:hidden}
+.ft-grow-bar i{display:block;height:100%;border-radius:3px}
+.ft-grow-n{flex:none;font-size:calc(11.5px * var(--ft-scale));font-weight:700;color:#6B7883}
+.ft-grow-add{display:flex;align-items:center;justify-content:center;gap:6px;min-height:56px;border:1.5px dashed #C3CDD5;border-radius:18px;background:#F7F9FA;color:var(--th-900,#2F6E9B);font-size:calc(14px * var(--ft-scale));font-weight:700}
+/* 小さなチェックの並び（記録のリストの中身と同じ並び） */
+.ft-mlist{min-width:0}
+.ft-mlist-row{display:flex;align-items:center;gap:6px;min-height:40px;border-radius:10px}
+.ft-mlist-row.drag{background:#fff}
+.ft-mlist-in{flex:1;min-width:0;border:0;outline:0;background:transparent;padding:8px 0;font-size:max(16px, calc(14.5px * var(--ft-scale)));line-height:1.5;color:#171717}
+.ft-mlist-in::placeholder{color:#B4BBC1}
+.ft-mlist-row.done .ft-mlist-in{color:#9AA3AA;text-decoration:line-through}
+.ft-mlist-x{flex:none;display:grid;place-items:center;width:32px;height:36px;color:#C4CBD1}
+.ft-mlist-row > button[aria-label="つまんで並べ替え"]{width:32px;height:36px}
+.ft-mlist-plus{flex:none;display:grid;place-items:center;width:19px;color:#B4BBC1}
+.ft-mlist-ok{flex:none;display:grid;place-items:center;width:38px;height:38px;color:#C4CBD1}
+.ft-mlist-ok:disabled{opacity:.4}
+/* ステップの札：入れたものは、ぜんぶ表に出す */
+.ft-scards{display:flex;flex-direction:column;gap:10px;margin-bottom:6px}
+.ft-scard{background:#fff;border:1px solid #E3E9EE;border-radius:16px;padding:6px 6px 6px 12px}
+.ft-scard.done{background:#F8FAFB}
+.ft-scard.just{animation:ft-rowglow 1.1s ease-out}
+.ft-scard.just .ft-scard-top > .ft-pcheck{animation:ft-checkpop .38s cubic-bezier(.3,1.4,.5,1)}
+.ft-scard-top{display:flex;align-items:flex-start;gap:8px}
+.ft-scard-top > .ft-pcheck{margin-top:9px}
+.ft-scard-in{flex:1;min-width:0;padding:8px 0;font-size:max(16px, calc(15.5px * var(--ft-scale)));font-weight:700;line-height:1.5;color:#171717}
+.ft-scard.done .ft-scard-in{color:#9AA3AA}
+.ft-scard-date{flex:none;display:grid;place-items:center;min-width:36px;height:30px;margin-top:6px;padding:0 9px;border-radius:999px;color:#B4BBC1;font-size:calc(12px * var(--ft-scale));font-weight:700;white-space:nowrap}
+.ft-scard-top > .ft-mlist-x{margin-top:3px}
+.ft-scard-body{padding:0 0 2px 32px}
+.ft-scard-note{padding:0 0 6px;font-size:max(16px, calc(13.5px * var(--ft-scale)));line-height:1.6;color:#5B6770}
+.ft-scard-note::placeholder{color:#C4CBD1}
+.ft-ptodo > .ft-ptask-row.add{min-height:48px;padding-left:12px}
+.ft-goal-memo{display:block;width:100%;padding:0 !important;margin-bottom:8px;min-height:0 !important;font-size:max(16px, calc(13.5px * var(--ft-scale))) !important;line-height:1.6 !important;color:#5B6770}
+/* コレクション：ステップの列は、札の中に全部 */
+.ft-cline.wide{grid-template-columns:minmax(0,1fr);gap:0}
+.ft-cline.wide > small{padding-top:6px}
+/* 日付の札（アプリの日付の紙を開くボタン） */
+button.ft-dchip{padding:0}
+button.ft-ccell-date{border:0}
+/* 紙の中の欄に触れているあいだ、下に余白を足す（キーボードの上まで送れるように） */
+/* **:focus-within にしないこと。** ボタンを押した瞬間にも余白が付いて紙が伸び、指の下からボタンが逃げて、押しても効かなかった */
+.ft-sheet-body:has(input:focus, textarea:focus){padding-bottom:42vh}
