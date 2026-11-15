@@ -973,6 +973,126 @@ button.ft-wb-bar{pointer-events:auto}
 .ft-ncard.new .ft-nthumb b{font-size:calc(13.5px * var(--ft-scale))}
 .ft-nmeta{display:flex;flex-direction:column;gap:1px;padding:0 4px;font-size:calc(12px * var(--ft-scale));color:#4B5A64;min-width:0}
 .ft-ntags{color:#8A949C;font-size:calc(11px * var(--ft-scale));white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* 3.3.0：手書きの道具は、続けて押してもダブルタップの拡大や待ちが入らないように */
+/* 4.0.0：手書きの道具は、続けて押してもダブルタップの拡大や待ちが入らないように */
 .ft-inkbar button,.ft-inkcv{touch-action:manipulation}
 .ft-inkcv{touch-action:none}
+
+/* ===== 4.0.0 手書き：2枚重ねの面・指でも書く・案内 ===== */
+.ft-inkbox{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.ft-inkcv-top{background:transparent!important;background-image:none!important;z-index:1}
+.ft-inkhint{z-index:2}
+.ft-inkfinger{width:auto;padding:0 10px;display:inline-flex;align-items:center;gap:4px;font-size:calc(12px * var(--ft-scale));font-weight:700}
+.ft-inkfinger.on{color:var(--th-900,#2F6E9B)}
+.ft-inktip{position:absolute;left:12px;right:12px;top:12px;z-index:3;margin:0 auto;max-width:360px;padding:10px 14px;border-radius:12px;background:rgba(31,45,54,.92);color:#fff;font-size:calc(12.5px * var(--ft-scale));line-height:1.6;text-align:center;pointer-events:none}
+
+/* ===== 4.0.0 フォルダ：入れ方の2つのボタン ===== */
+.ft-fadd{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.ft-faddbtn{display:flex;align-items:center;gap:10px;min-width:0;min-height:60px;padding:10px 12px;border-radius:16px;border:1px solid #E5E5E5;background:#fff;text-align:left}
+.ft-faddic{flex:none;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:#F1F3F5;color:#5B6770}
+.ft-faddtx{display:flex;flex-direction:column;min-width:0;line-height:1.35}
+.ft-faddtx b{font-size:calc(13.5px * var(--ft-scale));color:#262626;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-faddtx small{font-size:calc(11.5px * var(--ft-scale));color:#8A949C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (min-width:820px) and (orientation:landscape){.ft-fadd{grid-template-columns:260px 260px}}
+
+/* ===== 4.0.0 計画：目標とコレクションを別の作りに ===== */
+/* 右下の＋（計画）。作るものの絵に、小さな＋を添える */
+.ft-fab-plus{position:relative;display:grid;place-items:center}
+.ft-fab-plus i{position:absolute;right:-9px;top:-8px;width:17px;height:17px;border-radius:50%;background:#fff;color:var(--th-900,#2F6E9B);display:grid;place-items:center}
+/* 一覧のタブ（絵＋名前＋数） */
+.ft-ctl-tabs button svg{flex:none}
+/* 目標の札：横いっぱい。上＝絵・名前・ゴール、中＝つぎのステップ、下＝進み具合・あと何日 */
+.ft-gcard{display:block;border-radius:20px;padding:14px 14px 13px}
+.ft-gcard-head{display:flex;align-items:flex-start;gap:12px}
+.ft-gcard-ic{position:relative;flex:none;width:52px;height:52px;border-radius:16px;border:1px solid;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.ft-gcard-ic .ft-pcard-done{right:3px;bottom:3px;width:20px;height:20px}
+.ft-gcard-tt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;padding-top:3px}
+.ft-gcard-name{font-size:calc(16.5px * var(--ft-scale));font-weight:700;line-height:1.35;word-break:break-word}
+.ft-gcard-sub{font-size:calc(12.5px * var(--ft-scale));color:#6B7883;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-gcard-head > button{flex:none;margin:-4px -4px 0 0}
+.ft-gcard-next{display:flex;align-items:center;gap:8px;min-height:40px;margin-top:12px;padding:6px 8px 6px 12px;border-radius:12px}
+.ft-gcard-nk{flex:none;font-size:calc(11px * var(--ft-scale));font-weight:700;letter-spacing:.06em}
+.ft-gcard-nt{flex:1;min-width:0;font-size:calc(13.5px * var(--ft-scale));font-weight:700;color:#26323A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-gcard-nt small{font-size:1em;font-weight:400;color:#5B6770}
+.ft-gcard-nd{flex:none;min-height:26px;padding:0 9px;border-radius:999px;display:inline-flex;align-items:center;font-size:calc(11.5px * var(--ft-scale));font-weight:700}
+.ft-gcard-foot{display:flex;align-items:center;gap:10px;margin-top:12px;min-height:18px}
+.ft-gcard-n{flex:none;font-size:calc(11.5px * var(--ft-scale));font-weight:700;color:#8A949C}
+.ft-gcard-left{flex:none;font-size:calc(12.5px * var(--ft-scale));font-weight:700;white-space:nowrap}
+.ft-gcard-none{flex:1;font-size:calc(12px * var(--ft-scale));color:#A3ABB2}
+.ft-gcard.done{background:#FBFCFD}
+/* コレクションの札：小さな四角（2列） */
+.ft-ccard{display:flex;flex-direction:column;border-radius:18px;padding:12px 12px 13px;min-width:0}
+.ft-ccard-head{display:flex;align-items:flex-start;margin-bottom:9px}
+.ft-ccard-ic{flex:none;width:42px;height:42px;border-radius:13px;border:1px solid;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.ft-ccard-head > button{margin:-4px -4px 0 0}
+.ft-ccard-name{font-size:calc(15px * var(--ft-scale));font-weight:700;line-height:1.35;word-break:break-word}
+.ft-ccard-n{display:flex;flex-wrap:wrap;gap:2px 10px;margin-top:3px;font-size:calc(11.5px * var(--ft-scale));font-weight:700;color:#8A949C}
+.ft-ccard-n b{font-weight:700}
+.ft-ccard-list{list-style:none;margin:10px 0 0;padding:9px 0 0;border-top:1px solid #EEF1F3;display:flex;flex-direction:column;gap:5px}
+.ft-ccard-list li{display:flex;align-items:center;gap:7px;min-width:0;font-size:calc(12.5px * var(--ft-scale));color:#4B5A64;line-height:1.4}
+.ft-ccard-list li i{flex:none;width:9px;height:9px;border-radius:50%;border:1.5px solid}
+.ft-ccard-list li span{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-ccard-more{margin-top:6px;font-size:calc(11.5px * var(--ft-scale));color:#A3ABB2}
+/* 一覧：見出し・達成済み・空のとき */
+.ft-plisthd{display:flex;align-items:center;gap:8px;margin:2px 0 10px;font-size:calc(12.5px * var(--ft-scale));font-weight:700;color:#6B7883}
+.ft-plisthd small{color:#A3ABB2;font-size:1em}
+.ft-plisthd i{flex:1;height:1px;background:#E5EAEE}
+.ft-pdonebox{margin-top:20px}
+.ft-pdonebtn{display:flex;align-items:center;gap:7px;width:100%;min-height:44px;color:#6B7883;font-size:calc(12.5px * var(--ft-scale));font-weight:700}
+.ft-pdonebtn small{font-size:1em;color:#A3ABB2}
+.ft-pdonebtn i{flex:1;height:1px;background:#E5EAEE}
+.ft-pempty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:44px 20px 20px;color:#6B7883}
+.ft-pempty-ic{width:56px;height:56px;border-radius:18px;background:#F1F4F6;color:#8A949C;display:grid;place-items:center;margin-bottom:14px}
+.ft-pempty b{font-size:calc(14.5px * var(--ft-scale));color:#26323A;margin-bottom:6px}
+.ft-pempty p{max-width:330px;font-size:calc(12.5px * var(--ft-scale));line-height:1.8;color:#8A949C}
+/* 中身の見出し（絵・種類・名前） */
+.ft-phero{gap:14px;margin:0 0 16px}
+.ft-phero-ic{width:60px;height:60px;border-radius:18px}
+.ft-phero-pen{width:20px;height:20px;right:3px;bottom:3px}
+.ft-phero-kind{display:inline-flex;align-items:center;gap:4px;margin:0 0 2px;font-size:calc(11.5px * var(--ft-scale));letter-spacing:.04em}
+.ft-phero-name{font-size:calc(20px * var(--ft-scale))}
+.ft-pblock{margin-bottom:20px}
+.ft-precs{margin:0 -16px}
+.ft-phint{font-size:calc(12.5px * var(--ft-scale));line-height:1.75;color:#8A949C;margin:0 0 8px}
+.ft-goal{margin-bottom:22px}
+/* 目標のステップ：丸を1本の線でつなぐ（道すじ）。つぎの1つにしるし */
+.ft-steps{position:relative}
+.ft-steps .ft-ptask{position:relative}
+.ft-steps .ft-ptask::before{content:"";position:absolute;left:11px;top:0;bottom:0;width:2px;background:#CDD6DC;border-radius:1px}
+.ft-steps .ft-ptask:first-child::before{top:23px}
+.ft-steps .ft-ptask.open::before{left:19px}
+.ft-steps .ft-ptask-row.add{position:relative}
+.ft-steps .ft-ptask + .ft-ptask-row.add::before{content:"";position:absolute;left:11px;top:0;height:11px;width:2px;background:#CDD6DC}
+.ft-steps .ft-pcheck{position:relative;z-index:1}
+.ft-steps .ft-pdetail{position:relative;z-index:1;background:inherit}
+.ft-ptask.next .ft-ptask-in{font-weight:700}
+.ft-pnext{flex:none;height:22px;padding:0 8px;border-radius:999px;display:inline-flex;align-items:center;color:#fff;font-size:calc(10.5px * var(--ft-scale));font-weight:700;letter-spacing:.06em}
+/* コレクション：書く欄・出し分け・項目の札 */
+.ft-cadd{display:flex;align-items:center;gap:6px;min-height:54px;padding:4px 6px 4px 12px;border:1.5px solid;border-radius:16px;background:#fff;margin-bottom:12px}
+.ft-cadd-ic{flex:none;display:flex}
+.ft-cadd-in{flex:1;min-width:0;border:0;outline:0;background:transparent;color:#171717;font-size:max(16px, calc(15px * var(--ft-scale)));padding:8px 0}
+.ft-cadd-in::placeholder{color:#A3ABB2}
+.ft-cadd-b{flex:none;min-height:40px;padding:0 15px;border-radius:12px;background:#EEF1F3;color:#A3ABB2;font-size:calc(13px * var(--ft-scale));font-weight:700}
+.ft-cseg{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-bottom:14px;border-bottom:1px solid #E5EAEE}
+.ft-cseg button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px;margin-bottom:-1px;border-bottom:2.5px solid transparent;color:#8A949C;font-size:calc(13.5px * var(--ft-scale));font-weight:700}
+.ft-cseg button small{font-size:calc(11.5px * var(--ft-scale));font-weight:700;opacity:.75}
+.ft-cseg button.on{color:#171717}
+.ft-cgroup{margin-bottom:14px}
+.ft-cgroup-h{position:relative;margin-bottom:8px}
+.ft-cgroup-h > span{position:absolute;right:0;top:15px;font-size:calc(11.5px * var(--ft-scale));font-weight:700;color:#8A949C;pointer-events:none}
+.ft-cgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-items:start}
+.ft-coll .ft-ptask{background:#fff;border:1px solid #E6EAEE;border-radius:14px;padding:3px 6px 3px 12px;min-width:0}
+.ft-coll .ft-ptask.open{margin:0;padding:3px 6px 6px 12px;background:#fff;border-color:#CBD3D9}
+.ft-coll .ft-ptask.done{background:#F8FAFB;border-color:#EEF1F3}
+.ft-coll .ft-ptask.done .ft-ptask-in{text-decoration:none;color:#5B6770}
+.ft-coll .ft-ptask-row{min-height:44px}
+.ft-coll .ft-pdetail{margin-left:11px}
+.ft-coll .ft-pdoneat{white-space:nowrap}
+.ft-cnote{margin:-6px 30px 7px 34px;font-size:calc(12px * var(--ft-scale));line-height:1.5;color:#8A949C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-cnone{padding:26px 8px;text-align:center;font-size:calc(13px * var(--ft-scale));color:#A3ABB2;line-height:1.8}
+.ft-coll{margin-bottom:26px}
+.ft-coll .ft-ptask-row.add{padding-left:13px}
+@media (min-width:820px) and (orientation:landscape){
+  .ft-planwide.coll{grid-template-columns:minmax(0,7fr) minmax(0,4fr)}
+  .ft-cgrid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 12px}
+  .ft-ctl > .ft-ctl-tabs{width:360px}
+}
