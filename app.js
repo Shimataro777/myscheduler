@@ -30283,6 +30283,8 @@ function PlanTaskRow({ t, color, onPatch, onRemove, list, secs, onMoveSec, onChe
     const sub = planSub(t);
     const subDone = sub.filter((s) => s.done).length;
     const patchSub = (id, d) => { const nx = sub.map((s) => (s.id === id ? { ...s, ...d } : s)); const all = nx.length > 0 && nx.every((s) => s.done); onPatch({ sub: nx, ...("done" in d ? { done: all, doneAt: all ? (t.doneAt || today) : "" } : {}) }); };
+    /* 手順も、つまんで並べかえ（6.1.0〜） */
+    const subR = useReorder(sub, (nx) => onPatch({ sub: nx }));
     const late = !list && !t.done && t.date && t.date < today;
     const dl = t.done ? (t.doneAt ? fmtDateShort(t.doneAt) : "") : planDayLabel(t.date, today);
     const sec = t.sec || "";
@@ -30303,11 +30305,12 @@ function PlanTaskRow({ t, color, onPatch, onRemove, list, secs, onMoveSec, onChe
             ce(TextArea, { value: t.note || "", onChange: (e) => onPatch({ note: e.target.value }), minRows: 3, placeholder: "メモ" }),
             !list || sub.length ? ce("div", { className: "ft-psubs" },
                 ce("p", { className: "ft-psheet-k" }, "手順"),
-                sub.map((s) => ce("div", { key: s.id, className: "ft-psub" + (s.done ? " done" : "") },
+                sub.map((s) => ce("div", { key: s.id, ref: subR.setRow(s.id), style: subR.rowStyle(s.id), className: "ft-psub" + (s.done ? " done" : "") + (subR.dragId === s.id ? " drag" : "") },
                     ce("button", { type: "button", onClick: () => patchSub(s.id, { done: !s.done }), "aria-pressed": !!s.done, "aria-label": "済み", className: "ft-pcheck s ft-tap", style: s.done ? { background: color.mid, borderColor: color.mid } : undefined }, s.done ? ce(lucide_react_1.Check, { size: 11, strokeWidth: 3.5, color: "#fff" }) : null),
                     ce(AutoText, { value: s.text, onChange: (v) => patchSub(s.id, { text: v }), onBlur: () => { if (!String(s.text || "").trim())
                             onPatch({ sub: sub.filter((x) => x.id !== s.id) }); }, className: "ft-ptask-in s", label: "手順" }),
-                    list ? null : ce(DateChip, { small: true, value: s.date, color: color, label: "日付", onChange: (v) => patchSub(s.id, { date: v }) }))),
+                    list ? null : ce(DateChip, { small: true, value: s.date, color: color, label: "日付", onChange: (v) => patchSub(s.id, { date: v }) }),
+                    ce(DragHandle, subR.handleProps(s.id)))),
                 ce(PlanAddRow, { small: true, onAdd: (text) => onPatch({ sub: [...sub, { id: uid(), text, done: false, date: "" }], done: false }), placeholder: "手順を追加" })) : null,
             ce("div", { className: "ft-pwhen" },
                 ce(DateChip, { value: t.date, color: color, label: list ? "日付" : "やる日", onChange: (v) => onPatch({ date: v }) }),
@@ -30433,7 +30436,13 @@ function PlanRoad({ plan, S, color }) {
    ・並び：plan.sort ＝ { col, dir }。無ければ足した順（新しいものが上）。**並びかえても todo の順は書きかえない**（見せ方だけ）
    ・縦長（幅 700px 未満）は1行＝1枚の札、広い画面は表
    ============================================================ */
-const COL_TYPES = [["text", "テキスト"], ["star", "星"], ["date", "日付"], ["check", "チェック"], ["number", "数"]];
+const COL_TYPES = [["text", "テキスト"], ["star", "星"], ["date", "日付"], ["check", "チェック"], ["number", "数"], ["steps", "ステップ"], ["url", "リンク"]];
+/* ステップの列（6.1.0〜）＝その行の中の小さなチェックの並び [{ id, text, done }]。表には「2/5」と細い線で出す */
+const stepsOf = (v) => (Array.isArray(v) ? v : []);
+const isUrl = (v) => /^https?:\/\/\S+$/i.test(String(v || "").trim());
+/* 字の幅のめやす（全角＝1、半角＝0.55） */
+const emLen = (v) => { let n = 0; const t = String(v == null ? "" : v).split("\n")[0]; for (let i = 0; i < t.length; i++)
+    n += t.charCodeAt(i) > 255 ? 1 : 0.55; return n; };
 const COL_NAME = { id: "__name", name: "名前", type: "text" };
 function collCols(p) {
     if (Array.isArray(p.cols))
@@ -30460,7 +30469,7 @@ function colGet(t, c) {
     if (c.id === "__sec")
         return t.sec || "";
     const v = t.v ? t.v[c.id] : undefined;
-    return c.type === "check" ? !!v : c.type === "star" ? Number(v) || 0 : v == null ? "" : v;
+    return c.type === "check" ? !!v : c.type === "star" ? Number(v) || 0 : c.type === "steps" ? stepsOf(v) : v == null || Array.isArray(v) ? "" : v;
 }
 function colSet(t, c, val) {
     if (c.id === "__name")
@@ -30477,9 +30486,15 @@ function colSet(t, c, val) {
 }
 /* 列の性質に合わせて並べる。空のものは、いつも下 */
 function colCompare(c, dir) {
-    const empty = (v) => v === "" || v == null || (c.type === "star" && !v);
+    const empty = (v) => v === "" || v == null || (c.type === "star" && !v) || (c.type === "steps" && !v.length);
+    const ratio = (v) => (v.length ? v.filter((s) => s.done).length / v.length : 0);
     return (a, b) => {
         const x = colGet(a, c), y = colGet(b, c);
+        if (c.type === "steps") {
+            if (empty(x) || empty(y))
+                return empty(x) && empty(y) ? 0 : empty(x) ? 1 : -1;
+            return dir === "desc" ? ratio(y) - ratio(x) : ratio(x) - ratio(y);
+        }
         if (c.type !== "check") {
             if (empty(x) && empty(y))
                 return 0;
@@ -30523,34 +30538,77 @@ function CollCell({ t, c, color, onPatch, bare }) {
     const v = colGet(t, c);
     const set = (val) => onPatch(colSet(t, c, val));
     if (c.type === "check")
-        return ce("button", { type: "button", onClick: (e) => { e.stopPropagation(); const el = e.currentTarget; el.classList.remove("pop"); if (!v) {
-                void el.offsetWidth;
-                el.classList.add("pop");
-            } set(!v); }, "aria-pressed": !!v, "aria-label": c.name, className: "ft-pcheck ft-tap", style: v ? { background: color.mid, borderColor: color.mid } : undefined }, v ? ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, color: "#fff" }) : null);
+        return ce("button", { type: "button", onClick: (e) => { e.stopPropagation(); set(!v); }, "aria-pressed": !!v, "aria-label": c.name, className: "ft-pcheck ft-tap", style: v ? { background: color.mid, borderColor: color.mid } : undefined }, v ? ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, color: "#fff" }) : null);
     if (c.type === "star")
         return ce(StarInput, { value: v, onChange: set, color, small: bare });
     if (c.type === "date")
         return ce("label", { className: "ft-ccell-date ft-tap" + (v ? " on" : ""), style: v ? { color: color.deep, background: color.soft } : undefined, onClick: (e) => e.stopPropagation() },
             v ? (() => { const d = parseYmd(v); return d ? `${d.getFullYear() === new Date().getFullYear() ? "" : d.getFullYear() + "/"}${d.getMonth() + 1}/${d.getDate()}` : v; })() : ce(lucide_react_1.CalendarDays, { size: 16 }),
             ce("input", { type: "date", value: v || "", onChange: (e) => set(e.target.value) }));
+    if (c.type === "steps") {
+        const nd = v.filter((x) => x.done).length;
+        if (bare)
+            return v.length ? ce("span", { className: "ft-cstep" }, ce("span", { className: "ft-cstep-bar" }, ce("i", { style: { width: (nd / v.length) * 100 + "%", background: color.mid } })), ce("b", { className: "tabular-nums" }, `${nd}/${v.length}`)) : ce("span", { className: "ft-cblank" });
+        return ce(StepsEdit, { value: v, onChange: set, color });
+    }
+    if (c.type === "url" && bare)
+        return ce("span", { className: "ft-curl" }, ce(AutoText, { value: v, onChange: set, className: "ft-ccell-in bare", label: c.name, placeholder: " " }), isUrl(v) ? ce("a", { href: String(v).trim(), target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation(), "aria-label": "開く", className: "ft-curl-go ft-tap", style: { color: color.deep } }, ce(lucide_react_1.Link, { size: 15 })) : null);
+    if (c.type === "url")
+        return ce(TextInput, { value: v, onChange: (e) => set(e.target.value), placeholder: "https://", inputMode: "url" });
     if (c.type === "number")
         return ce("input", { value: v, inputMode: "decimal", onClick: (e) => e.stopPropagation(), onChange: (e) => set(e.target.value.replace(/[^0-9.\-]/g, "")), className: "ft-ccell-in num" + (bare ? " bare" : ""), "aria-label": c.name });
-    return bare ? ce(AutoText, { value: v, onChange: set, className: "ft-ccell-in bare", label: c.name })
+    return bare ? ce(AutoText, { value: v, onChange: set, className: "ft-ccell-in bare", label: c.name, placeholder: " " })
         : ce(TextArea, { value: v, onChange: (e) => set(e.target.value), minRows: 1, rows: 1, "aria-label": c.name });
 }
-/* 読むだけの値（縦長の札の下の行） */
-function collShow(t, c, color) {
+/* ステップの列を直す（行の紙の中）。印・字・つまんで並べかえ。字を空にすると消える */
+function StepsEdit({ value, onChange, color }) {
+    const ce = react_1.default.createElement;
+    const list = stepsOf(value);
+    const { dragId, setRow, handleProps, rowStyle } = useReorder(list, onChange);
+    const set = (id, d) => onChange(list.map((x) => (x.id === id ? { ...x, ...d } : x)));
+    return ce("div", { className: "ft-psubs" },
+        list.map((x) => ce("div", { key: x.id, ref: setRow(x.id), style: rowStyle(x.id), className: "ft-psub" + (x.done ? " done" : "") + (dragId === x.id ? " drag" : "") },
+            ce("button", { type: "button", onClick: () => set(x.id, { done: !x.done }), "aria-pressed": !!x.done, "aria-label": "済み", className: "ft-pcheck s ft-tap", style: x.done ? { background: color.mid, borderColor: color.mid } : undefined }, x.done ? ce(lucide_react_1.Check, { size: 11, strokeWidth: 3.5, color: "#fff" }) : null),
+            ce(AutoText, { value: x.text, onChange: (v) => set(x.id, { text: v }), onBlur: () => { if (!String(x.text || "").trim())
+                    onChange(list.filter((y) => y.id !== x.id)); }, className: "ft-ptask-in s", label: "ステップ" }),
+            ce(DragHandle, handleProps(x.id)))),
+        ce(PlanAddRow, { small: true, onAdd: (text) => onChange([...list, { id: uid(), text, done: false }]), placeholder: "追加" }));
+}
+/* 縦長の札の中の1行（列の名前＋中身）。**中身を1行で切らないこと。** 折り返して全部見せる */
+function collLine(t, c, color, onPatch) {
     const ce = react_1.default.createElement;
     const v = colGet(t, c);
+    let body = null;
     if (c.type === "star")
-        return v ? ce("span", { className: "ft-cchip star" }, ce(lucide_react_1.Star, { size: 13, fill: "#F2C14E", style: { color: "#E8A93B" } }), v) : null;
-    if (c.type === "check")
-        return v ? ce("span", { className: "ft-cchip", style: { background: color.soft, color: color.deep } }, ce(lucide_react_1.Check, { size: 12, strokeWidth: 3 }), c.name) : null;
-    if (v === "" || v == null)
-        return null;
-    if (c.type === "date")
-        return ce("span", { className: "ft-cchip", style: { background: color.soft, color: color.deep } }, fmtDateShort(v));
-    return ce("span", { className: "ft-cchip txt" }, ce("small", null, c.name), String(v).split("\n")[0]);
+        body = ce(StarInput, { value: v, onChange: (x) => onPatch(colSet(t, c, x)), color, small: true });
+    else if (c.type === "check")
+        body = ce(CollCell, { t, c, color, onPatch, bare: true });
+    else if (c.type === "steps")
+        body = v.length ? ce(CollCell, { t, c, color, onPatch, bare: true }) : null;
+    else if (v === "" || v == null)
+        body = null;
+    else if (c.type === "date")
+        body = ce("span", { className: "ft-cchip", style: { background: color.soft, color: color.deep } }, (() => { const d = parseYmd(v); return d ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` : v; })());
+    else if (c.type === "url" && isUrl(v))
+        body = ce("a", { href: String(v).trim(), target: "_blank", rel: "noopener noreferrer", onClick: (e) => e.stopPropagation(), className: "ft-cline-url", style: { color: color.deep } }, String(v).trim());
+    else
+        body = ce("span", { className: "ft-cline-v" }, String(v));
+    return body ? ce("div", { key: c.id, className: "ft-cline" }, ce("small", null, c.name), body) : null;
+}
+/* 列の紙の1行。つまんで並べかえ（ほかの並べかえと同じ持ち手） */
+function ColRows({ cols, setCols }) {
+    const ce = react_1.default.createElement;
+    const { dragId, setRow, handleProps, rowStyle } = useReorder(cols, setCols);
+    const patch = (id, d) => setCols(cols.map((c) => (c.id === id ? { ...c, ...d } : c)));
+    return cols.map((c) => ce("div", { key: c.id, ref: setRow(c.id), style: rowStyle(c.id), className: "ft-ccol" + (dragId === c.id ? " drag" : "") },
+        ce("button", { type: "button", onClick: () => setCols(cols.filter((x) => x.id !== c.id)), "aria-label": "列を削除", className: "ft-arr-del ft-tap" }, ce("span", null)),
+        ce("input", { defaultValue: c.name, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== c.name)
+                patch(c.id, { name: v });
+            else
+                e.target.value = c.name; }, className: "ft-ccol-n", "aria-label": "列の名前" }),
+        c.id.startsWith("__") ? ce("span", { className: "ft-ccol-t" }, (COL_TYPES.find((x) => x[0] === c.type) || [])[1])
+            : ce("label", { className: "ft-ccol-t sel" }, (COL_TYPES.find((x) => x[0] === c.type) || [])[1], ce(lucide_react_1.ChevronDown, { size: 14 }), ce("select", { value: c.type, onChange: (e) => patch(c.id, { type: e.target.value }), "aria-label": "列の種類" }, COL_TYPES.map(([k, l]) => ce("option", { key: k, value: k }, l)))),
+        ce(DragHandle, handleProps(c.id))));
 }
 function CollTable({ plan, color, patch }) {
     const ce = react_1.default.createElement;
@@ -30566,7 +30624,14 @@ function CollTable({ plan, color, patch }) {
     const add = (text) => patch((p) => ({ ...p, todo: [{ id: uid(), text, done: false, date: "", sec: "", v: {} }, ...planTodo(p)] }));
     const sort = plan.sort && [COL_NAME, ...cols].find((c) => c.id === plan.sort.col) ? plan.sort : null;
     const sortCol = sort ? [COL_NAME, ...cols].find((c) => c.id === sort.col) : null;
-    const rows = (0, react_1.useMemo)(() => (sortCol ? todo.slice().sort(colCompare(sortCol, sort.dir)) : todo), [todo, sortCol, sort && sort.dir]); // eslint-disable-line
+    /* 絞り込み（6.1.0〜）。名前と、字の列に当てる。たくさん入れても、目当ての行をすぐ出せる */
+    const [fq, setFq] = (0, react_1.useState)("");
+    const rows = (0, react_1.useMemo)(() => {
+        const w = searchWords(fq);
+        const hit = (t) => { const text = [t.text, ...cols.filter((c) => c.type === "text" || c.type === "url").map((c) => colGet(t, c))].join("\n").toLowerCase(); return w.every((x) => text.includes(x)); };
+        const base = w.length ? todo.filter(hit) : todo;
+        return sortCol ? base.slice().sort(colCompare(sortCol, sort.dir)) : base;
+    }, [todo, sortCol, sort && sort.dir, fq, cols]); // eslint-disable-line
     const setSort = (col, dir) => patch((p) => ({ ...p, sort: col ? { col, dir } : null }));
     /* 見出しを押したら、その列で並べる（同じ列をもう一度＝向きを逆に、3回め＝足した順へ） */
     const headTap = (c) => { if (!sort || sort.col !== c.id)
@@ -30581,7 +30646,7 @@ function CollTable({ plan, color, patch }) {
     const nDone = lead ? todo.filter((t) => colGet(t, lead)).length : 0;
     const tools = ce("div", { className: "ft-ctools" },
         ce("span", { className: "ft-ctools-n tabular-nums" }, lead ? `${todo.length}件 ・ ${lead.name} ${nDone}` : `${todo.length}件`),
-        ce("span", { className: "flex-1" }),
+        ce("label", { className: "ft-cfind" }, ce(lucide_react_1.Search, { size: 14 }), ce("input", { value: fq, onChange: (e) => setFq(e.target.value), placeholder: "絞り込み", "aria-label": "絞り込み" })),
         ce("button", { type: "button", onClick: () => setSortOpen(true), className: "ft-plbl-add ft-tap", style: sort ? { background: color.soft, color: color.deep } : undefined }, ce(lucide_react_1.ArrowRightLeft, { size: 13, style: { transform: "rotate(90deg)" } }), sortCol ? `${sortCol.name} ${sort.dir === "asc" ? "▲" : "▼"}` : "並び"),
         ce("button", { type: "button", onClick: () => setColOpen(true), className: "ft-plbl-add ft-tap" }, ce(lucide_react_1.SlidersHorizontal, { size: 13 }), "列"));
     const moreBtn = (t) => ce("button", { type: "button", onClick: (e) => { e.stopPropagation(); setRowOpen(t.id); }, "aria-label": "ひらく", className: "ft-crow-more ft-tap" }, ce(lucide_react_1.ChevronRight, { size: 18 }));
@@ -30589,58 +30654,55 @@ function CollTable({ plan, color, patch }) {
             delRow(t.id); }, className: "ft-ccell-in bare name", label: "名前" });
     let body;
     if (roomy) {
-        const W = { check: "56px", star: "128px", date: "104px", number: "92px", text: "minmax(140px,1fr)" };
-        const tpl = [lead ? "44px" : null, "minmax(180px,1.4fr)", ...rest.map((c) => W[c.type]), "40px"].filter(Boolean).join(" ");
-        const hd = (c) => ce("button", { key: c.id, type: "button", onClick: () => headTap(c), className: "ft-ctbl-h ft-tap" + (c.type === "check" || c.type === "star" || c.type === "date" ? " c" : c.type === "number" ? " r" : "") }, ce("span", null, c.name), arrow(c));
+        /* 列の幅（6.1.0〜）。種類で決まる列：チェック 56・星 128・日付 104・ステップ 96。
+           字の列（テキスト・リンク・数）：その列でいちばん長い中身（と列の名前）が入る幅。テキストは 120〜300px、数は 72〜120px（こえるぶんは折り返す）。
+           名前の列：いちばん長い名前が入る幅を下限（180〜360px）に、**余った幅をぜんぶ取る**。足りないときは表を横に送る */
+        const fit = (c, lo, hi, per) => Math.round(Math.max(lo, Math.min(hi, Math.max(emLen(c.name) * 13, ...todo.map((t) => emLen(colGet(t, c)) * per)) + 26)));
+        const W = (c) => (c.type === "check" ? "56px" : c.type === "star" ? "128px" : c.type === "date" ? "104px" : c.type === "steps" ? "96px" : c.type === "number" ? fit(c, 72, 120, 9.5) + "px" : fit(c, 120, 300, 15.5) + "px");
+        const tpl = [lead ? "44px" : null, `minmax(${fit(COL_NAME, 180, 360, 16) + 40}px,1fr)`, ...rest.map(W), "40px"].filter(Boolean).join(" ");
+        const hd = (c) => ce("button", { key: c.id, type: "button", onClick: () => headTap(c), className: "ft-ctbl-h ft-tap" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "steps" ? " c" : c.type === "number" ? " r" : "") }, ce("span", null, c.name), arrow(c));
         body = ce("div", { className: "ft-ctbl-wrap" }, ce("div", { className: "ft-ctbl", style: { gridTemplateColumns: tpl } },
             lead ? hd(lead) : null, hd(COL_NAME), rest.map(hd),
             ce("button", { type: "button", onClick: () => setColOpen(true), "aria-label": "列を足す・直す", className: "ft-ctbl-h add ft-tap" }, ce(lucide_react_1.Plus, { size: 16 })),
             rows.map((t) => ce(react_1.default.Fragment, { key: t.id },
                 lead ? ce("div", { className: "ft-ctbl-c c" }, ce(CollCell, { t, c: lead, color, onPatch: (d) => patchRow(t.id, d), bare: true })) : null,
-                ce("div", { className: "ft-ctbl-c" + (lead && colGet(t, lead) ? " dim" : "") }, nameCell(t)),
-                rest.map((c) => ce("div", { key: c.id, className: "ft-ctbl-c" + (c.type === "check" || c.type === "star" || c.type === "date" ? " c" : "") }, ce(CollCell, { t, c, color, onPatch: (d) => patchRow(t.id, d), bare: true }))),
-                ce("div", { className: "ft-ctbl-c c" }, moreBtn(t))))));
+                /* 行を開く ＞ は、名前のマスの右はし（表を横へ送っても、いつも見える場所） */
+                ce("div", { className: "ft-ctbl-c name" + (lead && colGet(t, lead) ? " dim" : "") }, nameCell(t), moreBtn(t)),
+                rest.map((c) => ce("div", { key: c.id, className: "ft-ctbl-c" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "steps" ? " c" : " in") + (c.type === "steps" ? " tap" : ""), onClick: c.type === "steps" ? () => setRowOpen(t.id) : undefined }, ce(CollCell, { t, c, color, onPatch: (d) => patchRow(t.id, d), bare: true }))),
+                ce("div", { className: "ft-ctbl-c" })))));
     }
     else {
         /* 縦長：1行＝1枚の札。上の段＝印と名前、下の段＝ほかの列（星はその場で付けられる。ほかは読むだけ → 札を押すと紙で直す） */
         body = ce("div", { className: "ft-ccards" }, rows.map((t) => {
-            const chips = rest.filter((c) => c.type !== "star").map((c) => { const x = collShow(t, c, color); return x ? ce(react_1.default.Fragment, { key: c.id }, x) : null; }).filter(Boolean);
-            const stars = rest.filter((c) => c.type === "star");
+            const lines = rest.map((c) => collLine(t, c, color, (d) => patchRow(t.id, d))).filter(Boolean);
+            /* まだ入っていない列は、点線の小さな札（押すと、その行の紙が開く）。**字で説明しない** */
+            const blanks = rest.filter((c) => { const v = colGet(t, c); return c.type !== "star" && c.type !== "check" && (c.type === "steps" ? !v.length : v === "" || v == null); });
             return ce("div", { key: t.id, className: "ft-ccard2" + (lead && colGet(t, lead) ? " dim" : ""), onClick: () => setRowOpen(t.id) },
                 ce("div", { className: "ft-ccard2-top" },
                     lead ? ce(CollCell, { t, c: lead, color, onPatch: (d) => patchRow(t.id, d), bare: true }) : null,
                     ce("span", { className: "ft-ccard2-name", onClick: (e) => e.stopPropagation() }, nameCell(t)),
                     moreBtn(t)),
-                stars.length || chips.length ? ce("div", { className: "ft-ccard2-sub" + (lead ? " ind" : "") },
-                    stars.map((c) => ce("span", { key: c.id, className: "ft-ccard2-star" }, stars.length > 1 ? ce("small", null, c.name) : null, ce(StarInput, { value: colGet(t, c), onChange: (v) => patchRow(t.id, colSet(t, c, v)), color, small: true }))),
-                    chips) : null);
+                lines.length || blanks.length ? ce("div", { className: "ft-ccard2-sub" + (lead ? " ind" : "") },
+                    lines,
+                    blanks.length ? ce("div", { className: "ft-cblanks" }, blanks.slice(0, 4).map((c) => ce("span", { key: c.id }, ce(lucide_react_1.Plus, { size: 11 }), c.name)), blanks.length > 4 ? ce("span", null, `＋${blanks.length - 4}`) : null) : null) : null);
         }));
     }
     const openRow = rowOpen ? todo.find((t) => t.id === rowOpen) : null;
-    const colPatch = (id, d) => setCols(cols.map((c) => (c.id === id ? { ...c, ...d } : c)));
-    const colMove = (i, k) => { const n = cols.slice(); const j = i + k; if (j < 0 || j >= n.length)
-        return; [n[i], n[j]] = [n[j], n[i]]; setCols(n); };
     return ce("div", { className: "ft-coll" },
         ce(TextArea, { bare: true, value: plan.memo || "", onChange: (e) => patch((p) => ({ ...p, memo: e.target.value })), minRows: 1, rows: 1, placeholder: "メモ", className: "ft-cmemo" }),
         ce(CollAddBox, { color: color, onAdd: add, placeholder: "書いて Enter で追加" }),
         tools, body,
         openRow ? ce(SheetDialog, { title: openRow.text || "（名前なし）", onCancel: () => setRowOpen(null), hideConfirm: true },
+            /* 行を行き来する（閉じずに、つぎの行を続けて入れられる） */
+            (() => { const i = rows.findIndex((t) => t.id === openRow.id); const go = (k) => { const n = rows[i + k]; if (n)
+                setRowOpen(n.id); }; return ce("div", { className: "ft-crow-nav" }, ce("button", { type: "button", onClick: () => go(-1), disabled: i <= 0, "aria-label": "前の行", className: "ft-tap" }, ce(lucide_react_1.ChevronLeft, { size: 20 })), ce("span", { className: "tabular-nums" }, `${i + 1} / ${rows.length}`), ce("button", { type: "button", onClick: () => go(1), disabled: i >= rows.length - 1, "aria-label": "次の行", className: "ft-tap" }, ce(lucide_react_1.ChevronRight, { size: 20 }))); })(),
             ce("p", { className: "ft-psheet-k first" }, "名前"),
             ce(TextArea, { value: openRow.text, onChange: (e) => patchRow(openRow.id, { text: e.target.value.replace(/\n/g, " ") }), minRows: 1, rows: 1 }),
-            cols.map((c) => ce("div", { key: c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) }))),
+            cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) }))),
             ce("button", { type: "button", onClick: () => { const id = openRow.id; setRowOpen(null); delRow(id); }, className: "ft-crow-del ft-tap" }, ce(lucide_react_1.Trash2, { size: 16 }), "この行を削除")) : null,
         colOpen ? ce(SheetDialog, { title: "列", onCancel: () => setColOpen(false), hideConfirm: true },
-            ce("div", { className: "ft-ccol base" }, ce("span", { className: "ft-ccol-n" }, "名前"), ce("span", { className: "ft-ccol-t" }, "テキスト")),
-            cols.map((c, i) => ce("div", { key: c.id, className: "ft-ccol" },
-                ce("input", { defaultValue: c.name, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== c.name)
-                        colPatch(c.id, { name: v });
-                    else
-                        e.target.value = c.name; }, className: "ft-ccol-n", "aria-label": "列の名前" }),
-                c.id.startsWith("__") ? ce("span", { className: "ft-ccol-t" }, (COL_TYPES.find((x) => x[0] === c.type) || [])[1])
-                    : ce("label", { className: "ft-ccol-t sel" }, (COL_TYPES.find((x) => x[0] === c.type) || [])[1], ce(lucide_react_1.ChevronDown, { size: 14 }), ce("select", { value: c.type, onChange: (e) => colPatch(c.id, { type: e.target.value }), "aria-label": "列の種類" }, COL_TYPES.map(([k, l]) => ce("option", { key: k, value: k }, l)))),
-                ce("button", { type: "button", onClick: () => colMove(i, -1), disabled: i === 0, "aria-label": "前へ", className: "ft-ccol-b ft-tap" }, ce(lucide_react_1.ChevronLeft, { size: 18, style: { transform: "rotate(90deg)" } })),
-                ce("button", { type: "button", onClick: () => colMove(i, 1), disabled: i === cols.length - 1, "aria-label": "後ろへ", className: "ft-ccol-b ft-tap" }, ce(lucide_react_1.ChevronLeft, { size: 18, style: { transform: "rotate(-90deg)" } })),
-                ce("button", { type: "button", onClick: () => setCols(cols.filter((x) => x.id !== c.id)), "aria-label": "列を削除", className: "ft-ccol-b del ft-tap" }, ce(lucide_react_1.Trash2, { size: 16 })))),
+            ce("div", { className: "ft-ccol base" }, ce("span", { className: "ft-arr-del" }), ce("span", { className: "ft-ccol-n" }, "名前"), ce("span", { className: "ft-ccol-t" }, "テキスト")),
+            ce(ColRows, { cols, setCols }),
             ce("p", { className: "ft-psheet-k" }, "列を足す"),
             ce("div", { className: "ft-ccol-add" }, COL_TYPES.map(([k, l]) => ce("button", { key: k, type: "button", onClick: () => setCols([...cols, { id: "c" + uid(), name: l, type: k }]), className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 14 }), l)))) : null,
         sortOpen ? ce(SheetDialog, { title: "並び", onCancel: () => setSortOpen(false), hideConfirm: true },
