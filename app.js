@@ -17961,8 +17961,9 @@ function compareYomi(x, y) {
 /* よみの欄（名前に漢字があるときだけ出す）。打たなければ、分かった読みが薄く入っている（その読みで並ぶ） */
 function YomiField({ name, value, onChange }) {
     const ce = react_1.default.createElement;
+    /* **漢字が無いときも場所は取っておくこと（7.12.0〜）。** 漢字を打った瞬間に欄が出ると、紙の高さが変わって跳ねる */
     if (!YOMI_KANJI.test(String(name || "")))
-        return null;
+        return ce("div", { className: "ft-yomi off", "aria-hidden": true });
     return ce("label", { className: "ft-yomi" }, ce("span", null, "よみ"), ce("input", { value: value, onChange: (e) => onChange(e.target.value), placeholder: guessYomi(name), "aria-label": "よみ（名前順に使う）" }));
 }
 function compareName(a, b) {
@@ -22724,19 +22725,27 @@ function ConfirmDialog({ title, body, confirmLabel = "削除する", danger = tr
                 react_1.default.createElement("button", { type: "button", onClick: () => requestClose(onConfirm), className: (danger ? BTN_DANGER : BTN_PRIMARY) + " flex-1 " + BTN_H + " fs-body" }, confirmLabel)))));
 }
 /* 名前をひとつ打ち込むだけの小窓（フォルダ名・リスト名・カテゴリなど） */
-function NameDialog({ title, label, initial = "", placeholder, confirmLabel = "決定", onConfirm, onCancel }) {
+function NameDialog({ title, label, initial = "", placeholder, confirmLabel = "決定", onConfirm, onCancel, yomi: withYomi }) {
     const [v, setV] = (0, react_1.useState)(initial);
     const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_FADE_MS);
     const close = () => requestClose(onCancel);
-    const done = () => { if (v.trim()) requestClose(() => onConfirm(v.trim())); };
+    /* よみ（7.12.0〜。yomi を渡したときだけ。ノートのタイトルなど） */
+    const [yv, setYv] = (0, react_1.useState)(() => (YOMI.names && YOMI.names[String(initial || "").trim()]) || "");
+    const [, bump] = (0, react_1.useState)(0);
+    const done = () => { if (v.trim()) {
+        if (withYomi)
+            setNameYomi(v.trim(), yv.trim());
+        requestClose(() => onConfirm(v.trim()));
+    } };
     useLockBackground();
     return (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-start justify-center px-6 " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483300, paddingTop: "calc(env(safe-area-inset-top) + 64px)" }, onClick: close },
         react_1.default.createElement("div", { className: "absolute inset-0 bg-black/50" }),
         react_1.default.createElement("div", { className: "relative w-full max-w-sm bg-white rounded-2xl shadow-lg p-5 anim-pop", onClick: (e) => e.stopPropagation() },
             react_1.default.createElement("h3", { className: "font-display fs-subhead text-neutral-900 mb-3" }, title),
             react_1.default.createElement("div", { className: "mb-4" },
-                react_1.default.createElement(TextInput, { value: v, onChange: (e) => setV(e.target.value), placeholder: placeholder || label, autoFocus: true, onKeyDown: (e) => { if (e.key === "Enter")
-                        done(); } })),
+                react_1.default.createElement(TextInput, { value: v, onChange: (e) => setV(e.target.value), placeholder: placeholder || label, autoFocus: true, onCompositionEnd: () => setTimeout(() => bump((x) => x + 1), 0), onKeyDown: (e) => { if (e.key === "Enter" && !(e.nativeEvent && e.nativeEvent.isComposing) && e.keyCode !== 229)
+                        done(); } }),
+                withYomi ? react_1.default.createElement(YomiField, { name: v, value: yv, onChange: setYv }) : null),
             react_1.default.createElement("div", { className: "flex gap-2.5" },
                 react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " flex-1 " + BTN_H + " fs-subhead" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: done, disabled: !v.trim(), className: BTN_PRIMARY + " flex-1 " + BTN_H + " fs-subhead" }, confirmLabel)))));
@@ -26436,16 +26445,21 @@ function PlanSettingsSheet({ plan, onCancel, onSave }) {
     const [d, setD] = (0, react_1.useState)(plan);
     const c = planColorOf(d, planC);
     const setNameSafe = (v) => setD({ ...d, name: v.slice(0, PLAN_TITLE_MAX) });
-    return (react_1.default.createElement(SheetDialog, { title: "\u8A08\u753B\u306E\u8A2D\u5B9A", onCancel: onCancel, onConfirm: () => onSave(d), confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
+    /* 7.12.0〜 題は「名前とアイコン」（開いた項目の名前と同じ）。コレクションのときに「計画の…」と出さないこと */
+    const isColl = plan && plan.kind === "list";
+    const [yomi, setYomi] = (0, react_1.useState)(() => (YOMI.names && YOMI.names[String(plan.name || "").trim()]) || "");
+    const [, bump] = (0, react_1.useState)(0);
+    return (react_1.default.createElement(SheetDialog, { title: "名前とアイコン", onCancel: onCancel, onConfirm: () => { setNameYomi(d.name.trim(), yomi.trim()); onSave(d); }, confirmLabel: "\u4FDD\u5B58", disabled: !d.name.trim() },
         react_1.default.createElement("div", { className: "flex items-center gap-3 mb-1" },
             react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (d.icon && ICON_ART[d.icon]) ? ICON_ART[d.icon].bg : c.soft, color: c.deep } },
-                react_1.default.createElement(ItemIcon, { icon: d.icon, fallback: react_1.default.createElement(lucide_react_1.Target, { size: 28 }), color: c })),
+                react_1.default.createElement(ItemIcon, { icon: d.icon, fallback: react_1.default.createElement(isColl ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), color: c })),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setNameSafe(e.target.value), placeholder: "\u8A08\u753B\u306E\u540D\u524D", maxLength: PLAN_TITLE_MAX }))),
+                react_1.default.createElement(TextInput, { value: d.name, onChange: (e) => setNameSafe(e.target.value), onCompositionEnd: () => setTimeout(() => bump((x) => x + 1), 0), placeholder: isColl ? "コレクションの名前" : "計画の名前", maxLength: PLAN_TITLE_MAX }),
+                react_1.default.createElement(YomiField, { name: d.name, value: yomi, onChange: setYomi }))),
         react_1.default.createElement("p", { className: "fs-caption text-neutral-400 text-right mb-2" }, `${(d.name || "").length}/${PLAN_TITLE_MAX}`),
         react_1.default.createElement("p", { className: "fs-label font-bold text-neutral-400 mb-2" }, "\u30A2\u30A4\u30B3\u30F3"),
         react_1.default.createElement("div", { className: "mb-5" },
-            react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(lucide_react_1.Target, { size: 24 }), color: c, baseColor: planC, photo: true }))));
+            react_1.default.createElement(IconPicker, { value: d.icon || "", onChange: (v) => setD({ ...d, icon: v }), fallback: react_1.default.createElement(isColl ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 24 }), color: c, baseColor: planC, photo: true }))));
 }
 /* ============================================================
    計画の一覧（4.0.0 で作り直した）
@@ -27254,7 +27268,7 @@ function FolderDetail({ folder, records, onClose, onChange, onDelete, onAddRecor
                         setDelOpen(true);
                 } })),
             setup && (ce(FolderSetupSheet, { folder: folder, records: records, onCancel: () => setSetup(false), onSave: (next) => { onChange({ ...folder, ...next }); setSetup(false); } })),
-            renameOpen && (ce(NameIconSheet, { title: "フォルダの設定", presets: false, initialName: folder.name, initialIcon: folder.icon, placeholder: "ゲーム／旅 など", fallback: ce(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setRenameOpen(false), onSave: (n, ic) => { onChange({ ...folder, name: n, icon: ic }); setRenameOpen(false); } })),
+            renameOpen && (ce(NameIconSheet, { title: "名前とアイコン", presets: false, initialName: folder.name, initialIcon: folder.icon, placeholder: "ゲーム／旅 など", fallback: ce(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setRenameOpen(false), onSave: (n, ic) => { onChange({ ...folder, name: n, icon: ic }); setRenameOpen(false); } })),
             delOpen && (ce(ConfirmDialog, { title: "このフォルダを削除しますか", body: "記録そのものは残ります", onCancel: () => setDelOpen(false), onConfirm: () => { setDelOpen(false); onDelete(folder.id); } })))));
 }
 function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange, onDelete, plans = [], onOpenPlan, onPinPlan, onChangePlan, onDeletePlan, kind = "folder", onKind, onAdd, resetSig = 0 }) {
@@ -27403,7 +27417,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
                 setEdit(f);
             else
                 setDel(f); } })),
-        edit && (react_1.default.createElement(NameIconSheet, { title: "\u30D5\u30A9\u30EB\u30C0\u306E\u8A2D\u5B9A", presets: false, initialName: edit.name, initialIcon: edit.icon, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setEdit(null), onSave: (n, ic) => { onChange({ ...edit, name: n, icon: ic }); setEdit(null); } })),
+        edit && (react_1.default.createElement(NameIconSheet, { title: "名前とアイコン", presets: false, initialName: edit.name, initialIcon: edit.icon, placeholder: "\u30B2\u30FC\u30E0\uFF0F\u65C5 \u306A\u3069", fallback: react_1.default.createElement(lucide_react_1.Folder, { size: 26 }), color: fc, onCancel: () => setEdit(null), onSave: (n, ic) => { onChange({ ...edit, name: n, icon: ic }); setEdit(null); } })),
         del && (react_1.default.createElement(ConfirmDialog, { title: "\u3053\u306E\u30D5\u30A9\u30EB\u30C0\u3092\u524A\u9664\u3057\u307E\u3059\u304B", body: "\u4E2D\u306E\u8A18\u9332\u306F\u6D88\u3048\u307E\u305B\u3093\u3002\u30D5\u30A9\u30EB\u30C0\u3060\u3051\u304C\u306A\u304F\u306A\u308A\u307E\u3059\u3002", confirmLabel: "\u524A\u9664", onCancel: () => setDel(null), onConfirm: () => { const f = del; setDel(null); onDelete(f.id); } }))));
 }
 /* ============================================================
@@ -29105,11 +29119,20 @@ const TABS = [
 const isInkNote = (r) => r && r.type === "memo" && r.ink && (r.images || [])[0];
 function NoteScreen({ records, onOpen, onNew }) {
     const [nq, setNq] = (0, react_1.useState)("");
+    /* 並べ替え・一度に並べる数（7.12.0〜）。端末に覚える */
+    const [nsort, setNsortS] = (0, react_1.useState)(() => (uiGet("notesort") === "name" ? "name" : "updated"));
+    const setNsort = (v) => { setNsortS(v); uiSet("notesort", v); };
+    const [ndens, setNdensS] = (0, react_1.useState)(() => { const n = Number(uiGet("notes-dens")); return n === 1 || n === 2 ? n : 0; });
+    const setNdens = (n) => { setNdensS(n); uiSet("notes-dens", String(n)); };
     /* フォルダでしぼる（4.0.0〜。タグだったところ）。手書きが入っているフォルダだけを並べる */
     const fctx = useFolders();
     const [tag, setTag] = (0, react_1.useState)("");
     const ce = react_1.default.createElement;
-    const notes = (0, react_1.useMemo)(() => records.filter(isInkNote).sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || ""))), [records]);
+    const notes = (0, react_1.useMemo)(() => records.filter(isInkNote).sort(nsort === "name"
+        /* 名前順：タイトルの読みの順。タイトルなしは後ろ */
+        ? (a, b) => { const x = String(a.title || "").trim(), y = String(b.title || "").trim(); if (!x !== !y)
+            return x ? -1 : 1; return compareYomi(x, y) || String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")); }
+        : (a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || ""))), [records, nsort]);
     const tags = (0, react_1.useMemo)(() => { const ids = new Set(notes.map((r) => r.id)); return fctx.folders.filter((f) => (f.picked || []).some((x) => ids.has(x))); }, [notes, fctx.folders]);
     const tagOn = tags.some((f) => f.id === tag) ? tag : "";
     const tagSet = tagOn ? new Set((tags.find((f) => f.id === tagOn).picked) || []) : null;
@@ -29119,10 +29142,10 @@ function NoteScreen({ records, onOpen, onNew }) {
     return ce("div", { className: "pad-fab" },
         ce(TopChrome, null,
             ce(ScreenHeader, { title: "ノート" }),
-            ce(ListSearchBar, { value: nq, onChange: setNq, placeholder: "タイトルで検索" }),
+            ce(ListSearchBar, { value: nq, onChange: setNq, placeholder: "タイトルで検索", right: ce(react_1.default.Fragment, null, ce(DensityButton, { value: ndens, onChange: setNdens }), ce(SortToggle, { value: nsort, onChange: setNsort, options: [{ value: "updated", label: "更新順" }, { value: "name", label: "名前順" }] })) }),
             tags.length > 0 && ce("div", { className: "px-4 pt-2 pb-2 bg-app ft-col" }, ce("div", { className: "ft-stchips" }, chip("", "すべて"), tags.map((f) => chip(f.id, f.name || "（名前なし）"))))),
         ce("div", { className: "px-4 pt-3 ft-col" },
-            ce("div", { className: "ft-fgrid ft-seq" },
+            ce("div", { className: "ft-fgrid ft-seq" + (ndens ? " dens" + ndens : "") },
                 nq.trim() ? null : ce(AddTile, { key: "__add", onClick: onNew, label: "新しいページ", icon: lucide_react_1.Pencil }),
                 shown.map((r) => ce("div", { key: r.id, role: "button", tabIndex: 0, onClick: () => onOpen(r), className: "ft-fcard bg-white text-left ft-tap ft-tap-card card-soft cursor-pointer" },
                     ce("span", { className: "ft-fthumb ft-nthumb5" }, ce(Photo, { src: r.images[0], className: "block w-full h-full", style: { objectFit: "contain", objectPosition: "top" } })),
@@ -30128,7 +30151,7 @@ function InkEditor({ initial, onSave, onCancel, title = "手書きメモ", onDet
                 react_1.default.createElement("button", { type: "button", onClick: save, disabled: !dirty, className: BTN_PRIMARY + " px-5 fs-body", style: { minHeight: 42 } }, "保存")),
             askNode,
             confirmLeave ? react_1.default.createElement(ConfirmDialog, { title: "保存せずに閉じますか", body: "書いた内容は残りません。", danger: false, confirmLabel: "閉じる", onCancel: () => setConfirmLeave(false), onConfirm: () => { setConfirmLeave(false); leave(); } }) : null,
-            ttlAsk ? react_1.default.createElement(NameDialog, { title: "タイトル", placeholder: "タイトル", initial: ttl, confirmLabel: "決定", onCancel: () => setTtlAsk(false), onConfirm: (v) => { setTtlAsk(false); setTtl(v); ttlRef.current = v; setDirty(true); if (onDraft) {
+            ttlAsk ? react_1.default.createElement(NameDialog, { yomi: true, title: "タイトル", placeholder: "タイトル", initial: ttl, confirmLabel: "決定", onCancel: () => setTtlAsk(false), onConfirm: (v) => { setTtlAsk(false); setTtl(v); ttlRef.current = v; setDirty(true); if (onDraft) {
                     pendingRef.current = true;
                     clearTimeout(timer.current);
                     timer.current = setTimeout(() => flushRef.current(), 600);
@@ -30703,7 +30726,7 @@ function CollAddBox({ onAdd, color, placeholder }) {
                 e.preventDefault();
                 go();
             } }, onPaste: (e) => { const ls = pasteLines(e); if (ls)
-                onAdd(ls); }, placeholder: placeholder, enterKeyHint: "enter", "data-ft-stay": "", className: "ft-cadd-in", "aria-label": "コレクションに追加" }),
+                onAdd(ls); }, placeholder: placeholder, enterKeyHint: "enter", "data-ft-stay": "", className: "ft-cadd-in", "aria-label": placeholder || "追加" }),
         ce("button", { type: "button", onPointerDown: (e) => e.preventDefault(), onMouseDown: (e) => e.preventDefault(), onClick: go, disabled: !v.trim(), className: "ft-cadd-b ft-tap", style: v.trim() ? { background: color.deep, color: "#fff" } : undefined }, "追加"));
 }
 /* 編集（5.2.0〜。前の「並べ替え」）。ふだんの一覧と同じ高さ・同じ線の行で、左に削除（赤い丸）、右に持ち手。
@@ -31177,7 +31200,9 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
     const patchTask = (id, d) => patch((p) => ({ ...p, todo: planTodo(p).map((t) => (t.id === id ? { ...t, ...d } : t)) }));
     const removeTask = (id) => patch((p) => ({ ...p, todo: planTodo(p).filter((t) => t.id !== id) }));
     const isList = planKindOf(plan) === "list";
-    const addTask = (text) => patch((p) => ({ ...p, todo: [...planOrdered(p).map((t) => ({ ...t, sec: "" })), { id: uid(), text, done: false, date: "", sec: "", sub: [] }], secs: [] }));
+    /* 1件、または何件か（改行のある字を貼ったとき。配列で来る） */
+    const addTask = (text) => { const list = (Array.isArray(text) ? text : [text]).map((x) => String(x).trim()).filter(Boolean); if (!list.length)
+        return; patch((p) => ({ ...p, todo: [...planOrdered(p).map((t) => ({ ...t, sec: "" })), ...list.map((x) => ({ id: uid(), text: x, done: false, date: "", sec: "", sub: [] }))], secs: [] })); };
     const [arrange, setArrange] = (0, react_1.useState)(false);
     const [just, setJust] = (0, react_1.useState)(() => new Set());
     const justTimers = (0, react_1.useRef)({});
@@ -31210,10 +31235,11 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
         ce(PlanRoad, { plan: plan, S: S, color: color }),
         !P && S.total > 0 ? ce("div", { className: "ft-road-row step solo" }, ce("span", { className: "ft-road-k" }, "リスト"), ce("div", { className: "ft-road-bar" }, ce("i", { style: { width: (S.done / S.total) * 100 + "%", background: color.mid } })), ce("span", { className: "ft-road-n tabular-nums" }, `${S.done}/${S.total}`)) : null);
     const arrBtn = S.total > 1 ? ce("button", { type: "button", onClick: () => setArrange((v) => !v), className: "ft-plbl-add ft-tap" + (arrange ? " on" : ""), style: arrange ? { background: color.deep, color: "#fff" } : undefined }, arrange ? "完了" : "並べ替え") : null;
-    const todo = ce("div", { className: "ft-ptodo" }, ce("div", { className: "ft-plbl" }, ce("span", null, "リスト"), ce("i", null), arrBtn),
+    /* 7.12.0〜 「リスト」の見出しはやめた（下の「リストを追加」で分かる）。上は件数と並べ替えだけ。足す欄はコレクションと同じ枠の欄 */
+    const todo = ce("div", { className: "ft-ptodo" }, S.total ? ce("div", { className: "ft-ptools" }, ce("span", { className: "tabular-nums" }, `${S.total}件 ・ 済み ${S.done}`), ce("span", { className: "flex-1" }), arrBtn) : null,
         arrange ? ce(PlanArrange, { plan, color, flat: true, onSave: (list) => patch((p) => ({ ...p, todo: list.map((t) => ({ ...t, sec: "" })), secs: [] })), onDelItem: (id) => { const it = flat.find((x) => x.id === id); askItemDel(`「${(it && it.text) || "（名前なし）"}」を削除しますか`, () => removeTask(id)); } })
             : ce("div", { className: "ft-scards" }, flat.map((t) => ce(PlanTaskRow, { key: t.id, t, color, onPatch: (d) => patchTask(t.id, d), onRemove: () => removeTask(t.id), onChecked, just: just.has(t.id) }))),
-        ce(PlanAddRow, { onAdd: addTask, placeholder: "リストを追加" }),
+        arrange ? null : ce("div", { className: "ft-padd" }, ce(CollAddBox, { color: color, onAdd: addTask, placeholder: "リストを追加" })),
         askItemNode);
     const ev = planEvents(plan).length ? ce(PlanEvents, { plan, color, patch }) : null;
     const fin = !plan.doneAt ? ce("button", { type: "button", onClick: onDone, className: "ft-pfin ft-tap", style: { color: color.deep, borderColor: color.line } }, ce(lucide_react_1.Check, { size: 16 }), "達成した") : null;
@@ -32448,7 +32474,7 @@ function AppMain() {
                                             react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped, onSaveRecord: saveRecord, onNewInk: () => setInkNew({ ...emptyRecord("memo", viewDate || todayStr()) }), resetSig: todayReset }))),
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, resetSig: tabReset.find || 0 })),
                                         tab === "note" && react_1.default.createElement(NoteScreen, { records: records, onOpen: (r) => setNoteOpen(r.id), onNew: () => setNoteAsk(true) }),
-                                        noteAsk && react_1.default.createElement(NameDialog, { title: "新しいページ", placeholder: "タイトル", confirmLabel: "書く", onCancel: () => setNoteAsk(false), onConfirm: (v) => { setNoteAsk(false); setInkNew({ ...emptyRecord("memo", todayStr()), title: v }); } }),
+                                        noteAsk && react_1.default.createElement(NameDialog, { yomi: true, title: "新しいページ", placeholder: "タイトル", confirmLabel: "書く", onCancel: () => setNoteAsk(false), onConfirm: (v) => { setNoteAsk(false); setInkNew({ ...emptyRecord("memo", todayStr()), title: v }); } }),
                                         tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), onAdd: onFab, resetSig: tabReset.plan || 0 })),
                                         tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, plans: plans, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, kind: folderKind, onKind: setFolderKind, onAdd: onFab, sort: prefs.folderSortOrder, onSort: (v) => savePrefs((p) => ({ ...p, folderSortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
                                 loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? (folderKind === "coll" ? "コレクションを追加" : "フォルダを追加") : tab === "note" ? "新しいページ" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft" + (tab === "today" ? " ft-fab-today" : ""), style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
