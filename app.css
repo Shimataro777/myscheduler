@@ -1566,3 +1566,65 @@ button.ft-ccell-date{border:0}
 .ft-csteps-t{flex:1;min-width:0;font-size:calc(13.5px * var(--ft-scale));line-height:1.75;color:#33414B;word-break:break-word}
 .ft-csteps-r.done .ft-csteps-t{color:#9AA3AA;text-decoration:line-through}
 .ft-csteps-add{display:inline-flex;align-items:center;gap:3px;margin:3px 0;padding:2px 9px;border:1px dashed #C9D1D7;border-radius:999px;color:#9AA3AA;font-size:calc(12px * var(--ft-scale));font-weight:700}
+
+/* ===== 7.6.0 コレクションの表：画面の幅に収める・見出しのさかいめで幅を変える ===== */
+.ft-ctbl-wrap{overflow-x:hidden}
+.ft-ctbl{min-width:0;width:100%}
+.ft-ctbl-hw{position:relative;display:flex;min-width:0;background:#F6F8FA;border-bottom:1px solid #E3E9EE;border-right:1px solid #E3E9EE}
+.ft-ctbl-hw:nth-last-child(1 of .ft-ctbl-hw){border-right:0}
+.ft-ctbl-hw > .ft-ctbl-h{flex:1;min-width:0;border:0;white-space:normal;line-height:1.35;padding-top:8px;padding-bottom:8px;word-break:break-word}
+.ft-ctbl-hw.drag{background:var(--th-50,#EEF6FB)}
+.ft-ctbl-grip{position:absolute;top:0;bottom:0;right:-9px;width:18px;z-index:2;cursor:col-resize;touch-action:none;display:flex;justify-content:center}
+.ft-ctbl-grip i{display:block;width:3px;height:100%;border-radius:2px;background:transparent;transition:background .15s}
+.ft-ctbl-grip:hover i,.ft-ctbl-hw.drag .ft-ctbl-grip i{background:var(--th-800,#3E7EA6)}
+.ft-ctbl-c{min-width:0;overflow-wrap:anywhere}
+.ft-ctbl-c:nth-last-child(1){border-right:0}
+.ft-ccol-auto{display:inline-flex;align-items:center;gap:6px;min-height:40px;margin-top:10px;padding:0 4px;color:#4B5A64;font-size:calc(13px * var(--ft-scale));font-weight:700}
+/* 手書き：削除は道具の帯の右はし */
+.ft-inkbar .ft-inkdel{width:44px;height:44px;color:#8A949C}
+/* Today（横長）：しぼる・並べ替え・選択は、日の記録の列の上 */
+.ft-wmain .ft-daytools{display:flex;align-items:center;gap:4px;min-height:44px;margin:0 0 8px}
+.ft-daytools{min-height:44px}
+/* 手書きの削除：紙の右下の角に浮かべる（道具の帯の上） */
+.ft-inkedit-body{position:relative}
+.ft-inkedit-body > .ft-inkdel{position:absolute;right:22px;bottom:calc(env(safe-area-inset-bottom) + 12px + 64px);z-index:3;width:44px;height:44px;border-radius:999px;background:rgba(255,255,255,.92);border:1px solid #E3E9EE;box-shadow:0 2px 8px rgba(23,35,45,.08);color:#8A949C}
+
+/* ===== 7.6.1 部品が切れて見えないように ===== */
+/* 週の一覧の札：字を途中でぶつ切りにしない。2行まで折り返して、入りきらないぶんは「…」 */
+.ft-wb-chip{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;word-break:break-all;overflow:hidden;text-overflow:ellipsis;flex:none}
+.ft-wb-chip > i{display:inline-block;vertical-align:-1px;margin-right:3px}
+.ft-wb-chip > b{margin-right:3px}
+/* 手書きの道具の帯：iPhone の幅でも、横へ送らずに全部見える */
+@media (max-width:480px){
+  .ft-inkbar{padding:4px 4px;gap:0;justify-content:space-between}
+  .ft-inkbar > .flex-1{display:none}
+  .ft-inktool{width:38px;height:42px}
+  .ft-inksep{margin:0 3px}
+  .ft-inkfinger{width:auto;flex-direction:column;justify-content:center;gap:1px;padding:0 6px;font-size:calc(9.5px * var(--ft-scale));line-height:1.1}
+  .ft-inkfinger svg{width:15px;height:15px}
+}
+/* 表のステップの列：まだ何もないとき（＋ステップ）は、ほかのマスと同じ高さのまん中に */
+.ft-ctbl-c.st:has(> .ft-csteps-add){align-items:center}
+
+/* ===== 7.8.0 ===== */
+/* 計画のリストの札：メモは、記録のリストと同じ「枠のある欄」。上の小さなリストと見分けがつくように */
+.ft-scard-body{padding-right:6px}
+.ft-scard-note{display:block;width:100%;margin:6px 0 8px;padding:8px 12px !important;border:1px solid #E1E6EA;border-radius:12px;background:#fff;min-height:42px;line-height:1.6}
+.ft-scard.done .ft-scard-note{background:#fff}
+.ft-scard-note:focus{border-color:var(--th-600,#6FA8CC)}
+/* コレクション（スマホの札）：書ける欄に、うすい地をしく（さりげなく、ここに書けるとわかる） */
+.ft-cline .ft-ccell-in.bare,.ft-cline .ft-curl{background:#F5F7F9;border-radius:8px;padding:4px 8px}
+.ft-cline .ft-curl .ft-ccell-in.bare{background:transparent;padding:0}
+.ft-cline .ft-ccell-in.bare:focus{background:#fff;box-shadow:inset 0 0 0 1.5px var(--th-600,#6FA8CC)}
+/* Today のあと何日：白い地に、細い大きな数字と小さな名前。あいだは細い線 */
+.ft-cdline{display:flex;overflow-x:auto;margin:4px -16px 14px;padding:2px 16px 4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.ft-cdline::-webkit-scrollbar{display:none}
+.ft-cdi{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:96px;max-width:190px;padding:2px 18px 2px 0;margin-right:18px;border-right:1px solid #E8ECEF;text-align:left}
+.ft-cdi:last-child{border-right:0;margin-right:0}
+.ft-cdi-n{display:flex;align-items:baseline;gap:3px;color:#1B2830;line-height:1}
+.ft-cdi-n b{font-size:calc(34px * var(--ft-scale));font-weight:200;letter-spacing:-.02em}
+.ft-cdi-n b.w{font-size:calc(22px * var(--ft-scale));font-weight:500;letter-spacing:0}
+.ft-cdi-n small{font-size:calc(11px * var(--ft-scale));font-weight:600;color:#7A868F}
+.ft-cdi-bar{display:block;width:18px;height:2px;border-radius:2px}
+.ft-cdi-t{font-size:calc(12px * var(--ft-scale));line-height:1.45;color:#5B6770;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.ft-dayspread .ft-cdline{margin:4px 0 14px;padding:2px 16px 4px}
