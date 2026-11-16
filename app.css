@@ -1648,3 +1648,17 @@ button.ft-ccell-date{border:0}
 .ft-fgrid.dens2 .ft-fpin{transform:scale(.72);transform-origin:top right;top:2px;right:2px}
 .ft-fgrid.dens1 .ft-fpin{transform:scale(.85);transform-origin:top right}
 .ft-fgrid.dens2 .ft-addtile-ic svg{width:20px;height:20px}
+
+/* ===== 7.10.0 フォルダ ⇄ コレクションを左右のスワイプで ===== */
+@keyframes ft-sw-l{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes ft-sw-r{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+.ft-fgrid.ft-sw-l{animation:ft-sw-l .22s ease-out}
+.ft-fgrid.ft-sw-r{animation:ft-sw-r .22s ease-out}
+@media (prefers-reduced-motion:reduce){.ft-fgrid.ft-sw-l,.ft-fgrid.ft-sw-r{animation:none}}
+
+/* ===== 7.11.0 よみ ===== */
+.ft-yomi{display:flex;align-items:center;gap:8px;margin-top:6px;padding:0 2px}
+.ft-yomi > span{flex:none;font-size:calc(11.5px * var(--ft-scale));font-weight:700;color:#8A949C}
+.ft-yomi > input{flex:1;min-width:0;height:34px;border:0;border-bottom:1px solid #E1E6EA;background:transparent;outline:0;font-size:16px;color:#3D4A53;padding:0 2px}
+.ft-yomi > input::placeholder{color:#AEB7BE}
+.ft-yomi > input:focus{border-bottom-color:var(--th-600,#6FA8CC)}

@@ -17850,10 +17850,124 @@ function matchPlan(list, q) {
         return list;
     return list.filter((p) => { const h = planHits(p, w); return !!(h && h.any); });
 }
+/* ============================================================
+   よみ（7.11.0〜）。名前順で、漢字の名前も読みの順（あいうえお）に並べるため。
+   **ブラウザには漢字の読みを調べる手だてが無い。** そこで2つを組み合わせる：
+   ①打ったときの読みを覚える：日本語入力で変換する直前のかな（compositionupdate）と、確定した字（compositionend）の組を、
+     端末に辞書として覚える（mt-ui-yomidict、3000語まで）。名前の中の漢字を、この辞書でかなに置きかえて並べる。
+   ②名前ごとのよみ：名前の画面（NameIconSheet）・コレクションの行の紙に「よみ」の欄（名前に漢字があるときだけ）。
+     ①で分かった読みが最初から入る。直したよみは表示設定 prefs.yomi（{ 名前: よみ }）に入り、ほかの端末へも同期される。
+   読みが分からない漢字は、これまでどおり後ろのほう（文字の番号の順）になる
+   ============================================================ */
+const YOMI = { names: {}, dict: null, cache: new Map(), save: null };
+const YOMI_KANA = /^[ぁ-ゟ゠-ヿー・ 　]+$/;
+const YOMI_KANJI = /[㐀-鿿豈-﫿々〆ヶ]/;
+const toHira = (s) => String(s || "").replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+function yomiDict() {
+    if (!YOMI.dict) {
+        try {
+            YOMI.dict = JSON.parse(uiGet("yomidict") || "{}") || {};
+        }
+        catch (e) {
+            YOMI.dict = {};
+        }
+    }
+    return YOMI.dict;
+}
+if (typeof document !== "undefined") {
+    let lastKana = "";
+    document.addEventListener("compositionstart", () => { lastKana = ""; }, true);
+    document.addEventListener("compositionupdate", (e) => { const d = String(e.data || ""); if (d && YOMI_KANA.test(d))
+        lastKana = d; }, true);
+    document.addEventListener("compositionend", (e) => {
+        const d = String(e.data || "").trim();
+        const k = toHira(lastKana).trim();
+        lastKana = "";
+        if (!d || !k || !YOMI_KANJI.test(d) || d.length > 12 || k.length < d.length * 0.5)
+            return;
+        const dict = yomiDict();
+        if (dict[d] === k)
+            return;
+        delete dict[d];
+        dict[d] = k;
+        const keys = Object.keys(dict);
+        if (keys.length > 3000)
+            keys.slice(0, keys.length - 3000).forEach((x) => { delete dict[x]; });
+        try {
+            uiSet("yomidict", JSON.stringify(dict));
+        }
+        catch (er) { /* 入りきらないときは覚えない */ }
+        YOMI.cache.clear();
+    }, true);
+}
+/* 名前のよみ（並べるための字）。決めたよみ → 辞書で置きかえ → そのまま。かたかなはひらがなへ */
+function guessYomi(name) {
+    const s = String(name || "");
+    if (!YOMI_KANJI.test(s))
+        return toHira(s);
+    const fixed = YOMI.names && YOMI.names[s];
+    if (fixed)
+        return toHira(fixed);
+    if (YOMI.cache.has(s))
+        return YOMI.cache.get(s);
+    const dict = yomiDict();
+    let out = "";
+    for (let i = 0; i < s.length;) {
+        let hit = 0;
+        for (let L = Math.min(12, s.length - i); L > 0; L--) {
+            const w = s.substr(i, L);
+            if (YOMI_KANJI.test(w) && dict[w]) {
+                out += dict[w];
+                hit = L;
+                break;
+            }
+        }
+        if (hit)
+            i += hit;
+        else {
+            out += s[i];
+            i++;
+        }
+    }
+    out = toHira(out);
+    YOMI.cache.set(s, out);
+    return out;
+}
+function setNameYomi(name, yomi) {
+    const n = String(name || "").trim();
+    if (!n || !YOMI_KANJI.test(n))
+        return;
+    const y = toHira(String(yomi || "").trim());
+    const cur = YOMI.names || {};
+    if ((cur[n] || "") === y)
+        return;
+    const next = { ...cur };
+    if (y)
+        next[n] = y;
+    else
+        delete next[n];
+    YOMI.names = next;
+    YOMI.cache.clear();
+    if (YOMI.save)
+        YOMI.save(next);
+}
+const YOMI_COLL = typeof Intl !== "undefined" ? new Intl.Collator("ja", { numeric: true, sensitivity: "base" }) : null;
+/* 読みの順でくらべる。読みが同じなら、もとの字で */
+function compareYomi(x, y) {
+    const a = guessYomi(x), b = guessYomi(y);
+    const r = YOMI_COLL ? YOMI_COLL.compare(a, b) : a.localeCompare(b, "ja", { numeric: true });
+    return r || String(x).localeCompare(String(y), "ja");
+}
+/* よみの欄（名前に漢字があるときだけ出す）。打たなければ、分かった読みが薄く入っている（その読みで並ぶ） */
+function YomiField({ name, value, onChange }) {
+    const ce = react_1.default.createElement;
+    if (!YOMI_KANJI.test(String(name || "")))
+        return null;
+    return ce("label", { className: "ft-yomi" }, ce("span", null, "よみ"), ce("input", { value: value, onChange: (e) => onChange(e.target.value), placeholder: guessYomi(name), "aria-label": "よみ（名前順に使う）" }));
+}
 function compareName(a, b) {
-    const x = String((a && a.name) || ""), y = String((b && b.name) || "");
-    return x.localeCompare(y, "ja", { numeric: true, sensitivity: "base" })
-        || x.localeCompare(y, "ja");
+    /* 7.11.0〜 読みの順（漢字も、分かる読みで）。compareYomi を見ること */
+    return compareYomi(String((a && a.name) || ""), String((b && b.name) || ""));
 }
 /* 更新順。**直したばかりのものを上にすること。**
    計画は、計画そのものの更新日時と、中のイベントの更新日時のうち
@@ -26064,12 +26178,17 @@ function NameIconSheet({ title, initialName, initialIcon, placeholder, fallback,
        省略（…）で隠すのではなく、そもそも長く打てないようにする */
     const nameMax = presets ? PLAN_TITLE_MAX : null;
     const setNameSafe = (v) => setName(nameMax ? v.slice(0, nameMax) : v);
-    return (react_1.default.createElement(SheetDialog, { title: title, onCancel: onCancel, onConfirm: () => onSave(name.trim(), icon), confirmLabel: confirmLabel, disabled: !name.trim() },
+    /* よみ（7.11.0〜）。決めてあればそれ。打たなければ、分かった読み（薄い字）で並ぶ */
+    const [yomi, setYomi] = (0, react_1.useState)(() => (YOMI.names && YOMI.names[String(initialName || "").trim()]) || "");
+    const [, bump] = (0, react_1.useState)(0);
+    return (react_1.default.createElement(SheetDialog, { title: title, onCancel: onCancel, onConfirm: () => { const n = name.trim(); if (YOMI_KANJI.test(n))
+            setNameYomi(n, yomi.trim()); onSave(n, icon); }, confirmLabel: confirmLabel, disabled: !name.trim() },
         react_1.default.createElement("div", { className: "flex items-center gap-3 mb-1" },
             react_1.default.createElement("span", { className: "w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 overflow-hidden", style: { background: (icon && ICON_ART[icon]) ? ICON_ART[icon].bg : c.soft, color: c.deep } },
                 react_1.default.createElement(ItemIcon, { icon: icon, fallback: fallback, color: c })),
             react_1.default.createElement("span", { className: "flex-1 min-w-0" },
-                react_1.default.createElement(TextInput, { value: name, onChange: (e) => setNameSafe(e.target.value), placeholder: placeholder, maxLength: nameMax || undefined }))),
+                react_1.default.createElement(TextInput, { value: name, onChange: (e) => setNameSafe(e.target.value), onCompositionEnd: () => setTimeout(() => bump((x) => x + 1), 0), placeholder: placeholder, maxLength: nameMax || undefined }),
+                react_1.default.createElement(YomiField, { name: name, value: yomi, onChange: setYomi }))),
         nameMax && (react_1.default.createElement("p", { className: "fs-caption text-neutral-400 text-right mb-2" }, `${name.length}/${nameMax}`)),
         react_1.default.createElement("p", { className: "fs-label font-bold text-neutral-400 mb-2 " + (nameMax ? "" : "mt-2") }, "\u30A2\u30A4\u30B3\u30F3"),
         react_1.default.createElement(IconPicker, { value: icon, onChange: setIcon, fallback: fallback, color: c, baseColor: base, presets: presets, photo: photo })));
@@ -27219,7 +27338,32 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
         atDefault: !q,
         toDefault: () => setQ(""),
     });
-    return (react_1.default.createElement("div", { className: "pad-fab" },
+    /* 左右のスワイプで、フォルダ ⇄ コレクション（7.10.0〜）。左へはらう＝コレクション、右へ＝フォルダ。
+       **横にはっきり動いたときだけ**（横 60px 以上・縦の 1.5 倍以上・0.45 秒以内。長押しのあとの動きはスワイプにしない）。縦に送るのを横取りしない。
+       長押しで並べ替えているあいだ・入力欄・画面の左はし（戻る）からは受けない */
+    const swRef = (0, react_1.useRef)(null);
+    const [swDir, setSwDir] = (0, react_1.useState)("");
+    const swipeProps = onKind ? {
+        onTouchStart: (e) => { const t = e.touches[0]; swRef.current = e.touches.length === 1 && t.clientX > 36 && !(e.target.closest && e.target.closest("input,textarea,[data-ft-drag]")) ? { x: t.clientX, y: t.clientY, at: Date.now() } : null; },
+        onTouchMove: (e) => { if (e.touches.length > 1)
+            swRef.current = null; },
+        onTouchEnd: (e) => {
+            const st = swRef.current;
+            swRef.current = null;
+            if (!st)
+                return;
+            const t = e.changedTouches[0];
+            const dx = t.clientX - st.x, dy = t.clientY - st.y;
+            if (Date.now() - st.at > 450 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5)
+                return;
+            const to = dx < 0 ? "coll" : "folder";
+            if (to === kind)
+                return;
+            setSwDir(dx < 0 ? "l" : "r");
+            onKind(to);
+        },
+    } : {};
+    return (react_1.default.createElement("div", { className: "pad-fab", ...swipeProps },
         react_1.default.createElement(TopChrome, null,
             react_1.default.createElement(ScreenHeader, { title: "\u30D5\u30A9\u30EB\u30C0" }),
             react_1.default.createElement(ListSearchBar, { value: q, onChange: setQ, placeholder: kind === "coll" ? "コレクションを検索" : "フォルダを検索", right: react_1.default.createElement(react_1.default.Fragment, null, react_1.default.createElement(DensityButton, { value: dens, onChange: setDens }), react_1.default.createElement(SortToggle, { value: sort, onChange: onSort, options: FOLDER_SORT_OPTIONS })) }),
@@ -27229,7 +27373,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
         /* **2列のカード（2.11.25〜）。** 絵を主役にして、文字は下にまとめる。
            並べ方・大きさは GLOBAL_CSS の .ft-fgrid / .ft-fcard にある。
            **space-y-* を付けないこと。** グリッドの中では子の上に余白が付いて、段がずれる */
-        react_1.default.createElement("div", { className: "px-4 pt-1 ft-col ft-fgrid ft-seq" + (dens ? " dens" + dens : "") },
+        react_1.default.createElement("div", { key: kind, className: "px-4 pt-1 ft-col ft-fgrid ft-seq" + (dens ? " dens" + dens : "") + (swDir ? " ft-sw-" + swDir : "") },
             sorted.length === 0 && q.trim() !== "" && (react_1.default.createElement("div", { className: "py-14 text-center ft-noresult" },
                 react_1.default.createElement("p", { className: "fs-body text-neutral-400" }, "\u898B\u3064\u304B\u308A\u307E\u305B\u3093"))),
             q.trim() ? null : react_1.default.createElement(AddTile, { key: "__add", onClick: onAdd, label: kind === "coll" ? "新しいコレクション" : "新しいフォルダ", icon: kind === "coll" ? lucide_react_1.ListTodo : lucide_react_1.Folder }),
@@ -30722,6 +30866,8 @@ function colCompare(c, dir) {
             r = (Number(x) || 0) - (Number(y) || 0);
         else if (c.type === "check")
             r = (x ? 1 : 0) - (y ? 1 : 0);
+        else if (c.type === "text" || c.type === "url")
+            r = compareYomi(String(x), String(y));
         else
             r = String(x).localeCompare(String(y), "ja", { numeric: true });
         return dir === "desc" ? -r : r;
@@ -30979,6 +31125,8 @@ function CollTable({ plan, color, patch }) {
                 setRowOpen(n.id); }; return ce("div", { className: "ft-crow-nav" }, ce("button", { type: "button", onClick: () => go(-1), disabled: i <= 0, "aria-label": "前の行", className: "ft-tap" }, ce(lucide_react_1.ChevronLeft, { size: 20 })), ce("span", { className: "tabular-nums" }, `${i + 1} / ${rows.length}`), ce("button", { type: "button", onClick: () => go(1), disabled: i >= rows.length - 1, "aria-label": "次の行", className: "ft-tap" }, ce(lucide_react_1.ChevronRight, { size: 20 }))); })(),
             ce("p", { className: "ft-psheet-k first" }, "名前"),
             ce(TextArea, { value: openRow.text, onChange: (e) => patchRow(openRow.id, { text: e.target.value.replace(/\n/g, " ") }), minRows: 1, rows: 1 }),
+            /* よみ（7.11.0〜）。名前に漢字があるときだけ。名前順・「あ→ん」に使う */
+            ce(YomiField, { name: openRow.text, value: (YOMI.names && YOMI.names[String(openRow.text || "").trim()]) || "", onChange: (v) => setNameYomi(openRow.text, v) }),
             cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) })))) : null,
         askNode,
         colOpen ? ce(SheetDialog, { title: "列", onCancel: () => setColOpen(false), hideConfirm: true },
@@ -31533,6 +31681,11 @@ function AppMain() {
         storageSet(TAG_KEY, JSON.stringify(v));
         return v;
     }, []);
+    /* よみ（7.11.0〜）。名前ごとのよみは表示設定に入れて同期する */
+    if (YOMI.names !== ((prefs && prefs.yomi) || YOMI.names) && prefs && prefs.yomi) {
+        YOMI.names = prefs.yomi;
+        YOMI.cache.clear();
+    }
     const savePrefs = (0, react_1.useCallback)((next) => {
         const prev = prefsRef.current;
         const v = resolveNext(next, prefsRef);
@@ -31546,6 +31699,7 @@ function AppMain() {
         scheduleDecoSync(decoSource);
         return v;
     }, []);
+    YOMI.save = (names) => savePrefs((p) => ({ ...p, yomi: names }));
     /* 画面に出すタグの一覧。一覧と記録の両方から作る。
        **記録から集めるだけにしないこと。** それだけだと、記録を消したとたんタグも選べなくなる */
     /* **並びを勝手に五十音順にしないこと。** よく使うタグを上に置きたい人がいる。
