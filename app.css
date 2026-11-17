@@ -1803,3 +1803,60 @@ button.ft-ccell-date{border:0}
 .ft-wr-items .ft-wb-chip > b{margin-right:5px}
 /* せまい画面で右に3つ（歯車・雲・三本線）並ぶときは、題を左へ広げる（まん中にこだわって「読み…」と切れないように） */
 @media (max-width: 600px){ .ft-htitle.r3{left:56px;right:150px} }
+
+/* ============================================================
+   8.1.0：列の種類えらび（しるし・名前・見本の札）
+   ============================================================ */
+.ft-ctypes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.ft-ctype{display:flex;align-items:center;gap:10px;min-height:58px;padding:8px 10px;border-radius:14px;border:1px solid #E1E6EA;background:#fff;text-align:left}
+.ft-ctype.on{border-color:var(--th-600,#6FA8CC);background:var(--th-50,#EEF6FB);box-shadow:0 0 0 1px var(--th-600,#6FA8CC) inset}
+.ft-ctype-ic{flex:none;display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#F1F4F6;color:#4B5A64}
+.ft-ctype.on .ft-ctype-ic{background:#fff;color:var(--th-900,#2F6E9B)}
+.ft-ctype-b{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.ft-ctype-b > b{font-size:calc(14px * var(--ft-scale));font-weight:700;color:#26323A;line-height:1.3}
+.ft-ctype-s{display:block;font-size:calc(11.5px * var(--ft-scale));color:#8A949C;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-ctype-s.opt{display:flex;gap:4px}
+.ft-ctype-s.opt i{font-style:normal;font-weight:700;padding:0 6px;border-radius:999px;font-size:calc(10.5px * var(--ft-scale))}
+.ft-ctype-s.star{color:#E8A93B;letter-spacing:1px}
+.ft-ctype-s.star em{font-style:normal;color:#D5DBE0}
+/* 列の行：種類の札は押すと、行の下に種類えらびが開く */
+.ft-ccol-t.sel{cursor:pointer}
+.ft-ccol-t.sel.on{background:var(--th-50,#EEF6FB);color:var(--th-900,#2F6E9B)}
+.ft-ccol-tar{transition:transform .2s var(--ease-out)}
+.ft-ccol-t.on .ft-ccol-tar{transform:rotate(180deg)}
+.ft-ccol-tpick{margin:0 0 12px 36px}
+.ft-ccol-tpick .ft-ctypes{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.ft-ccol-tpick .ft-ctype{min-height:50px;padding:6px 8px}
+.ft-ccol-tpick .ft-ctype-ic{width:30px;height:30px}
+
+/* ============================================================
+   8.1.0：計画の画面（横長は Today と同じ割り方）・ゴールの欄・達成・リストを追加
+   ============================================================ */
+/* 達成：名前の右 */
+.ft-pfin2{flex:none;display:inline-flex;align-items:center;gap:5px;min-height:40px;padding:0 16px;border:1.5px solid;border-radius:999px;background:#fff;font-weight:700;font-size:calc(13.5px * var(--ft-scale));white-space:nowrap}
+/* ゴール：1行目＝見出し、2行目から本文 */
+.ft-nf.goal{margin:0 0 6px;padding:0;border-left:0}
+.ft-nf.goal .ft-nf-h{font-size:max(16px, calc(20px * var(--ft-scale)));line-height:1.45;color:#171717}
+.ft-nf.goal .ft-nf-h::placeholder{font-size:max(16px, calc(18px * var(--ft-scale)));font-weight:700;color:#B4BBC1}
+.ft-nf.goal .ft-nf-b{margin-top:4px;font-size:max(16px, calc(14.5px * var(--ft-scale)));color:#4B5A64}
+.ft-nf.goal .ft-nf-b::placeholder{color:#C4CBD1}
+/* 横長：名前は上に留め、下の2列はそれぞれで送る */
+.ft-planpage:has(> .ft-psplit){overflow:hidden;display:flex;flex-direction:column;padding-bottom:0}
+.ft-psplit{flex:1;min-height:0;display:flex;flex-direction:column}
+.ft-psplit > .ft-phero{flex:none;margin:0 0 14px;padding:0 4px}
+.ft-psplit > .ft-wsplit{flex:1;min-height:0;height:auto;margin:0 -16px}
+.ft-psplit .ft-wmain.list{padding-top:0}
+.ft-psplit .ft-goal{margin:0 0 4px}
+.ft-psplit .ft-ptools{margin-top:16px}
+.ft-precol{margin-top:0}
+.ft-wside .ft-precol .ft-sechd{margin-top:0}
+.ft-phero > .min-w-0{flex:1}
+/* リストを追加：点線の枠、字を入れたときだけ「追加」 */
+.ft-padd .ft-cadd{border-style:dashed;border-color:#CBD3DA !important;background:transparent;min-height:52px}
+.ft-padd .ft-cadd:focus-within{border-style:solid;border-color:var(--th-600,#6FA8CC) !important;background:#fff}
+.ft-padd .ft-cadd-b:disabled{visibility:hidden}
+.ft-padd .ft-cadd-ic{width:26px;height:26px;border-radius:50%;border:1.5px dashed currentColor;display:grid;place-items:center;opacity:.8}
+.ft-padd .ft-cadd-ic svg{width:15px;height:15px}
+/* 計画のリストの札：まだ無い手順・メモは小さな札で */
+.ft-scard-more{display:flex;gap:6px;margin:6px 0 0 34px}
+.ft-scard-more button{display:inline-flex;align-items:center;gap:3px;min-height:30px;padding:0 11px;border-radius:999px;background:#F3F5F7;color:#6B7883;font-size:calc(12px * var(--ft-scale));font-weight:700}

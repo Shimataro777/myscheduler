@@ -30471,9 +30471,13 @@ function planCardLine(p, S) {
         return live.slice(0, 3).map((t) => t.text).join("・") + (live.length > 3 ? ` ほか${live.length - 3}` : "");
     return live.slice(0, 3).map((t) => t.text).join("・") + (live.length > 3 ? ` ほか${live.length - 3}` : "");
 }
+/* **コレクション（kind "list"）の日付は、Today・週・月に出さないこと（8.1.0〜）。**
+   コレクションの日付は「その日にやる」ではなく「その日にあったこと」（読んだ日・公開日など）として入れることがあるため。
+   Today に出すのは計画（目標）の「やる日」だけ */
+const planOnCal = (p) => !p.doneAt && p.kind !== "list";
 function planDayItems(plans, date) {
     const out = [];
-    (plans || []).filter((p) => !p.doneAt).forEach((p) => planTodo(p).forEach((t) => {
+    (plans || []).filter(planOnCal).forEach((p) => planTodo(p).forEach((t) => {
         if (t.date === date)
             out.push({ p, t, label: t.text || "（名前なし）" });
         planSub(t).forEach((s) => { if (s.date === date)
@@ -30482,7 +30486,7 @@ function planDayItems(plans, date) {
     return out;
 }
 /* その日が「いつまでに」の計画 */
-function planGoalsOn(plans, date) { return (plans || []).filter((p) => !p.doneAt && p.goalDate === date); }
+function planGoalsOn(plans, date) { return (plans || []).filter((p) => planOnCal(p) && p.goalDate === date); }
 /* 計画のタブに付ける数。やる日が今日か、過ぎたのに済んでいないもの */
 function planDueCount(plans, today) {
     let n = 0;
@@ -30632,7 +30636,7 @@ function MiniList({ items, onChange, color, placeholder = "追加", auto }) {
    **1つの textarea で行ごとに字の大きさを変えることはできない**ので、見出し（1行目）と本文（2行目から）の2つの欄に分け、
    見出しで改行すると本文の頭へ、本文の頭で戻す（Backspace）と見出しの後ろへつながる。保存は1つの文字（改行でつなぐ）。
    左に細い縦線（記録のリストのメモと同じ）。右下のつまみで高さを変えられる（h ＝ 最小の高さ。onH で覚える） */
-function NoteField({ value, onChange, h, onH, placeholder = "メモ" }) {
+function NoteField({ value, onChange, h, onH, placeholder = "メモ", className, noGrip, headLabel = "メモの見出し", bodyPlaceholder, auto }) {
     const ce = react_1.default.createElement;
     const v = String(value || "");
     const k = v.indexOf("\n");
@@ -30645,6 +30649,11 @@ function NoteField({ value, onChange, h, onH, placeholder = "メモ" }) {
     const fit = (el) => { if (!el)
         return; el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; };
     (0, react_1.useLayoutEffect)(() => { fit(headRef.current); fit(bodyRef.current); }, [v]);
+    (0, react_1.useEffect)(() => { if (auto && headRef.current)
+        try {
+            headRef.current.focus();
+        }
+        catch (e) { /* noop */ } }, []); // eslint-disable-line
     const focusAt = (ref, pos) => requestAnimationFrame(() => { const el = ref.current; if (!el)
         return; el.focus(); try {
         el.setSelectionRange(pos, pos);
@@ -30682,11 +30691,11 @@ function NoteField({ value, onChange, h, onH, placeholder = "メモ" }) {
             window.addEventListener("pointercancel", up);
         } });
     const minH = liveH != null ? liveH : (Number(h) > 0 ? Number(h) : undefined);
-    return ce("div", { ref: boxRef, className: "ft-nf", style: minH ? { minHeight: minH } : undefined, onClick: (e) => { if (e.target === e.currentTarget)
+    return ce("div", { ref: boxRef, className: "ft-nf" + (className ? " " + className : ""), style: minH ? { minHeight: minH } : undefined, onClick: (e) => { if (e.target === e.currentTarget)
             (body != null ? focusAt(bodyRef, (body || "").length) : focusAt(headRef, head.length)); } },
-        ce("textarea", { ref: headRef, rows: 1, value: head, placeholder, "aria-label": "メモの見出し", className: "ft-nf-h", onKeyDown: onHeadKey, onChange: (e) => onChange(e.target.value + (body != null ? "\n" + body : "")) }),
-        body != null ? ce("textarea", { ref: bodyRef, rows: 1, value: body, "aria-label": "メモ", className: "ft-nf-b", onKeyDown: onBodyKey, onChange: (e) => onChange(head + "\n" + e.target.value) }) : null,
-        grip);
+        ce("textarea", { ref: headRef, rows: 1, value: head, placeholder, "aria-label": headLabel, className: "ft-nf-h", onKeyDown: onHeadKey, onChange: (e) => onChange(e.target.value + (body != null ? "\n" + body : "")) }),
+        body != null ? ce("textarea", { ref: bodyRef, rows: 1, value: body, placeholder: bodyPlaceholder, "aria-label": "本文", className: "ft-nf-b", onKeyDown: onBodyKey, onChange: (e) => onChange(head + "\n" + e.target.value) }) : null,
+        noGrip ? null : grip);
 }
 /* 一度に並べる札の数（7.9.0〜。フォルダの画面）。0＝ふつう／1＝少し多く／2＝多く。押すたびに次へ。絵は、いまの並びの目 */
 function DensityButton({ value, onChange }) {
@@ -30706,6 +30715,9 @@ function PlanTaskRow({ t, color, onPatch, onRemove, onChecked, just }) {
     const [askDel, askNode] = useAskDel();
     const sub = planSub(t);
     const late = !t.done && t.date && t.date < today;
+    const hasNote = !!String(t.note || "").trim();
+    const [openSub, setOpenSub] = (0, react_1.useState)(false);
+    const [openNote, setOpenNote] = (0, react_1.useState)(false);
     const setSub = (nx) => { const all = nx.length > 0 && nx.every((s) => s.done); const was = sub.length > 0 && sub.every((s) => s.done); onPatch({ sub: nx, ...(all !== was || (all && !t.done) ? { done: all, doneAt: all ? (t.doneAt || today) : "" } : {}) }); };
     return ce("div", { className: "ft-scard" + (t.done ? " done" : "") + (just ? " just" : ""), style: just ? { "--ft-just": color.soft } : undefined },
         ce("div", { className: "ft-scard-top" },
@@ -30714,9 +30726,14 @@ function PlanTaskRow({ t, color, onPatch, onRemove, onChecked, just }) {
             ce(AutoText, { value: t.text, onChange: (v) => onPatch({ text: v }), className: "ft-scard-in", label: "リスト" }),
             ce(DateTap, { value: t.date, onChange: (v) => onPatch({ date: v }), label: "やる日", className: "ft-scard-date ft-tap" + (t.date ? " on" : ""), style: t.date ? (late ? { background: "#FDECEC", color: "#BE123C" } : t.date === today ? { background: color.mid, color: "#fff" } : { background: color.soft, color: color.deep }) : undefined }, t.date ? (t.done && t.doneAt ? fmtDateShort(t.date) : planDayLabel(t.date, today)) : ce(lucide_react_1.CalendarDays, { size: 17 })),
             ce("button", { type: "button", onClick: () => askDel(`「${t.text || "（名前なし）"}」を削除しますか`, onRemove), "aria-label": "削除", className: "ft-mlist-x ft-tap" }, ce(lucide_react_1.X, { size: 16 }))),
-        ce("div", { className: "ft-scard-body" },
-            ce(MiniList, { items: sub, onChange: setSub, color, placeholder: "追加" }),
-            ce(NoteField, { value: t.note || "", onChange: (v) => onPatch({ note: v }), h: t.noteH, onH: (x) => onPatch({ noteH: x }) })),
+        /* 手順とメモ（8.1.0〜）：入っているものだけ出す。まだ無いものは「＋ 手順」「＋ メモ」の小さな札にまとめ、押すとその場で開いて書ける。
+           どの札にも空の「追加」「メモ」の欄が2段ずつ並んで、リストが読みにくかった */
+        (sub.length || openSub || hasNote || openNote) ? ce("div", { className: "ft-scard-body" },
+            sub.length || openSub ? ce(MiniList, { items: sub, onChange: setSub, color, placeholder: "手順を追加", auto: openSub && !sub.length }) : null,
+            hasNote || openNote ? ce(NoteField, { value: t.note || "", onChange: (v) => onPatch({ note: v }), h: t.noteH, onH: (x) => onPatch({ noteH: x }), auto: openNote && !hasNote }) : null) : null,
+        !t.done && ((!sub.length && !openSub) || (!hasNote && !openNote)) ? ce("div", { className: "ft-scard-more" },
+            !sub.length && !openSub ? ce("button", { type: "button", onClick: () => setOpenSub(true), className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 13 }), "手順") : null,
+            !hasNote && !openNote ? ce("button", { type: "button", onClick: () => setOpenNote(true), className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 13 }), "メモ") : null) : null,
         askNode);
 }
 /* ステップ・手順を足す欄。**Enter で足したあと、欄から離れないこと**（続けて書ける。data-ft-stay） */
@@ -31073,11 +31090,48 @@ const colTypeIcon = (type, size = 15) => {
     return react_1.default.createElement(I, { size });
 };
 const colTypeName = (type) => (COL_TYPES.find((x) => x[0] === type) || [])[1] || "";
-function ColRows({ cols, setCols, sel, setSel, askDel }) {
+/* 列の種類えらび（8.1.0〜）。種類ごとに「しるし・名前・入るものの見本」の札を並べる。
+   列を足すときも、種類を変えるときも、この同じ札で選ぶ（端末のえらぶ欄で、名前だけの一覧から選ばせない。どんな列になるか分からなかった） */
+function colTypeSample(type) {
+    const ce = react_1.default.createElement;
+    if (type === "select")
+        return ce("span", { className: "ft-ctype-s opt" }, ce("i", { style: { background: OPT_COLORS[0][0], color: OPT_COLORS[0][1] } }, "小説"), ce("i", { style: { background: OPT_COLORS[1][0], color: OPT_COLORS[1][1] } }, "漫画"));
+    if (type === "star")
+        return ce("span", { className: "ft-ctype-s star" }, "★★★", ce("em", null, "★★"));
+    if (type === "check")
+        return ce("span", { className: "ft-ctype-s" }, "済み・未");
+    if (type === "date")
+        return ce("span", { className: "ft-ctype-s" }, "11/17");
+    if (type === "number")
+        return ce("span", { className: "ft-ctype-s" }, "1,280");
+    if (type === "steps")
+        return ce("span", { className: "ft-ctype-s" }, "□ 1巻  □ 2巻");
+    if (type === "url")
+        return ce("span", { className: "ft-ctype-s" }, "https://…");
+    return ce("span", { className: "ft-ctype-s" }, "ひとこと・感想");
+}
+function ColTypeGrid({ value, onPick }) {
+    const ce = react_1.default.createElement;
+    return ce("div", { className: "ft-ctypes", role: "group", "aria-label": "列の種類" }, COL_TYPES.map(([k, l]) => ce("button", { key: k, type: "button", onClick: () => onPick(k), "aria-pressed": value === k, className: "ft-ctype ft-tap" + (value === k ? " on" : "") },
+        ce("span", { className: "ft-ctype-ic", "aria-hidden": true }, colTypeIcon(k, 17)),
+        ce("span", { className: "ft-ctype-b" }, ce("b", null, l), colTypeSample(k)))));
+}
+function ColRows({ cols, setCols, sel, setSel, askDel, focusId }) {
     const ce = react_1.default.createElement;
     const { dragId, setRow, handleProps, rowStyle } = useReorder(cols, setCols);
     const patch = (id, d) => setCols(cols.map((c) => (c.id === id ? { ...c, ...d } : c)));
     const [optOpen, setOptOpen] = (0, react_1.useState)(() => cols.filter((c) => c.type === "select" && !optsOf(c).length).map((c) => c.id));
+    /* 種類を変える札を開いている列 */
+    const [typeOpen, setTypeOpen] = (0, react_1.useState)("");
+    /* 足したばかりの列は、名前の欄に入って字をえらんだ状態にする（そのまま打てば名前が変わる） */
+    const nameRefs = (0, react_1.useRef)({});
+    (0, react_1.useEffect)(() => { const el = focusId && nameRefs.current[focusId]; if (el)
+        requestAnimationFrame(() => { try {
+            el.scrollIntoView({ block: "center", behavior: "smooth" });
+            el.focus();
+            el.select();
+        }
+        catch (e) { /* noop */ } }); }, [focusId]);
     /* 選択肢の列を新しく足したら（種類を変えたら）、選択肢の欄を開く */
     (0, react_1.useEffect)(() => { const add = cols.filter((c) => c.type === "select" && !optsOf(c).length && !optOpen.includes(c.id)).map((c) => c.id); if (add.length)
         setOptOpen((o) => [...o, ...add]); }, [cols]); // eslint-disable-line
@@ -31088,18 +31142,20 @@ function ColRows({ cols, setCols, sel, setSel, askDel }) {
             ce("div", { className: "ft-ccol" },
                 ce("button", { type: "button", onClick: () => setSel(sel.includes(c.id) ? sel.filter((x) => x !== c.id) : [...sel, c.id]), "aria-pressed": sel.includes(c.id), "aria-label": "えらぶ", className: "ft-ccol-pick ft-tap" + (sel.includes(c.id) ? " on" : "") }, sel.includes(c.id) ? ce(lucide_react_1.Check, { size: 13, strokeWidth: 3.5, color: "#fff" }) : null),
                 ce("span", { className: "ft-ccol-ic", "aria-hidden": true }, colTypeIcon(c.type)),
-                ce("input", { defaultValue: c.name, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== c.name)
+                ce("input", { ref: (el) => { nameRefs.current[c.id] = el; }, defaultValue: c.name, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== c.name)
                         patch(c.id, { name: v });
                     else
                         e.target.value = c.name; }, onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing)
                         e.currentTarget.blur(); }, className: "ft-ccol-n", "aria-label": "列の名前" }),
                 c.id.startsWith("__") ? ce("span", { className: "ft-ccol-t" }, colTypeName(c.type))
-                    : ce("label", { className: "ft-ccol-t sel" }, colTypeName(c.type), ce(lucide_react_1.ChevronDown, { size: 14 }), ce("select", { value: c.type, onChange: (e) => patch(c.id, { type: e.target.value }), "aria-label": "列の種類" }, COL_TYPES.map(([k, l]) => ce("option", { key: k, value: k }, l)))),
+                    : ce("button", { type: "button", onClick: () => setTypeOpen(typeOpen === c.id ? "" : c.id), "aria-expanded": typeOpen === c.id, "aria-label": "列の種類を変える", className: "ft-ccol-t sel ft-tap" + (typeOpen === c.id ? " on" : "") }, colTypeName(c.type), ce(lucide_react_1.ChevronDown, { size: 14, className: "ft-ccol-tar" })),
                 ce(DragHandle, handleProps(c.id))),
             isOpt ? ce("button", { type: "button", onClick: () => setOptOpen((o) => (o.includes(c.id) ? o.filter((x) => x !== c.id) : [...o, c.id])), "aria-expanded": open, className: "ft-copts-tg ft-tap" + (open ? " on" : "") },
                 ce("span", { className: "ft-copts-pv" }, optsOf(c).length ? optsOf(c).slice(0, 4).map((o, i) => ce("i", { key: o.id, style: { background: OPT_COLORS[i % OPT_COLORS.length][0], color: OPT_COLORS[i % OPT_COLORS.length][1] } }, o.label)) : ce("em", null, "選択肢を設定してください"), optsOf(c).length > 4 ? ce("small", null, `+${optsOf(c).length - 4}`) : null),
                 ce("b", null, "選択肢 ", optsOf(c).length), ce(lucide_react_1.ChevronDown, { size: 15, className: "ft-copts-ar" })) : null,
-            open ? ce(OptEditor, { c, askDel, onChange: (opts) => patch(c.id, { opts }) }) : null);
+            open ? ce(OptEditor, { c, askDel, onChange: (opts) => patch(c.id, { opts }) }) : null,
+            typeOpen === c.id ? ce("div", { className: "ft-ccol-tpick" }, ce(ColTypeGrid, { value: c.type, onPick: (k) => { setTypeOpen(""); if (k !== c.type)
+                    patch(c.id, { type: k, ...(k === "select" && !Array.isArray(c.opts) ? { opts: [] } : {}) }); } })) : null);
     });
 }
 function CollTable({ plan, color, patch }) {
@@ -31120,6 +31176,8 @@ function CollTable({ plan, color, patch }) {
     const [colOpen, setColOpen] = (0, react_1.useState)(false);
     const [sortOpen, setSortOpen] = (0, react_1.useState)(false);
     const [colSel, setColSel] = (0, react_1.useState)([]);
+    /* 列の設定の紙で、いま足した列（名前の欄に入る） */
+    const [newCol, setNewCol] = (0, react_1.useState)("");
     /* 列の幅をつまんでいるあいだの幅（割合）。離したら記録へ書く */
     const [colDrag, setColDrag] = (0, react_1.useState)(null);
     const patchRow = (id, d) => patch((p) => ({ ...p, todo: planTodo(p).map((t) => (t.id === id ? { ...t, ...d } : t)) }));
@@ -31271,7 +31329,7 @@ function CollTable({ plan, color, patch }) {
             ce(YomiField, { name: openRow.text, value: (YOMI.names && YOMI.names[String(openRow.text || "").trim()]) || "", onChange: (v) => setNameYomi(openRow.text, v) }),
             cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) })))) : null,
         askNode,
-        colOpen ? ce(SheetDialog, { title: "列の設定", onCancel: () => { setColOpen(false); setColSel([]); }, hideConfirm: true, closeLabel: "完了", closePrimary: true,
+        colOpen ? ce(SheetDialog, { title: "列の設定", onCancel: () => { setColOpen(false); setColSel([]); setNewCol(""); }, hideConfirm: true, closeLabel: "完了", closePrimary: true,
             /* 初期に戻す（8.0.0〜）：自分で変えた列の幅を、中身から決める幅へ戻す。変えていないときは押せない */
             leftBtn: ce("button", { type: "button", disabled: !customW, onClick: () => askDel("列の幅を初期に戻しますか", () => patch((p) => ({ ...p, nameW: undefined, cols: collCols(p).map(({ w, ...c }) => c) })), "見出しのさかいめで変えた幅を、中身に合わせた幅に戻します。", "初期に戻す"), className: "ft-sreset ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 16 }), "幅を初期に戻す") },
             ce("p", { className: "ft-psheet-k first" }, "列"),
@@ -31287,10 +31345,11 @@ function CollTable({ plan, color, patch }) {
                             e.currentTarget.blur(); }, className: "ft-ccol-n", "aria-label": "名前の列の名前" }),
                     ce("span", { className: "ft-ccol-t" }, "テキスト"),
                     ce("span", { className: "ft-ccol-fix" }, "左はし"))),
-                ce(ColRows, { cols, setCols, sel: colSel, setSel: setColSel, askDel })),
+                ce(ColRows, { cols, setCols, sel: colSel, setSel: setColSel, askDel, focusId: newCol })),
             colSel.length ? ce("button", { type: "button", onClick: () => askDel(`${colSel.length}列を削除しますか`, () => { setCols(cols.filter((c) => !colSel.includes(c.id))); setColSel([]); }, "列に入れた中身も見えなくなります。"), className: "ft-crow-del ft-tap", style: { marginTop: 12 } }, ce(lucide_react_1.Trash2, { size: 16 }), `${colSel.length}列を削除`) : null,
             ce("p", { className: "ft-psheet-k" }, "列を追加"),
-            ce("div", { className: "ft-ccol-add" }, COL_TYPES.map(([k, l]) => ce("button", { key: k, type: "button", onClick: () => patch((p) => ({ ...p, cols: [...collCols(p), { id: "c" + uid(), name: l, type: k, ...(k === "select" ? { opts: [] } : {}) }] })), className: "ft-tap" }, colTypeIcon(k, 14), l)))) : null,
+            /* 押すと右はしに足して、名前の欄に入る（8.1.0〜） */
+            ce(ColTypeGrid, { onPick: (k) => { const id = "c" + uid(); patch((p) => ({ ...p, cols: [...collCols(p), { id, name: colTypeName(k), type: k, ...(k === "select" ? { opts: [] } : {}) }] })); setNewCol(id); } })) : null,
         /* 並び替え（8.0.0 で作り直し）：上で「どの列で」を1つ選び、下で「どちら向きに」を選ぶ。選んだその場で表が並ぶ。
            「初期に戻す」＝足した順（新しいものが上） */
         sortOpen ? ce(SheetDialog, { title: "並び替え", onCancel: () => setSortOpen(false), hideConfirm: true, closeLabel: "完了", closePrimary: true,
@@ -31363,7 +31422,8 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
     const flat = planOrdered(plan);
     const P = planPeriod(plan, S);
     const goal = ce("div", { className: "ft-goal", style: { borderColor: color.line } },
-        ce(TextArea, { bare: true, value: plan.note || "", onChange: (e) => patch((p) => ({ ...p, note: e.target.value })), minRows: 1, rows: 1, placeholder: "ゴール", className: "ft-goal-in" }),
+        /* ゴール：1行目は見出しの大きさ、改行した2行目からはふつうの字（iPhone の「メモ」と同じ。8.1.0〜。NoteField） */
+        ce(NoteField, { value: plan.note || "", onChange: (v) => patch((p) => ({ ...p, note: v })), placeholder: "ゴール", headLabel: "ゴール", bodyPlaceholder: "くわしく", className: "goal", noGrip: true }),
         ce("div", { className: "ft-goal-when" },
             P && !plan.doneAt ? ce("span", { className: "ft-goal-left", style: { color: P.left < 0 ? "#BE123C" : color.deep } },
                 P.left === 0 ? ce("b", { className: "w" }, "今日まで") : ce(react_1.default.Fragment, null, ce("small", null, P.left < 0 ? "" : "あと"), ce("b", null, Math.abs(P.left)), ce("small", null, P.left < 0 ? "日過ぎ" : "日"))) : null,
@@ -31381,10 +31441,18 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
         arrange ? null : ce("div", { className: "ft-padd" }, ce(CollAddBox, { color: color, onAdd: addTask, placeholder: "リストを追加" })),
         askItemNode);
     const ev = planEvents(plan).length ? ce(PlanEvents, { plan, color, patch }) : null;
-    const fin = !plan.doneAt ? ce("button", { type: "button", onClick: onDone, className: "ft-pfin ft-tap", style: { color: color.deep, borderColor: color.line } }, ce(lucide_react_1.Check, { size: 16 }), "達成した") : null;
+    /* 8.1.0〜 「達成」は、名前の右（いつも見える場所）。下に置くと、記録が多いときに見つからなかった */
+    const fin = !plan.doneAt ? ce("button", { type: "button", onClick: onDone, className: "ft-pfin2 ft-tap", style: { color: color.deep, borderColor: color.line } }, ce(lucide_react_1.Check, { size: 16, strokeWidth: 2.6 }), "達成") : null;
+    const heroF = ce("div", { className: "ft-phero" }, ...react_1.default.Children.toArray(hero.props.children), fin);
+    /* 関連する記録（8.1.0〜）。横長では右の列、ここだけで送れる（Today の右と同じ形） */
+    const recs = ce("div", { className: "ft-period ft-precol" },
+        ce("div", { className: "ft-sechd" }, ce("span", { className: "fs-label font-bold" }, "関連する記録"), ce("i", null), S.recs.length ? ce("span", { className: "fs-caption text-neutral-400 tabular-nums" }, S.recs.length) : null),
+        S.recs.length ? ce("div", { className: CARD_LIST }, S.recs.map((r) => ce(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true }))) : ce("p", { className: "ft-empty-s" }, "まだありません"));
+    /* 横長（8.1.0〜）：上に名前（と達成）、その下を Today と同じ割り方（左＝ゴール → リスト、右＝関連する記録）。
+       左右はそれぞれで送れる。**左の枠（ゴール）と右の見出しの線の上を、同じ高さから始めること** */
     if (wide)
-        return ce("div", null, hero, ce("div", { className: "ft-planwide" }, ce("div", null, goal, ev, linked, fin), ce("div", null, todo)));
-    return ce("div", null, hero, goal, todo, ev, linked, fin);
+        return ce("div", { className: "ft-psplit" }, heroF, ce("div", { className: "ft-wsplit" }, ce("div", { className: "ft-wmain list" }, goal, todo, ev), ce("div", { className: "ft-wside" }, recs)));
+    return ce("div", null, heroF, goal, todo, ev, recs);
 }
 /* その日にやると決めた計画のやること・手順（Today の「やること」に、計画ごとの札で出る）。
    その日が「いつまでに」の計画も、ここに出す（3.0.0〜。週・月のマスにも同じものが出る） */
@@ -31394,7 +31462,7 @@ function planDayTasks(plans, date) {
     const slot = (p) => { if (!m.has(p.id))
         m.set(p.id, { p, items: [] }); return m.get(p.id); };
     /* 計画が持つ予定（5.0.0〜）。印は付けない（ev） */
-    (plans || []).filter((p) => !p.doneAt).forEach((p) => planEvents(p).forEach((e) => { if (e.date === date)
+    (plans || []).filter(planOnCal).forEach((p) => planEvents(p).forEach((e) => { if (e.date === date)
         slot(p).items.push({ id: e.id, text: e.title || "（名前なし）", ev: true }); }));
     planDayItems(plans, date).forEach((x) => slot(x.p).items.push({ id: x.t.id, text: x.label, done: !!x.t.done }));
     return [...m.values()];
