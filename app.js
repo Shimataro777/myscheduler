@@ -19034,7 +19034,9 @@ async function syncDecoPhotos(getter) {
         const src = typeof getter === "function" ? getter() : getter;
         if (!src)
             return;
-        const ids = collectPhotoRefs({ prefs: src.prefs, folders: src.folders, plans: src.plans });
+        /* 計画は、アイコンなど計画そのものの絵だけ（9.0.0〜）。コレクションの画像の列（todo の中）は控えに写さない
+           （数が多くなりうるので、表示設定と同じ置き場に入れると端末の保存できる量を食う。片づけでは使用中として数えられる） */
+        const ids = collectPhotoRefs({ prefs: src.prefs, folders: src.folders, plans: (src.plans || []).map((p) => (p && typeof p === "object" ? { ...p, todo: undefined } : p)) });
         let before = await loadDecoPhotos();
         const next = {};
         const missing = [];
@@ -20870,7 +20872,8 @@ function useLockBackground() {
     /* 最後の歯止め（8.1.1〜）：キーボードぶんの場所を空けたまま、打つ欄もキーボードも無いのに残っていたら、
        次に画面に触れた時点で外す（打っていた欄が画面ごと消えたときなどは、focusout が来ないことがある） */
     document.addEventListener("touchstart", () => {
-        if ((shown > 0 || root.hasAttribute("data-ft-kbfix") || ctx) && !pending && !isTyping(document.activeElement) && !isProxy(document.activeElement) && rawKb() < 60)
+        /* キーボードの高さ（rawKb）は見ない：打つ欄にフォーカスが無ければ、画面のキーボードは出ていられない */
+        if ((shown > 0 || root.hasAttribute("data-ft-kbfix") || ctx) && !pending && !isTyping(document.activeElement) && !isProxy(document.activeElement))
             releaseKb();
     }, { passive: true, capture: true });
     document.addEventListener("touchend", tgEnd, { passive: true, capture: true });
@@ -21208,6 +21211,16 @@ function useLockBackground() {
             if (Math.abs(y - overlayLockY) > 1)
                 window.scrollTo(0, overlayLockY);
         }
+        /* iOS がキーボードを閉じたあと、画面の高さを古いまま（短いまま）にしていることがある。
+           1px 送って戻し、画面の大きさを測り直させる（9.0.0〜） */
+        requestAnimationFrame(() => {
+            try {
+                const y = window.scrollY || document.documentElement.scrollTop || 0;
+                window.scrollTo(0, y + 1);
+                window.scrollTo(0, y);
+            }
+            catch (e) { /* noop */ }
+        });
     };
     /* ---- キーボードを閉じたのに、下が白いまま残る（8.1.1〜） ----
        起きていたこと（iPhone 実機）：入力を終えてキーボードを閉じると、キーボードのあった辺りが真っ白のまま残った。
@@ -24735,7 +24748,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
    ============================================================ */
 const ZOOM_MAX = 5;
 const ZOOM_TAP = 2.5;
-function PhotoViewer({ images, index, onClose }) {
+function PhotoViewer({ images, index, onClose, actions }) {
     const list = images || [];
     const last = Math.max(0, list.length - 1);
     const [i, setI] = (0, react_1.useState)(Math.min(Math.max(0, index || 0), last));
@@ -25141,7 +25154,9 @@ function PhotoViewer({ images, index, onClose }) {
                         i + 1,
                         " / ",
                         list.length))),
-                list.length > 1 && (react_1.default.createElement("div", { className: "absolute left-0 right-0 bottom-0 flex items-center justify-center gap-1.5 pointer-events-auto", style: { paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)", paddingTop: 12 } }, list.map((_, k) => (react_1.default.createElement("button", { key: k, type: "button", "aria-label": `${k + 1}枚目`, onClick: () => goto(k), className: "w-6 h-6 flex items-center justify-center" },
+                /* 下のボタン（9.0.0〜。コレクションの画像の列の「差し替える・削除」）。渡したときだけ */
+                actions && actions.length ? react_1.default.createElement("div", { className: "ft-pv-acts pointer-events-auto" }, actions.map((a) => react_1.default.createElement("button", { key: a.label, type: "button", onClick: a.onTap, className: "ft-tap" + (a.danger ? " danger" : "") }, a.icon || null, a.label))) : null,
+                !(actions && actions.length) && list.length > 1 && (react_1.default.createElement("div", { className: "absolute left-0 right-0 bottom-0 flex items-center justify-center gap-1.5 pointer-events-auto", style: { paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)", paddingTop: 12 } }, list.map((_, k) => (react_1.default.createElement("button", { key: k, type: "button", "aria-label": `${k + 1}枚目`, onClick: () => goto(k), className: "w-6 h-6 flex items-center justify-center" },
                     react_1.default.createElement("span", { className: "rounded-full block", style: { width: 6, height: 6, background: k === i ? "#FFFFFF" : "rgba(255,255,255,.35)" } })))))),
                 zoomed && (react_1.default.createElement("div", { className: "absolute left-0 right-0 flex justify-center pointer-events-auto", style: { bottom: "calc(env(safe-area-inset-bottom) + 56px)" } },
                     react_1.default.createElement("button", { type: "button", onClick: () => { resetZoom(); apply(true); }, className: "min-h-[44px] px-4 rounded-full fs-body-sm font-bold text-white ft-tap", style: { background: "rgba(255,255,255,.18)" } }, "\u3082\u3068\u306E\u5927\u304D\u3055")))))));
@@ -30735,11 +30750,32 @@ function NoteField({ value, onChange, h, onH, placeholder = "メモ", className,
             headRef.current.focus();
         }
         catch (e) { /* noop */ } }, []); // eslint-disable-line
-    const focusAt = (ref, pos) => requestAnimationFrame(() => { const el = ref.current; if (!el)
-        return; el.focus(); try {
-        el.setSelectionRange(pos, pos);
-    }
-    catch (e) { /* noop */ } });
+    /* 欄を移るのは、描き直した直後（useLayoutEffect）に（9.0.0〜）。
+       requestAnimationFrame を待つと、改行した直後にすぐ打った字が、まだ見出しの欄に入ってしまった
+       （「見出し本\n文」のように、本文の1字目が見出しに残る） */
+    const jumpRef = (0, react_1.useRef)(null);
+    const applyJump = () => {
+        const j = jumpRef.current;
+        if (!j)
+            return;
+        const el = j.ref.current;
+        if (!el)
+            return;
+        jumpRef.current = null;
+        try {
+            el.focus({ preventScroll: true });
+        }
+        catch (e) {
+            el.focus();
+        }
+        try {
+            el.setSelectionRange(j.pos, j.pos);
+        }
+        catch (e) { /* noop */ }
+    };
+    /* 描き直しが起きないとき（欄の外の余白を押した）は、次のこまで */
+    const focusAt = (ref, pos) => { jumpRef.current = { ref, pos }; requestAnimationFrame(applyJump); };
+    (0, react_1.useLayoutEffect)(applyJump);
     const composing = (e) => e.nativeEvent.isComposing || e.keyCode === 229;
     const onHeadKey = (e) => {
         if (e.key !== "Enter" || composing(e))
@@ -30811,7 +30847,7 @@ function PlanTaskRow({ t, color, onPatch, onRemove, onChecked, just }) {
            どの札にも空の「追加」「メモ」の欄が2段ずつ並んで、リストが読みにくかった */
         (sub.length || openSub || hasNote || openNote) ? ce("div", { className: "ft-scard-body" },
             sub.length || openSub ? ce(MiniList, { items: sub, onChange: setSub, color, placeholder: "手順を追加", auto: openSub && !sub.length }) : null,
-            hasNote || openNote ? ce(NoteField, { value: t.note || "", onChange: (v) => onPatch({ note: v }), h: t.noteH, onH: (x) => onPatch({ noteH: x }), auto: openNote && !hasNote }) : null) : null,
+            hasNote || openNote ? ce(NoteField, { value: t.note || "", onChange: (v) => onPatch({ note: v }), h: t.noteH, onH: (x) => onPatch({ noteH: x }), auto: openNote && !hasNote, className: "plain", headLabel: "メモ" }) : null) : null,
         !t.done && ((!sub.length && !openSub) || (!hasNote && !openNote)) ? ce("div", { className: "ft-scard-more" },
             !sub.length && !openSub ? ce("button", { type: "button", onClick: () => setOpenSub(true), className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 13 }), "手順") : null,
             !hasNote && !openNote ? ce("button", { type: "button", onClick: () => setOpenNote(true), className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 13 }), "メモ") : null) : null,
@@ -30938,7 +30974,7 @@ function PlanRoad({ plan, S, color }) {
    ・並び：plan.sort ＝ { col, dir }。無ければ足した順（新しいものが上）。**並びかえても todo の順は書きかえない**（見せ方だけ）
    ・縦長（幅 700px 未満）は1行＝1枚の札、広い画面は表
    ============================================================ */
-const COL_TYPES = [["text", "テキスト"], ["select", "選択肢"], ["star", "星"], ["date", "日付"], ["check", "チェック"], ["number", "数"], ["steps", "リスト"], ["url", "リンク"]];
+const COL_TYPES = [["text", "テキスト"], ["select", "選択肢"], ["image", "画像"], ["star", "星"], ["date", "日付"], ["check", "チェック"], ["number", "数"], ["steps", "リスト"], ["url", "リンク"]];
 /* 選択肢の列（8.0.0〜）。列が c.opts ＝ [{ id, label }] を持ち、行の値は選んだ選択肢の id（t.v[列の id]）。
    **値に字を入れないこと。** 選択肢の名前を直したとき、どの行にもそのまま効くように id で持つ。
    消した選択肢を指している行は「未選択」として扱う（値は消さない）。色は選択肢の並び順で決まる */
@@ -31000,6 +31036,8 @@ function colGet(t, c) {
     const v = t.v ? t.v[c.id] : undefined;
     if (c.type === "select")
         return typeof v === "string" && optIndex(c, v) >= 0 ? v : "";
+    if (c.type === "image")
+        return typeof v === "string" ? v : "";
     return c.type === "check" ? !!v : c.type === "star" ? Number(v) || 0 : c.type === "steps" ? stepsOf(v) : v == null || Array.isArray(v) ? "" : v;
 }
 function colSet(t, c, val) {
@@ -31037,6 +31075,8 @@ function colCompare(c, dir) {
         let r;
         if (c.type === "select")
             r = optIndex(c, x) - optIndex(c, y);
+        else if (c.type === "image")
+            r = 0;
         else if (c.type === "number" || c.type === "star")
             r = (Number(x) || 0) - (Number(y) || 0);
         else if (c.type === "check")
@@ -31103,10 +31143,53 @@ function OptEditor({ c, onChange, askDel }) {
             ce(DragHandle, handleProps(o.id)))),
         ce(PlanAddRow, { small: true, onAdd: (text) => onChange(latest.current = [...latest.current, ...String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean).map((label) => ({ id: "o" + uid(), label }))]), placeholder: "選択肢を追加" }));
 }
+/* 画像のマス（9.0.0〜）。1つのマスに1枚。
+   ・ふだんはアイコンくらいの大きさ。押すと大きく見る（PhotoViewer。下に「差し替える」「削除」）
+   ・空のときは点線の「＋」。押すと端末の写真をえらぶ
+   ・絵は記録の写真と同じ置き場（photoPut、長辺 720px）に入れ、マスには「photo:番号」だけを持つ。
+     **マスに絵そのもの（data URL）を入れないこと。** 計画は Google 連携で丸ごと送るので重くなる */
+function ImgColCell({ value, onChange, size = 40, plus, label }) {
+    const ce = react_1.default.createElement;
+    const fileRef = (0, react_1.useRef)(null);
+    const [view, setView] = (0, react_1.useState)(false);
+    const [busy, setBusy] = (0, react_1.useState)(false);
+    const [askDel, askNode] = useAskDel();
+    const open = () => { if (fileRef.current) {
+        fileRef.current.value = "";
+        fileRef.current.click();
+    } };
+    const pick = async (f) => {
+        if (!f)
+            return;
+        setBusy(true);
+        try {
+            const d = await shrinkImage(f);
+            const id = "ph_" + uid();
+            const res = await photoPut(id, d);
+            onChange(res === null ? d : "photo:" + id);
+        }
+        catch (e) { /* 読めない画像は入れない */ }
+        finally {
+            setBusy(false);
+        }
+    };
+    const box = { width: size, height: size };
+    return ce("span", { className: "ft-cimg", onClick: (e) => e.stopPropagation() },
+        ce("input", { ref: fileRef, type: "file", accept: "image/*", style: { position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }, onChange: (e) => pick(e.target.files && e.target.files[0]) }),
+        value ? ce("button", { type: "button", onClick: () => setView(true), "aria-label": (label || "画像") + "を大きく見る", className: "ft-cimg-th ft-tap", style: box }, ce(Photo, { src: value, className: "block w-full h-full", style: { objectFit: "cover" } }))
+            : ce("button", { type: "button", onClick: open, disabled: busy, "aria-label": (label || "画像") + "を追加", className: "ft-cimg-add ft-tap" + (plus ? " plus" : ""), style: plus ? undefined : box }, busy ? ce(Spinner, { size: 14 }) : ce(lucide_react_1.Plus, { size: plus ? 11 : 16 }), plus ? label : null),
+        view && value ? ce(PhotoViewer, { images: [value], index: 0, onClose: () => setView(false), actions: [
+                { label: "差し替える", icon: ce(lucide_react_1.Image, { size: 17 }), onTap: () => { setView(false); setTimeout(open, 60); } },
+                { label: "削除", danger: true, icon: ce(lucide_react_1.Trash2, { size: 17 }), onTap: () => { setView(false); askDel("この画像を削除しますか", () => onChange("")); } },
+            ] }) : null,
+        askNode);
+}
 function CollCell({ t, c, color, onPatch, bare, auto }) {
     const ce = react_1.default.createElement;
     const v = colGet(t, c);
     const set = (val) => onPatch(colSet(t, c, val));
+    if (c.type === "image")
+        return ce(ImgColCell, { value: v, onChange: set, size: bare ? 40 : 72, label: c.name });
     if (c.type === "select")
         return ce(OptSelect, { c, value: v, onChange: set });
     if (c.type === "check")
@@ -31167,7 +31250,7 @@ function collLine(t, c, color, onPatch, force) {
    左から：えらぶ丸（まとめて削除）・種類のしるし・名前（その場で直す）・種類（押すと変える）・つまみ。
    選択肢の列は、行の下に「選択肢」の札。押すと、その場で選択肢を直す欄が開く（選択肢がまだ無い列は、はじめから開いておく） */
 const colTypeIcon = (type, size = 15) => {
-    const I = { text: lucide_react_1.Type, select: lucide_react_1.CircleDotDown, star: lucide_react_1.Star, date: lucide_react_1.CalendarDays, check: lucide_react_1.SquareCheck, number: lucide_react_1.Hash, steps: lucide_react_1.ListTodo, url: lucide_react_1.Link }[type] || lucide_react_1.Type;
+    const I = { image: lucide_react_1.Image, text: lucide_react_1.Type, select: lucide_react_1.CircleDotDown, star: lucide_react_1.Star, date: lucide_react_1.CalendarDays, check: lucide_react_1.SquareCheck, number: lucide_react_1.Hash, steps: lucide_react_1.ListTodo, url: lucide_react_1.Link }[type] || lucide_react_1.Type;
     return react_1.default.createElement(I, { size });
 };
 const colTypeName = (type) => (COL_TYPES.find((x) => x[0] === type) || [])[1] || "";
@@ -31181,6 +31264,8 @@ function colTypeSample(type) {
         return ce("span", { className: "ft-ctype-s star" }, "★★★", ce("em", null, "★★"));
     if (type === "check")
         return ce("span", { className: "ft-ctype-s" }, "済み・未");
+    if (type === "image")
+        return ce("span", { className: "ft-ctype-s" }, "写真を1枚");
     if (type === "date")
         return ce("span", { className: "ft-ctype-s" }, "11/17");
     if (type === "number")
@@ -31274,12 +31359,21 @@ function CollTable({ plan, color, patch }) {
     const sortCol = sort ? [nameC, ...cols].find((c) => c.id === sort.col) : null;
     /* 絞り込み（6.1.0〜）。名前と、字の列に当てる。たくさん入れても、目当ての行をすぐ出せる */
     const [fq, setFq] = (0, react_1.useState)("");
+    const [frozen, setFrozen] = (0, react_1.useState)(null);
+    const lastRows = (0, react_1.useRef)([]);
+    const isEditField = (el) => !!(el && el.closest && el.closest(".ft-ctbl, .ft-ccards") && (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && !/^(checkbox|radio|file|button)$/i.test(el.type || ""))));
     const rows = (0, react_1.useMemo)(() => {
         const w = searchWords(fq);
         const hit = (t) => { const text = [t.text, ...cols.filter((c) => c.type === "text" || c.type === "url" || c.type === "select").map((c) => (c.type === "select" ? optLabel(c, colGet(t, c)) : colGet(t, c)))].join("\n").toLowerCase(); return w.every((x) => text.includes(x)); };
         const base = w.length ? todo.filter(hit) : todo;
-        return sortCol ? base.slice().sort(colCompare(sortCol, sort.dir)) : base;
-    }, [todo, sortCol, sort && sort.dir, fq, cols]); // eslint-disable-line
+        const sorted = sortCol ? base.slice().sort(colCompare(sortCol, sort.dir)) : base;
+        /* 字を直しているあいだは、並びを止める（9.0.0〜）。名前順などで並べていると、1字打つたびに行が動き、
+           直している行が別の場所へ跳んで、ほかの行が消えたように見えた。欄から離れたら並べ直す */
+        if (!frozen)
+            return sorted;
+        const at = new Map(frozen.map((id, i) => [id, i]));
+        return sorted.slice().sort((a, b) => (at.has(a.id) ? at.get(a.id) : -1) - (at.has(b.id) ? at.get(b.id) : -1));
+    }, [todo, sortCol, sort && sort.dir, fq, cols, frozen]); // eslint-disable-line
     const setSort = (col, dir) => patch((p) => ({ ...p, sort: col ? { col, dir } : null }));
     /* 見出しを押したら、その列で並べる（同じ列をもう一度＝向きを逆に、3回め＝足した順へ） */
     const headTap = (c) => { if (!sort || sort.col !== c.id)
@@ -31306,14 +31400,14 @@ function CollTable({ plan, color, patch }) {
            幅は比率（fr）。自分で決めた幅（c.w / plan.nameW、ぜんたいを 100 とした割合）があればそれ、無ければ中身から決めためやす。
            決めるのは、見出しのさかいめをつまんで左右へ（5% きざみ。細かくしすぎると、表ごとに幅がばらばらになる） */
         const fit = (c, lo, hi, per) => Math.round(Math.max(lo, Math.min(hi, Math.max(emLen(c.name) * 13, ...todo.map((t) => emLen(colGet(t, c)) * per)) + 26)));
-        const autoW = (c) => (c.type === "check" ? 56 : c.type === "star" ? 128 : c.type === "date" ? 104 : c.type === "steps" ? Math.round(Math.max(150, Math.min(280, Math.max(emLen(c.name) * 13, ...todo.flatMap((t) => (colGet(t, c) || []).map((x) => emLen(x.text) * 14))) + 44))) : c.type === "select" ? Math.round(Math.max(96, Math.min(220, Math.max(emLen(c.name) * 13, ...todo.map((t) => emLen(optLabel(c, colGet(t, c))) * 13.5)) + 46))) : c.type === "number" ? fit(c, 72, 120, 9.5) : fit(c, 120, 300, 15.5));
+        const autoW = (c) => (c.type === "image" ? 72 : c.type === "check" ? 56 : c.type === "star" ? 128 : c.type === "date" ? 104 : c.type === "steps" ? Math.round(Math.max(150, Math.min(280, Math.max(emLen(c.name) * 13, ...todo.flatMap((t) => (colGet(t, c) || []).map((x) => emLen(x.text) * 14))) + 44))) : c.type === "select" ? Math.round(Math.max(96, Math.min(220, Math.max(emLen(c.name) * 13, ...todo.map((t) => emLen(optLabel(c, colGet(t, c))) * 13.5)) + 46))) : c.type === "number" ? fit(c, 72, 120, 9.5) : fit(c, 120, 300, 15.5));
         const sized = [nameC, ...rest];
         const custom = Number(plan.nameW) > 0 || rest.some((c) => Number(c.w) > 0);
         const autoAll = sized.map((c) => (c.id === "__name" ? Math.max(fit(nameC, 180, 360, 16) + 40, 260) : autoW(c)));
         const autoSum = autoAll.reduce((n, x) => n + x, 0) || 1;
         const pctOf = (c, i) => { const own = c.id === "__name" ? Number(plan.nameW) : Number(c.w); return custom && own > 0 ? own : (autoAll[i] / autoSum) * 100; };
         const pcts = colDrag ? colDrag.pcts : sized.map(pctOf);
-        const minPx = (c) => (c.type === "star" ? 112 : c.type === "check" ? 44 : c.type === "date" ? 84 : 0);
+        const minPx = (c) => (c.type === "image" ? 56 : c.type === "star" ? 112 : c.type === "check" ? 44 : c.type === "date" ? 84 : 0);
         const tpl = [lead ? "52px" : null, ...sized.map((c, i) => `minmax(${minPx(c)}px,${Math.max(1, pcts[i]).toFixed(2)}fr)`)].filter(Boolean).join(" ");
         /* さかいめをつまむ。i ＝ 左の列（sized の番号）。左と右の2列のあいだで、幅をやりとりする */
         const grip = (i) => ce("span", { className: "ft-ctbl-grip", "aria-hidden": true, onClick: (e) => e.stopPropagation(), onPointerDown: (e) => {
@@ -31359,7 +31453,7 @@ function CollTable({ plan, color, patch }) {
                 window.addEventListener("pointercancel", up);
             } }, ce("i", null));
         const hd = (c, i) => ce("div", { key: c.id, className: "ft-ctbl-hw" + (i == null ? " lead" : "") + (colDrag && (colDrag.i === i || colDrag.i + 1 === i) ? " drag" : "") },
-            ce("button", { type: "button", onClick: () => headTap(c), className: "ft-ctbl-h ft-tap" + (c.type === "check" || c.type === "star" || c.type === "date" ? " c" : c.type === "number" ? " r" : "") }, ce("span", null, c.name), arrow(c)),
+            ce("button", { type: "button", onClick: () => headTap(c), className: "ft-ctbl-h ft-tap" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "image" ? " c" : c.type === "number" ? " r" : "") }, ce("span", null, c.name), arrow(c)),
             i != null && i < sized.length - 1 ? grip(i) : null);
         body = ce("div", { className: "ft-ctbl-wrap" }, ce("div", { className: "ft-ctbl", style: { gridTemplateColumns: tpl } },
             lead ? hd(lead, null) : null, hd(nameC, 0), rest.map((c, k) => hd(c, k + 1)),
@@ -31367,7 +31461,7 @@ function CollTable({ plan, color, patch }) {
                 lead ? ce("div", { className: "ft-ctbl-c c" }, ce(CollCell, { t, c: lead, color, onPatch: (d) => patchRow(t.id, d), bare: true })) : null,
                 /* 行を開く ＞ は、名前のマスの右はし（表を横へ送っても、いつも見える場所） */
                 ce("div", { className: "ft-ctbl-c name" + (lead && colGet(t, lead) ? " dim" : "") }, nameCell(t), moreBtn(t)),
-                rest.map((c) => ce("div", { key: c.id, className: "ft-ctbl-c" + (c.type === "check" || c.type === "star" || c.type === "date" ? " c" : c.type === "select" ? " opt" : c.type === "steps" ? " st" : " in") + (c.type === "steps" ? " tap" : ""), onClick: c.type === "steps" ? () => setRowOpen(t.id) : undefined }, ce(CollCell, { t, c, color, onPatch: (d) => patchRow(t.id, d), bare: true })))))));
+                rest.map((c) => ce("div", { key: c.id, className: "ft-ctbl-c" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "image" ? " c" : c.type === "select" ? " opt" : c.type === "steps" ? " st" : " in") + (c.type === "steps" ? " tap" : ""), onClick: c.type === "steps" ? () => setRowOpen(t.id) : undefined }, ce(CollCell, { t, c, color, onPatch: (d) => patchRow(t.id, d), bare: true })))))));
     }
     else {
         /* 縦長：1行＝1枚の札。上の段＝印と名前、下の段＝ほかの列（星はその場で付けられる。ほかは読むだけ → 札を押すと紙で直す） */
@@ -31382,15 +31476,20 @@ function CollTable({ plan, color, patch }) {
                     moreBtn(t)),
                 lines.length || blanks.length ? ce("div", { className: "ft-ccard2-sub" + (lead ? " ind" : "") },
                     lines,
-                    blanks.length ? ce("div", { className: "ft-cblanks" }, blanks.map((c) => c.type === "select"
+                    blanks.length ? ce("div", { className: "ft-cblanks" }, blanks.map((c) => c.type === "image"
+                        ? ce(ImgColCell, { key: c.id, value: "", onChange: (v) => patchRow(t.id, colSet(t, c, v)), plus: true, label: c.name })
+                        : c.type === "select"
                         ? ce(OptSelect, { key: c.id, c, value: "", onChange: (v) => patchRow(t.id, colSet(t, c, v)), placeholder: c.name, plus: true, className: "blank" })
                         : c.type === "date"
                         ? ce(DateTap, { key: c.id, value: "", onChange: (v) => patchRow(t.id, colSet(t, c, v)), label: c.name, className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 11 }), c.name)
                         : ce("button", { key: c.id, type: "button", onClick: () => setFOpen(t.id + ":" + c.id), className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 11 }), c.name))) : null) : null);
         }));
     }
+    lastRows.current = rows;
     const openRow = rowOpen ? todo.find((t) => t.id === rowOpen) : null;
-    return ce("div", { className: "ft-coll" },
+    return ce("div", { className: "ft-coll", onFocus: (e) => { if (isEditField(e.target) && !frozen && sortCol)
+            setFrozen(lastRows.current.map((t) => t.id)); }, onBlur: (e) => { if (frozen && !isEditField(e.relatedTarget))
+            setFrozen(null); } },
         ce(TextArea, { bare: true, value: plan.memo || "", onChange: (e) => patch((p) => ({ ...p, memo: e.target.value })), minRows: 1, rows: 1, placeholder: "メモ", className: "ft-cmemo" }),
         ce(CollAddBox, { color: color, onAdd: add, placeholder: "書いて Enter で追加" }),
         tools, body,
@@ -31408,7 +31507,7 @@ function CollTable({ plan, color, patch }) {
             ce(TextArea, { value: openRow.text, onChange: (e) => patchRow(openRow.id, { text: e.target.value.replace(/\n/g, " ") }), minRows: 1, rows: 1 }),
             /* よみ（7.11.0〜）。名前に漢字があるときだけ。名前順・「あ→ん」に使う */
             ce(YomiField, { name: openRow.text, value: (YOMI.names && YOMI.names[String(openRow.text || "").trim()]) || "", onChange: (v) => setNameYomi(openRow.text, v) }),
-            cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) })))) : null,
+            cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" || c.type === "image" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) })))) : null,
         askNode,
         colOpen ? ce(SheetDialog, { title: "列の設定", onCancel: () => { setColOpen(false); setColSel([]); setNewCol(""); }, hideConfirm: true, closeLabel: "完了", closePrimary: true,
             /* 初期に戻す（8.0.0〜）：自分で変えた列の幅を、中身から決める幅へ戻す。変えていないときは押せない */
@@ -31437,7 +31536,7 @@ function CollTable({ plan, color, patch }) {
             leftBtn: ce("button", { type: "button", disabled: !sort, onClick: () => setSort(null), className: "ft-sreset ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 16 }), "初期に戻す") },
             ce("p", { className: "ft-psheet-k first" }, "並べる列"),
             ce("div", { className: "ft-sopts", role: "radiogroup", "aria-label": "並べる列" },
-                [{ id: "", name: "足した順", sub: "初期" }, nameC, ...cols].map((c) => { const on = c.id ? !!sort && sort.col === c.id : !sort; return ce("button", { key: c.id || "__add", type: "button", role: "radio", "aria-checked": on, onClick: () => (c.id ? (on ? null : setSort(c.id, sortDefaultDir(c))) : setSort(null)), className: "ft-sopt ft-tap" + (on ? " on" : "") },
+                [{ id: "", name: "足した順", sub: "初期" }, nameC, ...cols.filter((c) => c.type !== "image")].map((c) => { const on = c.id ? !!sort && sort.col === c.id : !sort; return ce("button", { key: c.id || "__add", type: "button", role: "radio", "aria-checked": on, onClick: () => (c.id ? (on ? null : setSort(c.id, sortDefaultDir(c))) : setSort(null)), className: "ft-sopt ft-tap" + (on ? " on" : "") },
                     ce("span", { className: "ft-sopt-r", style: on ? { borderColor: color.deep } : undefined }, on ? ce("i", { style: { background: color.deep } }) : null),
                     ce("span", { className: "ft-sopt-ic", "aria-hidden": true }, c.id ? colTypeIcon(c.type) : ce(lucide_react_1.Clock, { size: 15 })),
                     ce("span", { className: "ft-sopt-t" }, c.name),

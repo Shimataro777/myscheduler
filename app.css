@@ -1860,3 +1860,21 @@ button.ft-ccell-date{border:0}
 /* 計画のリストの札：まだ無い手順・メモは小さな札で */
 .ft-scard-more{display:flex;gap:6px;margin:6px 0 0 34px}
 .ft-scard-more button{display:inline-flex;align-items:center;gap:3px;min-height:30px;padding:0 11px;border-radius:999px;background:#F3F5F7;color:#6B7883;font-size:calc(12px * var(--ft-scale));font-weight:700}
+
+/* ============================================================
+   9.0.0：画像の列・計画のリストのメモ（ふつうの字）
+   ============================================================ */
+.ft-cimg{position:relative;display:inline-flex;align-items:center;vertical-align:middle}
+.ft-cimg-th{display:block;border-radius:10px;overflow:hidden;background:#EEF1F3;box-shadow:0 0 0 1px rgba(0,0,0,.06) inset}
+.ft-cimg-th img{pointer-events:none}
+.ft-cimg-add{display:grid;place-items:center;border-radius:10px;border:1.5px dashed #C3CDD5;color:#8A949C;background:#fff}
+.ft-cimg-add.plus{display:inline-flex;align-items:center;gap:2px;min-height:30px;padding:0 10px;border-radius:999px;border-width:1px;font-size:calc(12px * var(--ft-scale));font-weight:700;color:#6B7883}
+.ft-cline > .ft-cimg{justify-self:start}
+.ft-pv-acts{position:absolute;left:0;right:0;bottom:0;display:flex;gap:10px;padding:12px 16px calc(env(safe-area-inset-bottom) + 16px);justify-content:center}
+.ft-pv-acts button{flex:1;max-width:220px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;border-radius:14px;background:rgba(255,255,255,.16);color:#fff;font-weight:700;font-size:calc(14.5px * var(--ft-scale))}
+.ft-pv-acts button.danger{background:rgba(229,72,77,.22);color:#FF8A8F}
+/* 計画のリストの札のメモ：1行目も本文と同じ字（見出しにしない）。ゴールの欄だけが見出しの形 */
+.ft-nf.plain .ft-nf-h{font-size:max(16px, calc(14.5px * var(--ft-scale)));font-weight:400;line-height:1.65;color:#3D4A53}
+.ft-nf.plain .ft-nf-h::placeholder{font-size:max(16px, calc(14px * var(--ft-scale)))}
+.ft-nf.plain .ft-nf-b{margin-top:0}
+.ft-cblanks .ft-cimg{border:0;padding:0;min-height:0;background:none}
