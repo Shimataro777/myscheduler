@@ -1878,3 +1878,39 @@ button.ft-ccell-date{border:0}
 .ft-nf.plain .ft-nf-h::placeholder{font-size:max(16px, calc(14px * var(--ft-scale)))}
 .ft-nf.plain .ft-nf-b{margin-top:0}
 .ft-cblanks .ft-cimg{border:0;padding:0;min-height:0;background:none}
+
+/* ============================================================
+   9.1.0：列の設定の紙（固定の列・種類は名前だけ・選択肢はリストと同じ形）・紙の下の帯
+   ============================================================ */
+.ft-ctypes{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.ft-ctype{flex-direction:column;justify-content:center;gap:4px;min-height:64px;padding:8px 4px;text-align:center}
+.ft-ctype-t{font-size:calc(12.5px * var(--ft-scale));font-weight:700;color:#26323A;line-height:1.2}
+.ft-ctype-ic{width:30px;height:30px;border-radius:9px}
+.ft-ccol-tpick .ft-ctypes{grid-template-columns:repeat(4,minmax(0,1fr))}
+.ft-ccol-tpick .ft-ctype{min-height:56px;padding:6px 2px}
+.ft-ccol-tpick{margin:0 0 12px 0}
+/* 見出しの右の「初期に戻す」（紙の下の帯には置かない） */
+.ft-shead{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:14px 0 6px}
+.ft-shead.first{margin-top:0}
+.ft-shead .ft-psheet-k{margin:0}
+.ft-sreset2{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:0 10px;margin-right:-6px;border-radius:999px;color:var(--th-800,#3E7EA6);font-size:calc(12.5px * var(--ft-scale));font-weight:700}
+/* 固定の列 */
+.ft-ccolw.fixed-row{background:#FAFBFC}
+.ft-ccolw.fixed-row:first-child{border-top-left-radius:13px;border-top-right-radius:13px}
+.ft-ccols{padding:0;overflow:hidden}
+.ft-ccolw .ft-ccol{padding:0 12px}
+.ft-ccol-fix{flex:none;width:40px;text-align:center;font-size:calc(11px * var(--ft-scale));font-weight:700;color:#8A949C}
+/* 選択肢：開け閉め（字は「選択肢 n」だけ） */
+.ft-copts-tg{display:flex;align-items:center;gap:6px;width:auto;min-height:36px;margin:-6px 0 6px 48px;padding:0 10px;border-radius:999px;background:#F3F5F7;color:#4B5A64}
+.ft-copts-tg b{font-size:calc(12.5px * var(--ft-scale));font-weight:700;color:#4B5A64}
+.ft-copts-tg span{font-size:calc(12.5px * var(--ft-scale));font-weight:700;color:#8A949C}
+.ft-copts-tg.on{background:var(--th-50,#EEF6FB)}
+/* 選択肢の一覧：リスト（MiniList）と同じ形 */
+.ft-copts.ft-mlist{margin:0 12px 10px 48px;padding:2px 4px 2px 10px;border-radius:12px;background:#F6F8FA}
+.ft-copts .ft-mlist-row{min-height:42px}
+.ft-copts .ft-copts-dot{flex:none;width:12px;height:12px;border-radius:50%;border:2px solid;margin:0 3px}
+.ft-copts .ft-mlist-row.add .ft-mlist-in{font-size:16px}
+/* まだ選択肢が無いとき：足す欄を色の枠で目立たせる（説明の字は置かない） */
+.ft-copts.empty{background:#fff;border:1.5px dashed var(--th-300,#9FCBE3)}
+.ft-copts.empty .ft-mlist-plus{color:var(--th-800,#3E7EA6)}
+.ft-copts.empty .ft-mlist-in::placeholder{color:var(--th-800,#3E7EA6);opacity:.75}

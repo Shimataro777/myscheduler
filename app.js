@@ -22797,9 +22797,12 @@ function SheetDialog({ title, children, onCancel, onConfirm, confirmLabel = "保
                送れないと中身（アイコンの一覧など）が切れる */
             react_1.default.createElement("div", { className: "ft-sheet-body overflow-y-auto px-4 py-4" }, children),
             react_1.default.createElement("div", { className: "flex gap-2 px-4 py-3 border-t border-neutral-200 shrink-0", style: SAFE_BOTTOM(12) },
-                /* leftBtn（7.3.2〜）：下の帯の左に置く手前のボタン（行を削除 など）。closeLabel / closePrimary：1つだけのボタンの字と色 */
+                /* leftBtn（7.3.2〜）：下の帯の左に置く手前のボタン。closeLabel / closePrimary：1つだけのボタンの字と色。
+                   ⚠️ 9.1.0〜 **下の帯の並びは、どの紙も「キャンセル（・削除）・決める」。** キャンセルの場所に、ほかの働き（初期に戻す など）を置かないこと。
+                   押しまちがえると取り返しがつかない。そういうボタンは中身の見出しの右（.ft-sreset2）へ */
                 leftBtn || null,
-                react_1.default.createElement("button", { type: "button", onClick: close, className: (closePrimary ? BTN_PRIMARY : BTN_SECONDARY) + (hideConfirm && !leftBtn ? " w-full " : " flex-1 ") + "btn-h-lg fs-subhead" }, hideConfirm ? (closeLabel || "閉じる") : "キャンセル"),
+                react_1.default.createElement("button", { type: "button", onClick: close, className: (closePrimary ? BTN_PRIMARY : BTN_SECONDARY) + (hideConfirm && !leftBtn ? " w-full " : " flex-1 ") + "btn-h-lg fs-subhead" }, /* 9.1.0〜 下の帯の左は、いつも「キャンセル」（「閉じる」と言い分けない。上の ✕ が閉じる） */
+                    hideConfirm ? (closeLabel || "キャンセル") : "キャンセル"),
                 /* midBtn（7.9.0〜）：キャンセルと保存のあいだ（記録の画面と同じ「キャンセル・削除・保存」の並び） */
                 midBtn || null,
                 !hideConfirm && (react_1.default.createElement("button", { type: "button", onClick: confirm, disabled: disabled, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" }, confirmLabel))))));
@@ -28062,7 +28065,7 @@ function SyncSheet({ launch, onClose, onOpenBackup }) {
                 note && react_1.default.createElement("p", { className: "fs-label gs-tone-warn mt-2 text-center" }, note)),
             react_1.default.createElement("div", { className: "shrink-0 px-4 pt-3 space-y-2", style: SAFE_BOTTOM(12) },
                 primary,
-                launch ? (react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" }, st.phase === "needsAuth" ? "あとで" : "閉じる")) : onOpenBackup ? (react_1.default.createElement("button", { type: "button", onClick: onOpenBackup, className: "w-full flex items-center justify-center gap-1 rounded-xl fs-body-sm font-bold text-neutral-500 ft-tap", style: { minHeight: 44 } },
+                launch ? (react_1.default.createElement("button", { type: "button", onClick: close, className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" }, st.phase === "needsAuth" ? "あとで" : "キャンセル")) : onOpenBackup ? (react_1.default.createElement("button", { type: "button", onClick: onOpenBackup, className: "w-full flex items-center justify-center gap-1 rounded-xl fs-body-sm font-bold text-neutral-500 ft-tap", style: { minHeight: 44 } },
                     "\u30D5\u30A1\u30A4\u30EB\u3067\u306E\u4FDD\u5B58\u30FB\u8AAD\u307F\u8FBC\u307F",
                     react_1.default.createElement(lucide_react_1.ChevronRight, { size: 16 }))) : null))));
 }
@@ -31124,24 +31127,37 @@ function OptSelect({ c, value, onChange, placeholder, plus, className }) {
             opts.map((o) => ce("option", { key: o.id, value: o.id }, o.label || "（名前なし）"))));
 }
 /* 選択肢の列の、選択肢を直す（列の設定の紙の中）。名前・つまんで並べ替え・削除・追加 */
-function OptEditor({ c, onChange, askDel }) {
+function OptEditor({ c, onChange, askDel, auto }) {
+    /* 選択肢を直す（9.1.0 で作り直し）。**記録のリスト・計画の手順（MiniList）と同じ形**：
+       行＝色の点・名前（その場で直す）・✕（確かめあり）・つまみ。いちばん下に「＋ 選択肢を追加」の欄（Enter・✓・欄から離れる で足す。続けて書ける）。
+       ・説明の字は置かない。選択肢がまだ無いときは、足す欄を色の枠で目立たせ、列を足した直後はそこにカーソルを入れる（auto） */
     const ce = react_1.default.createElement;
     const opts = optsOf(c);
-    /* 何行かまとめて貼ったとき、続けて足しても前のぶんが消えないように、いちばん新しい並びを覚えておく */
     const latest = (0, react_1.useRef)(opts);
     latest.current = opts;
+    const [draft, setDraft] = (0, react_1.useState)("");
     const { dragId, setRow, handleProps, rowStyle } = useReorder(opts, onChange);
-    return ce("div", { className: "ft-copts" },
-        opts.map((o, i) => ce("div", { key: o.id, ref: setRow(o.id), style: rowStyle(o.id), className: "ft-copts-r" + (dragId === o.id ? " drag" : "") },
+    const addMany = (list) => { const add = list.map((x) => String(x).trim()).filter(Boolean).map((label) => ({ id: "o" + uid(), label })); if (!add.length)
+        return; onChange(latest.current = [...latest.current, ...add]); };
+    const add = () => { if (!draft.trim())
+        return; addMany([draft]); setDraft(""); };
+    return ce("div", { className: "ft-copts ft-mlist" + (opts.length ? "" : " empty") },
+        opts.map((o, i) => ce("div", { key: o.id, ref: setRow(o.id), style: rowStyle(o.id), className: "ft-mlist-row" + (dragId === o.id ? " drag" : "") },
             ce("i", { className: "ft-copts-dot", style: { background: OPT_COLORS[i % OPT_COLORS.length][0], borderColor: OPT_COLORS[i % OPT_COLORS.length][1] } }),
-            ce("input", { defaultValue: o.label, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== o.label)
-                    onChange(opts.map((x) => (x.id === o.id ? { ...x, label: v } : x)));
-                else
-                    e.target.value = o.label; }, onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing)
-                    e.currentTarget.blur(); }, className: "ft-copts-in", "aria-label": "選択肢の名前" }),
-            ce("button", { type: "button", onClick: () => askDel(`「${o.label || "（名前なし）"}」を削除しますか`, () => onChange(optsOf(c).filter((x) => x.id !== o.id)), "この選択肢を選んでいた行は「未選択」になります。"), "aria-label": "削除", className: "ft-copts-x ft-tap" }, ce(lucide_react_1.X, { size: 16 })),
+            ce(AutoText, { value: o.label, onChange: (v) => onChange(optsOf(c).map((x) => (x.id === o.id ? { ...x, label: v } : x))), onBlur: () => { if (!String(o.label || "").trim())
+                    onChange(optsOf(c).filter((x) => x.id !== o.id)); }, className: "ft-mlist-in", label: "選択肢" }),
+            ce("button", { type: "button", onClick: () => askDel(`「${o.label || "（名前なし）"}」を削除しますか`, () => onChange(optsOf(c).filter((x) => x.id !== o.id)), "この選択肢を選んでいた行は「未選択」になります。"), "aria-label": "削除", className: "ft-mlist-x ft-tap" }, ce(lucide_react_1.X, { size: 16 })),
             ce(DragHandle, handleProps(o.id)))),
-        ce(PlanAddRow, { small: true, onAdd: (text) => onChange(latest.current = [...latest.current, ...String(text).split(/\n+/).map((s) => s.trim()).filter(Boolean).map((label) => ({ id: "o" + uid(), label }))]), placeholder: "選択肢を追加" }));
+        ce("div", { className: "ft-mlist-row add" },
+            ce("span", { className: "ft-mlist-plus" }, ce(lucide_react_1.Plus, { size: 15 })),
+            ce("input", { value: draft, autoFocus: !!auto, onChange: (e) => setDraft(e.target.value), onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                    e.preventDefault();
+                    add();
+                } }, onPaste: (e) => { const ls = pasteLines(e); if (ls) {
+                    e.preventDefault();
+                    addMany(ls);
+                } }, onBlur: add, placeholder: "選択肢を追加", enterKeyHint: "enter", "data-ft-stay": "", className: "ft-mlist-in", "aria-label": "選択肢を追加" }),
+            ce("button", { type: "button", onPointerDown: (e) => e.preventDefault(), onClick: add, disabled: !draft.trim(), "aria-label": "追加", className: "ft-mlist-ok ft-tap" }, ce(lucide_react_1.Check, { size: 18 }))));
 }
 /* 画像のマス（9.0.0〜）。1つのマスに1枚。
    ・ふだんはアイコンくらいの大きさ。押すと大きく見る（PhotoViewer。下に「差し替える」「削除」）
@@ -31280,49 +31296,54 @@ function ColTypeGrid({ value, onPick }) {
     const ce = react_1.default.createElement;
     return ce("div", { className: "ft-ctypes", role: "group", "aria-label": "列の種類" }, COL_TYPES.map(([k, l]) => ce("button", { key: k, type: "button", onClick: () => onPick(k), "aria-pressed": value === k, className: "ft-ctype ft-tap" + (value === k ? " on" : "") },
         ce("span", { className: "ft-ctype-ic", "aria-hidden": true }, colTypeIcon(k, 17)),
-        ce("span", { className: "ft-ctype-b" }, ce("b", null, l), colTypeSample(k)))));
+        /* 8.1.0〜9.0.0 は種類の下に入れる例（見本）を出していた。**出さないこと**（使い方を決めつけて見える、と言われてやめた） */
+        ce("b", { className: "ft-ctype-t" }, l))));
 }
-function ColRows({ cols, setCols, sel, setSel, askDel, focusId }) {
+/* 列の設定の紙の行（9.1.0 で直した）。
+   ・fixed ＝ 位置が決まっている列（いちばん左のチェック・名前の列）。つまみの代わりに「固定」
+   ・選択肢の列は、行の下に「選択肢 n」の開け閉め（開くと OptEditor）。選択肢がまだ無い列は開いた状態
+   ・足したばかりの列（focusId）は、名前の欄に入る。選択肢の列だけは、名前ではなく「選択肢を追加」の欄に入る（選択肢が無いと使えないため） */
+function ColRow({ c, patch, sel, setSel, askDel, focusId, fixed, nameOnly, drag }) {
     const ce = react_1.default.createElement;
-    const { dragId, setRow, handleProps, rowStyle } = useReorder(cols, setCols);
-    const patch = (id, d) => setCols(cols.map((c) => (c.id === id ? { ...c, ...d } : c)));
-    const [optOpen, setOptOpen] = (0, react_1.useState)(() => cols.filter((c) => c.type === "select" && !optsOf(c).length).map((c) => c.id));
-    /* 種類を変える札を開いている列 */
-    const [typeOpen, setTypeOpen] = (0, react_1.useState)("");
-    /* 足したばかりの列は、名前の欄に入って字をえらんだ状態にする（そのまま打てば名前が変わる） */
-    const nameRefs = (0, react_1.useRef)({});
-    (0, react_1.useEffect)(() => { const el = focusId && nameRefs.current[focusId]; if (el)
+    const isOpt = c.type === "select";
+    const [optOpen, setOptOpen] = (0, react_1.useState)(() => isOpt && !optsOf(c).length);
+    const [typeOpen, setTypeOpen] = (0, react_1.useState)(false);
+    (0, react_1.useEffect)(() => { if (isOpt && !optsOf(c).length)
+        setOptOpen(true); }, [c.type]); // eslint-disable-line
+    const nameRef = (0, react_1.useRef)(null);
+    (0, react_1.useEffect)(() => { const el = nameRef.current; if (focusId === c.id && !isOpt && el)
         requestAnimationFrame(() => { try {
             el.scrollIntoView({ block: "center", behavior: "smooth" });
             el.focus();
             el.select();
         }
-        catch (e) { /* noop */ } }); }, [focusId]);
-    /* 選択肢の列を新しく足したら（種類を変えたら）、選択肢の欄を開く */
-    (0, react_1.useEffect)(() => { const add = cols.filter((c) => c.type === "select" && !optsOf(c).length && !optOpen.includes(c.id)).map((c) => c.id); if (add.length)
-        setOptOpen((o) => [...o, ...add]); }, [cols]); // eslint-disable-line
-    return cols.map((c) => {
-        const isOpt = c.type === "select";
-        const open = isOpt && optOpen.includes(c.id);
-        return ce("div", { key: c.id, ref: setRow(c.id), style: rowStyle(c.id), className: "ft-ccolw" + (dragId === c.id ? " drag" : "") },
-            ce("div", { className: "ft-ccol" },
-                ce("button", { type: "button", onClick: () => setSel(sel.includes(c.id) ? sel.filter((x) => x !== c.id) : [...sel, c.id]), "aria-pressed": sel.includes(c.id), "aria-label": "えらぶ", className: "ft-ccol-pick ft-tap" + (sel.includes(c.id) ? " on" : "") }, sel.includes(c.id) ? ce(lucide_react_1.Check, { size: 13, strokeWidth: 3.5, color: "#fff" }) : null),
-                ce("span", { className: "ft-ccol-ic", "aria-hidden": true }, colTypeIcon(c.type)),
-                ce("input", { ref: (el) => { nameRefs.current[c.id] = el; }, defaultValue: c.name, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== c.name)
-                        patch(c.id, { name: v });
-                    else
-                        e.target.value = c.name; }, onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing)
-                        e.currentTarget.blur(); }, className: "ft-ccol-n", "aria-label": "列の名前" }),
-                c.id.startsWith("__") ? ce("span", { className: "ft-ccol-t" }, colTypeName(c.type))
-                    : ce("button", { type: "button", onClick: () => setTypeOpen(typeOpen === c.id ? "" : c.id), "aria-expanded": typeOpen === c.id, "aria-label": "列の種類を変える", className: "ft-ccol-t sel ft-tap" + (typeOpen === c.id ? " on" : "") }, colTypeName(c.type), ce(lucide_react_1.ChevronDown, { size: 14, className: "ft-ccol-tar" })),
-                ce(DragHandle, handleProps(c.id))),
-            isOpt ? ce("button", { type: "button", onClick: () => setOptOpen((o) => (o.includes(c.id) ? o.filter((x) => x !== c.id) : [...o, c.id])), "aria-expanded": open, className: "ft-copts-tg ft-tap" + (open ? " on" : "") },
-                ce("span", { className: "ft-copts-pv" }, optsOf(c).length ? optsOf(c).slice(0, 4).map((o, i) => ce("i", { key: o.id, style: { background: OPT_COLORS[i % OPT_COLORS.length][0], color: OPT_COLORS[i % OPT_COLORS.length][1] } }, o.label)) : ce("em", null, "選択肢を設定してください"), optsOf(c).length > 4 ? ce("small", null, `+${optsOf(c).length - 4}`) : null),
-                ce("b", null, "選択肢 ", optsOf(c).length), ce(lucide_react_1.ChevronDown, { size: 15, className: "ft-copts-ar" })) : null,
-            open ? ce(OptEditor, { c, askDel, onChange: (opts) => patch(c.id, { opts }) }) : null,
-            typeOpen === c.id ? ce("div", { className: "ft-ccol-tpick" }, ce(ColTypeGrid, { value: c.type, onPick: (k) => { setTypeOpen(""); if (k !== c.type)
-                    patch(c.id, { type: k, ...(k === "select" && !Array.isArray(c.opts) ? { opts: [] } : {}) }); } })) : null);
-    });
+        catch (e) { /* noop */ } }); }, [focusId]); // eslint-disable-line
+    const pickable = !nameOnly;
+    const on = pickable && sel.includes(c.id);
+    return ce("div", { ref: drag ? drag.ref : undefined, style: drag ? drag.style : undefined, className: "ft-ccolw" + (fixed ? " fixed-row" : "") + (drag && drag.on ? " drag" : "") },
+        ce("div", { className: "ft-ccol" },
+            pickable ? ce("button", { type: "button", onClick: () => setSel(on ? sel.filter((x) => x !== c.id) : [...sel, c.id]), "aria-pressed": on, "aria-label": "えらぶ", className: "ft-ccol-pick ft-tap" + (on ? " on" : "") }, on ? ce(lucide_react_1.Check, { size: 13, strokeWidth: 3.5, color: "#fff" }) : null)
+                : ce("span", { className: "ft-ccol-pick none" }),
+            ce("span", { className: "ft-ccol-ic", "aria-hidden": true }, colTypeIcon(c.type)),
+            ce("input", { ref: nameRef, key: c.name, defaultValue: c.name, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== c.name)
+                    patch({ name: v });
+                else
+                    e.target.value = c.name; }, onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing)
+                    e.currentTarget.blur(); }, className: "ft-ccol-n", "aria-label": "列の名前" }),
+            fixed || c.id.startsWith("__") ? ce("span", { className: "ft-ccol-t" }, colTypeName(c.type))
+                : ce("button", { type: "button", onClick: () => setTypeOpen((v) => !v), "aria-expanded": typeOpen, "aria-label": "列の種類を変える", className: "ft-ccol-t sel ft-tap" + (typeOpen ? " on" : "") }, colTypeName(c.type), ce(lucide_react_1.ChevronDown, { size: 14, className: "ft-ccol-tar" })),
+            fixed ? ce("span", { className: "ft-ccol-fix" }, "固定") : drag ? ce(DragHandle, drag.handle) : null),
+        isOpt ? ce("button", { type: "button", onClick: () => setOptOpen((v) => !v), "aria-expanded": optOpen, className: "ft-copts-tg ft-tap" + (optOpen ? " on" : "") },
+            ce("b", null, "選択肢"), ce("span", { className: "tabular-nums" }, optsOf(c).length), ce(lucide_react_1.ChevronDown, { size: 15, className: "ft-copts-ar" })) : null,
+        isOpt && optOpen ? ce(OptEditor, { c, askDel, auto: focusId === c.id, onChange: (opts) => patch({ opts }) }) : null,
+        typeOpen ? ce("div", { className: "ft-ccol-tpick" }, ce(ColTypeGrid, { value: c.type, onPick: (k) => { setTypeOpen(false); if (k !== c.type)
+                patch({ type: k, ...(k === "select" && !Array.isArray(c.opts) ? { opts: [] } : {}) }); } })) : null);
+}
+function ColRows({ cols, setCols, sel, setSel, askDel, focusId }) {
+    const ce = react_1.default.createElement;
+    const { dragId, setRow, handleProps, rowStyle } = useReorder(cols, setCols);
+    return cols.map((c) => ce(ColRow, { key: c.id, c, sel, setSel, askDel, focusId, patch: (d) => setCols(cols.map((x) => (x.id === c.id ? { ...x, ...d } : x))),
+        drag: { ref: setRow(c.id), style: rowStyle(c.id), on: dragId === c.id, handle: handleProps(c.id) } }));
 }
 function CollTable({ plan, color, patch }) {
     const ce = react_1.default.createElement;
@@ -31340,6 +31361,9 @@ function CollTable({ plan, color, patch }) {
             rowOrig.current[rowOpen] = t;
     } }, [rowOpen]);
     const [colOpen, setColOpen] = (0, react_1.useState)(false);
+    /* 列の設定・並び替えの紙を開いたときの中身（キャンセルで戻す） */
+    const colOrig = (0, react_1.useRef)(null);
+    const sortOrig = (0, react_1.useRef)(null);
     const [sortOpen, setSortOpen] = (0, react_1.useState)(false);
     const [colSel, setColSel] = (0, react_1.useState)([]);
     /* 列の設定の紙で、いま足した列（名前の欄に入る） */
@@ -31389,8 +31413,8 @@ function CollTable({ plan, color, patch }) {
     const tools = ce("div", { className: "ft-ctools" },
         ce("span", { className: "ft-ctools-n tabular-nums" }, lead ? `${todo.length}件 ・ ${lead.name} ${nDone}` : `${todo.length}件`),
         ce("label", { className: "ft-cfind" }, ce(lucide_react_1.Search, { size: 14 }), ce("input", { value: fq, onChange: (e) => setFq(e.target.value), placeholder: "絞り込み", "aria-label": "絞り込み" })),
-        ce("button", { type: "button", onClick: () => setSortOpen(true), className: "ft-plbl-add ft-tap", style: sort ? { background: color.soft, color: color.deep } : undefined }, ce(lucide_react_1.ArrowRightLeft, { size: 13, style: { transform: "rotate(90deg)" } }), sortCol ? `${sortCol.name} ${sort.dir === "asc" ? "▲" : "▼"}` : "並び替え"),
-        ce("button", { type: "button", onClick: () => setColOpen(true), className: "ft-plbl-add ft-tap" }, ce(lucide_react_1.SlidersHorizontal, { size: 13 }), "列"));
+        ce("button", { type: "button", onClick: () => { sortOrig.current = { sort: plan.sort || null }; setSortOpen(true); }, className: "ft-plbl-add ft-tap", style: sort ? { background: color.soft, color: color.deep } : undefined }, ce(lucide_react_1.ArrowRightLeft, { size: 13, style: { transform: "rotate(90deg)" } }), sortCol ? `${sortCol.name} ${sort.dir === "asc" ? "▲" : "▼"}` : "並び替え"),
+        ce("button", { type: "button", onClick: () => { colOrig.current = { cols: collCols(plan), nameLabel: plan.nameLabel, nameW: plan.nameW, sort: plan.sort || null }; setColOpen(true); }, className: "ft-plbl-add ft-tap" }, ce(lucide_react_1.SlidersHorizontal, { size: 13 }), "列"));
     const moreBtn = (t) => ce("button", { type: "button", onClick: (e) => { e.stopPropagation(); setRowOpen(t.id); }, "aria-label": "ひらく", className: "ft-crow-more ft-tap" }, ce(lucide_react_1.ChevronRight, { size: 18 }));
     const nameCell = (t) => ce(AutoText, { value: t.text, onChange: (v) => patchRow(t.id, { text: v }), onBlur: () => { if (!String(t.text || "").trim())
             delRow(t.id); }, className: "ft-ccell-in bare name", label: "名前" });
@@ -31509,32 +31533,33 @@ function CollTable({ plan, color, patch }) {
             ce(YomiField, { name: openRow.text, value: (YOMI.names && YOMI.names[String(openRow.text || "").trim()]) || "", onChange: (v) => setNameYomi(openRow.text, v) }),
             cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" || c.type === "image" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) })))) : null,
         askNode,
-        colOpen ? ce(SheetDialog, { title: "列の設定", onCancel: () => { setColOpen(false); setColSel([]); setNewCol(""); }, hideConfirm: true, closeLabel: "完了", closePrimary: true,
-            /* 初期に戻す（8.0.0〜）：自分で変えた列の幅を、中身から決める幅へ戻す。変えていないときは押せない */
-            leftBtn: ce("button", { type: "button", disabled: !customW, onClick: () => askDel("列の幅を初期に戻しますか", () => patch((p) => ({ ...p, nameW: undefined, cols: collCols(p).map(({ w, ...c }) => c) })), "見出しのさかいめで変えた幅を、中身に合わせた幅に戻します。", "初期に戻す"), className: "ft-sreset ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 16 }), "幅を初期に戻す") },
-            ce("p", { className: "ft-psheet-k first" }, "列"),
+        /* 列の設定（9.1.0 で直した）。
+           ・下の帯は［キャンセル］［完了］。**キャンセルの場所に、ほかの働きのボタンを置かないこと**（9.0.0 までは「幅を初期に戻す」が左にあり、押しまちがえやすかった）。
+             キャンセル（✕・紙の外も同じ）は、この紙を開いたときの列へ戻す（colOrig）
+           ・「幅を初期に戻す」は、列の一覧の見出しの右（変えた幅があるときだけ）
+           ・いちばん左のチェックの列と、名前の列は「固定」（場所が決まっている。並べ替えのつまみを出さない） */
+        colOpen ? ce(SheetDialog, { title: "列の設定", confirmLabel: "完了",
+            onCancel: () => { const o = colOrig.current; colOrig.current = null; setColOpen(false); setColSel([]); setNewCol(""); if (o)
+                patch((p) => ({ ...p, cols: o.cols, nameLabel: o.nameLabel, nameW: o.nameW, sort: o.sort })); },
+            onConfirm: () => { colOrig.current = null; setColOpen(false); setColSel([]); setNewCol(""); } },
+            ce("div", { className: "ft-shead first" }, ce("p", { className: "ft-psheet-k" }, "列"),
+                customW ? ce("button", { type: "button", onClick: () => askDel("列の幅を初期に戻しますか", () => patch((p) => ({ ...p, nameW: undefined, cols: collCols(p).map(({ w, ...c }) => c) })), "見出しのさかいめで変えた幅を、中身に合わせた幅に戻します。", "初期に戻す"), className: "ft-sreset2 ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 14 }), "幅を初期に戻す") : null),
             ce("div", { className: "ft-ccols" },
-                /* 名前の列：いちばん左に固定。名前だけ変えられる（種類はテキストのまま） */
-                ce("div", { className: "ft-ccolw base" }, ce("div", { className: "ft-ccol" },
-                    ce("span", { className: "ft-ccol-pick none" }),
-                    ce("span", { className: "ft-ccol-ic", "aria-hidden": true }, colTypeIcon("text")),
-                    ce("input", { key: "nm" + nameC.name, defaultValue: nameC.name, onBlur: (e) => { const v = e.target.value.trim(); if (v && v !== nameC.name)
-                            patch((p) => ({ ...p, nameLabel: v === "名前" ? undefined : v }));
-                        else
-                            e.target.value = nameC.name; }, onKeyDown: (e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing)
-                            e.currentTarget.blur(); }, className: "ft-ccol-n", "aria-label": "名前の列の名前" }),
-                    ce("span", { className: "ft-ccol-t" }, "テキスト"),
-                    ce("span", { className: "ft-ccol-fix" }, "左はし"))),
-                ce(ColRows, { cols, setCols, sel: colSel, setSel: setColSel, askDel, focusId: newCol })),
+                lead ? ce(ColRow, { key: lead.id, c: lead, fixed: true, sel: colSel, setSel: setColSel, askDel, focusId: newCol, patch: (d) => setCols(cols.map((x) => (x.id === lead.id ? { ...x, ...d } : x))) }) : null,
+                ce(ColRow, { key: "__name", c: nameC, fixed: true, nameOnly: true, sel: colSel, setSel: setColSel, askDel, patch: (d) => { if (d.name)
+                        patch((p) => ({ ...p, nameLabel: d.name === "名前" ? undefined : d.name })); } }),
+                ce(ColRows, { cols: rest, setCols: (next) => setCols(lead ? [lead, ...next] : next), sel: colSel, setSel: setColSel, askDel, focusId: newCol })),
             colSel.length ? ce("button", { type: "button", onClick: () => askDel(`${colSel.length}列を削除しますか`, () => { setCols(cols.filter((c) => !colSel.includes(c.id))); setColSel([]); }, "列に入れた中身も見えなくなります。"), className: "ft-crow-del ft-tap", style: { marginTop: 12 } }, ce(lucide_react_1.Trash2, { size: 16 }), `${colSel.length}列を削除`) : null,
             ce("p", { className: "ft-psheet-k" }, "列を追加"),
-            /* 押すと右はしに足して、名前の欄に入る（8.1.0〜） */
             ce(ColTypeGrid, { onPick: (k) => { const id = "c" + uid(); patch((p) => ({ ...p, cols: [...collCols(p), { id, name: colTypeName(k), type: k, ...(k === "select" ? { opts: [] } : {}) }] })); setNewCol(id); } })) : null,
-        /* 並び替え（8.0.0 で作り直し）：上で「どの列で」を1つ選び、下で「どちら向きに」を選ぶ。選んだその場で表が並ぶ。
-           「初期に戻す」＝足した順（新しいものが上） */
-        sortOpen ? ce(SheetDialog, { title: "並び替え", onCancel: () => setSortOpen(false), hideConfirm: true, closeLabel: "完了", closePrimary: true,
-            leftBtn: ce("button", { type: "button", disabled: !sort, onClick: () => setSort(null), className: "ft-sreset ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 16 }), "初期に戻す") },
-            ce("p", { className: "ft-psheet-k first" }, "並べる列"),
+        /* 並び替え（9.1.0 で直した）：下の帯は［キャンセル］［完了］。キャンセルは開いたときの並びへ戻す。
+           「初期に戻す」（＝足した順）は「並べる列」の見出しの右 */
+        sortOpen ? ce(SheetDialog, { title: "並び替え", confirmLabel: "完了",
+            onCancel: () => { const o = sortOrig.current; sortOrig.current = null; setSortOpen(false); if (o)
+                patch((p) => ({ ...p, sort: o.sort })); },
+            onConfirm: () => { sortOrig.current = null; setSortOpen(false); } },
+            ce("div", { className: "ft-shead first" }, ce("p", { className: "ft-psheet-k" }, "並べる列"),
+                sort ? ce("button", { type: "button", onClick: () => setSort(null), className: "ft-sreset2 ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 14 }), "初期に戻す") : null),
             ce("div", { className: "ft-sopts", role: "radiogroup", "aria-label": "並べる列" },
                 [{ id: "", name: "足した順", sub: "初期" }, nameC, ...cols.filter((c) => c.type !== "image")].map((c) => { const on = c.id ? !!sort && sort.col === c.id : !sort; return ce("button", { key: c.id || "__add", type: "button", role: "radio", "aria-checked": on, onClick: () => (c.id ? (on ? null : setSort(c.id, sortDefaultDir(c))) : setSort(null)), className: "ft-sopt ft-tap" + (on ? " on" : "") },
                     ce("span", { className: "ft-sopt-r", style: on ? { borderColor: color.deep } : undefined }, on ? ce("i", { style: { background: color.deep } }) : null),
