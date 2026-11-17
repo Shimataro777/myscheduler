@@ -1679,3 +1679,127 @@ button.ft-ccell-date{border:0}
 .ft-padd .ft-cadd{margin:0}
 .ft-ptodo .ft-scards{margin-bottom:0}
 .ft-yomi.off{visibility:hidden}
+
+/* ============================================================
+   8.0.0：コレクションの列の設定・並び替えの紙／選択肢の列
+   ============================================================ */
+/* 紙の下の帯の「初期に戻す」。どの紙でも同じ形（左に置く、枠だけの控えめなボタン） */
+.ft-sreset{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:0 16px;border-radius:12px;border:1px solid #DCE2E7;background:#fff;color:#4B5A64;font-size:calc(14px * var(--ft-scale));font-weight:700;white-space:nowrap}
+.ft-sreset:disabled{opacity:.38}
+/* 列の一覧 */
+.ft-ccols{border:1px solid #E6EAEE;border-radius:14px;padding:0 12px;background:#fff}
+.ft-ccolw{border-bottom:1px solid #EEF1F3;background:#fff}
+.ft-ccolw:last-child{border-bottom:0}
+.ft-ccolw .ft-ccol{border-bottom:0}
+.ft-ccolw.drag{border-radius:10px;box-shadow:0 6px 18px rgba(30,50,60,.14)}
+.ft-ccol-ic{flex:none;display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:#F1F4F6;color:#5B6770}
+.ft-ccolw.base .ft-ccol-n{color:#171717}
+.ft-ccol-fix{flex:none;width:40px;text-align:center;font-size:calc(10.5px * var(--ft-scale));font-weight:700;color:#A3ACB3}
+.ft-ccol-add button{gap:5px}
+/* 選択肢の札（列の行の下） */
+.ft-copts-tg{display:flex;align-items:center;gap:8px;width:100%;min-height:40px;margin:-4px 0 8px;padding:0 10px 0 36px;border-radius:10px;text-align:left;color:#4B5A64}
+.ft-copts-tg b{flex:none;font-size:calc(12px * var(--ft-scale));font-weight:700;color:#6B7883}
+.ft-copts-pv{flex:1;min-width:0;display:flex;align-items:center;gap:4px;overflow:hidden}
+.ft-copts-pv i{flex:none;font-style:normal;max-width:9em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 8px;border-radius:999px;font-size:calc(11.5px * var(--ft-scale));font-weight:700}
+.ft-copts-pv em{font-style:normal;font-size:calc(12px * var(--ft-scale));color:#A3ACB3}
+.ft-copts-pv small{flex:none;font-size:11px;color:#8A949C}
+.ft-copts-ar{flex:none;color:#8A949C;transition:transform .2s var(--ease-out)}
+.ft-copts-tg.on .ft-copts-ar{transform:rotate(180deg)}
+.ft-copts{margin:0 0 10px 36px;padding:4px 10px;border-radius:12px;background:#F6F8FA}
+.ft-copts-r{display:flex;align-items:center;gap:8px;min-height:44px;border-bottom:1px solid #E9EDF0}
+.ft-copts-r.drag{background:#fff;border-radius:10px}
+.ft-copts-dot{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid}
+.ft-copts-in{flex:1;min-width:0;border:0;outline:0;background:transparent;font-size:16px;color:#171717;padding:6px 0}
+.ft-copts-x{flex:none;display:grid;place-items:center;width:32px;height:32px;border-radius:8px;color:#8A949C}
+.ft-copts .ft-ptask-row.add{min-height:44px}
+/* 選択肢のマス（表・札・行の紙） */
+.ft-copt{position:relative;display:inline-flex;align-items:center;gap:3px;max-width:100%;min-height:28px;padding:0 8px 0 10px;border-radius:999px;font-size:calc(12.5px * var(--ft-scale));font-weight:700;overflow:hidden;vertical-align:middle}
+.ft-copt.empty{background:#F3F5F7;color:#9AA4AC}
+.ft-copt-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ft-copt-ar{flex:none;opacity:.6}
+.ft-copt select{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:16px;-webkit-appearance:none;appearance:none}
+.ft-cblanks .ft-copt.blank{background:transparent;border:1px dashed #C3CDD5;color:#6B7883;min-height:30px;font-size:calc(12px * var(--ft-scale))}
+.ft-ctbl-c.opt{display:flex;align-items:center}
+/* 並び替えの紙 */
+.ft-sopts{border:1px solid #E6EAEE;border-radius:14px;overflow:hidden;background:#fff}
+.ft-sopt{display:flex;align-items:center;gap:10px;width:100%;min-height:50px;padding:0 14px;border-bottom:1px solid #EEF1F3;text-align:left;background:#fff}
+.ft-sopt:last-child{border-bottom:0}
+.ft-sopt.on{background:var(--th-50,#EEF6FB)}
+.ft-sopt-r{flex:none;display:grid;place-items:center;width:20px;height:20px;border-radius:50%;border:2px solid #C4CBD1;background:#fff}
+.ft-sopt-r i{width:10px;height:10px;border-radius:50%}
+.ft-sopt-ic{flex:none;display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:#F1F4F6;color:#5B6770}
+.ft-sopt.on .ft-sopt-ic{background:#fff}
+.ft-sopt-t{flex:1;min-width:0;font-size:calc(15px * var(--ft-scale));font-weight:700;color:#26323A;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ft-sopt small{flex:none;font-size:calc(11px * var(--ft-scale));font-weight:700;color:#8A949C;padding:2px 8px;border-radius:999px;background:#F1F4F6}
+.ft-sdir{display:flex;gap:3px;padding:3px;border-radius:12px;background:#F1F4F6}
+.ft-sdir button{flex:1;min-height:42px;border-radius:9px;font-size:calc(14px * var(--ft-scale));font-weight:700;color:#6B7883}
+.ft-sdir button.on{background:#fff;box-shadow:0 1px 3px rgba(30,50,60,.12)}
+.ft-cline > .ft-copt{justify-self:start;align-self:start;width:auto;flex:none}
+.ft-cblanks .ft-copt.blank{border:1px dashed #C3CDD5;background:transparent}
+.ft-cblanks .ft-copt span{border:0;padding:0;min-height:0;background:none}
+
+/* ============================================================
+   8.0.0：見出しの右はし（雲・三本線）をどの画面でも同じ場所に
+   ============================================================ */
+.ft-htail{position:relative;flex:none;display:flex;align-items:center;justify-content:flex-end;gap:2px;margin-right:8px;min-width:48px}
+.ft-hmenu{min-width:48px;min-height:48px}
+.ft-htitle{left:112px;right:112px}
+.ft-htitle.r3{left:160px;right:160px}
+/* 横長の Today の帯も、ほかの画面の見出しと同じ高さ・同じ上の余白（上のはしでぼやけないように、上は 22px 以上） */
+.ft-wbar{height:auto !important;min-height:0;padding-top:max(calc(env(safe-area-inset-top) + 8px), 22px) !important;padding-bottom:6px;padding-right:8px !important}
+.ft-wbar > *{min-height:48px}
+.ft-wbar-r .ft-htail{margin-right:8px}
+/* 下タブの見出し（ScreenHeader）は帯が画面の右はしまで伸びている（ft-bleed）。右の内側の余白は消して、右はしから測る */
+.ft-hbar.ft-bleed{padding-right:0 !important}
+.ft-hbar.ft-bleed .ft-htail{margin-right:16px}
+
+/* ============================================================
+   8.0.0：Today の見直し（週の横長＝1日1段・右の面の見出しと空のとき）
+   ============================================================ */
+/* 週（横長）：1日＝1段 */
+.ft-wr{height:100%;display:flex;flex-direction:column;background:#fff;border:1px solid #E6E6E9;border-radius:16px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.ft-wr-row{flex:1 0 auto;min-height:max(64px, calc(100% / 7));display:flex;align-items:stretch;gap:0;width:100%;text-align:left;border-top:1px solid #EEF1F3;background:#fff;border-radius:0}
+.ft-wr-row:first-child{border-top:0}
+.ft-wr-row.we{background:#FAFBFC}
+.ft-wr-row.sel{background:var(--th-50,#EEF6FB)}
+.ft-wr-d{flex:none;width:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border-right:1px solid #EEF1F3}
+.ft-wr-d .n{font-size:calc(18px * var(--ft-scale));font-weight:700;color:#1F2937;width:34px;height:34px;display:grid;place-items:center;border-radius:50%;line-height:1}
+.ft-wr-d .w{font-size:calc(11px * var(--ft-scale));font-weight:700;color:#8A949C;line-height:1.1}
+.ft-wr-d.sun .w,.ft-wr-d.sun .n{color:#E11D48}
+.ft-wr-d.sat .w,.ft-wr-d.sat .n{color:#0369A1}
+.ft-wr-row.t .ft-wr-d .n{background:var(--th-800,#3E7EA6);color:#fff}
+.ft-wr-row.sel:not(.t) .ft-wr-d .n{box-shadow:0 0 0 2px var(--th-300,#9FCBE3);background:#fff}
+.ft-wr-items{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-content:center;align-items:center;gap:6px;padding:10px 14px}
+.ft-wr-items .ft-wb-chip{display:inline-flex;align-items:center;max-width:min(100%, 22em);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:calc(13px * var(--ft-scale));line-height:20px;padding:3px 9px;border-radius:7px;gap:5px;-webkit-line-clamp:unset}
+.ft-wr-items .ft-wb-chip.list{padding-left:7px}
+.ft-wr-items .ft-wb-chip.list i{width:10px;height:10px;margin:0}
+.ft-wr-items .ft-wb-chip > b{margin-right:0}
+.ft-wr-span{display:inline-flex;align-items:center;max-width:min(100%, 22em);min-height:26px;padding:0 10px;border-radius:7px;color:#fff;font-size:calc(12.5px * var(--ft-scale));font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ft-wr-span.ol{border-top-left-radius:2px;border-bottom-left-radius:2px;padding-left:8px}
+.ft-wr-span.ol::before{content:"‹ ";opacity:.75}
+.ft-wr-span.or::after{content:" ›";opacity:.75}
+.ft-wr-span.or{border-top-right-radius:2px;border-bottom-right-radius:2px}
+.ft-wr-none{display:block;width:24px;height:2px;border-radius:2px;background:#E3E8EC}
+
+/* えらんだ日の見出し（週・月の右／下） */
+.ft-dayhd{display:flex;align-items:center;gap:8px;min-height:44px;margin-bottom:4px}
+.ft-dayhd > b{flex:1;min-width:0;font-size:calc(18px * var(--ft-scale));font-weight:700;color:var(--th-900,#2F6E9B);line-height:1.3}
+.ft-dayhd-go{flex:none;display:inline-flex;align-items:center;gap:1px;min-height:36px;padding:0 4px 0 10px;margin-right:-4px;border-radius:10px;color:var(--th-800,#3E7EA6);font-size:calc(13px * var(--ft-scale));font-weight:700}
+/* 小さな「まだありません」（右の面・週月の下） */
+.ft-empty-s{margin:2px 0 4px;padding:12px 14px;border-radius:12px;background:#F6F8FA;color:#97A1A9;font-size:calc(13px * var(--ft-scale));text-align:left}
+/* 右の面のまとまりの間 */
+.ft-wside .ft-period,.ft-wside .ft-daybox{margin-top:28px}
+.ft-wside > :first-child{margin-top:0}
+.ft-wside .ft-period + .ft-period{margin-top:20px}
+/* えらんだ日の中の「予定・やること・メモ」は、線を引かない小さな見出し（日付の見出しの下で、線が何本も重なっていた） */
+.ft-wside .ft-daybox .ft-seclbl{background:none !important;padding:10px 16px 6px !important;min-height:0 !important;margin-top:0 !important}
+.ft-daybox .ft-seclbl::after{display:none}
+/* 札（CARD_LIST）は柱より左右 4px 外に出ている。見出し・空の箱も札の左はしにそろえる */
+.ft-dayhd{margin-left:-4px;margin-right:-4px}
+.ft-empty-s{margin-left:-4px;margin-right:-4px}
+/* 週の段の札：長い字は1行で「…」 */
+.ft-wr-items .ft-wb-chip,.ft-wr-span{display:inline-block;vertical-align:middle}
+.ft-wr-items .ft-wb-chip > i{display:inline-block;vertical-align:-1px;margin-right:5px}
+.ft-wr-items .ft-wb-chip > b{margin-right:5px}
+/* せまい画面で右に3つ（歯車・雲・三本線）並ぶときは、題を左へ広げる（まん中にこだわって「読み…」と切れないように） */
+@media (max-width: 600px){ .ft-htitle.r3{left:56px;right:150px} }
