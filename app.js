@@ -20241,7 +20241,10 @@ function useLockBackground() {
     const KB_WAIT_MS = 90;   /* タップからこれより前には持ち上げはじめない（キーボードを先に見せる） */
     const KB_FALLBACK_MS = 420; /* キーボードの出た知らせを、ここまで待つ */
     const KB_FALLBACK2_MS = 480; /* それでも来なければ、さらにここまで待つ。来なければ画面のキーボードは無いとみなす */
-    const KB_UP_MS = 300;     /* 持ち上げる時間 */
+    const KB_UP_MS = 260;     /* 持ち上げる時間（8.1.1 で 300 → 260） */
+    /* 8.1.1〜：覚えている高さのキーボードより、さらにこれだけ上にある欄は、見えない入力欄を通さず、
+       touchend の中でじかに本物へフォーカスする（カーソルがすぐ出る）。日本語の変換候補の帯が伸びるぶんを多めに見る */
+    const KB_DIRECT_PAD = 44;
     const KB_EARLY_PAD = 20;  /* 覚えている高さで進むときに、余分に見ておく高さ（少なめに見込まないため） */
     const kbKnown = () => { const m = Number(kbMem[orient()]); return m >= 60 && m < 2000; };
     const KB_DOWN_MS = 360;   /* 下ろす時間 */
@@ -20864,6 +20867,12 @@ function useLockBackground() {
         tg = null;
     };
     document.addEventListener("touchstart", tgStart, { passive: true, capture: true });
+    /* 最後の歯止め（8.1.1〜）：キーボードぶんの場所を空けたまま、打つ欄もキーボードも無いのに残っていたら、
+       次に画面に触れた時点で外す（打っていた欄が画面ごと消えたときなどは、focusout が来ないことがある） */
+    document.addEventListener("touchstart", () => {
+        if ((shown > 0 || root.hasAttribute("data-ft-kbfix") || ctx) && !pending && !isTyping(document.activeElement) && !isProxy(document.activeElement) && rawKb() < 60)
+            releaseKb();
+    }, { passive: true, capture: true });
     document.addEventListener("touchend", tgEnd, { passive: true, capture: true });
     document.addEventListener("touchcancel", tgEnd, { passive: true, capture: true });
     /* ---- こちらでフォーカスを入れる ---- */
@@ -20930,7 +20939,7 @@ function useLockBackground() {
             }
             noKb = true;
         }
-        const wait = KB_WAIT_MS - (Date.now() - p.at);
+        const wait = (fromFallback === "early" ? 0 : KB_WAIT_MS) - (Date.now() - p.at);
         if (wait > 0) {
             clearTimeout(p.timer);
             p.timer = setTimeout(() => startSlide(fromFallback === "early" ? "early" : undefined), wait);
@@ -21032,6 +21041,32 @@ function useLockBackground() {
         if (pending)
             finishPending(false);
         const c = ctxOf(el);
+        /* ---- すぐ本物へ（8.1.1〜） ----
+           見えない入力欄を通すのは「押した欄がキーボードの裏になる」ときに、iOS が本物のカーソルの位置で
+           画面ぜんたいを押し上げるのを避けるため（2.16.x）。押した欄が、**測って覚えているキーボードの高さ**より
+           十分に上にあるなら、本物にフォーカスしても押し上げる理由が無い。そのときは待たずに、この touchend の中で
+           本物へ入れる（指の操作の中なので、キーボードも出る）。
+           ・覚えている高さが無い（はじめて）・キーボードがもう出ている・下のほうの欄 → これまでどおり見えない入力欄の流れ
+           ・iOS の「タップで入れる」は使わない（preventDefault はしたまま）。押したところへカーソルを置くのもこちら */
+        if (kbKnown() && rawKb() < 60 && !layoutShrunk()
+            && fieldBottom({ el, caret }) + GAP + KB_DIRECT_PAD <= layoutHeight() - guessKb()) {
+            setCtx(c);
+            if (c !== "sheet")
+                setReserve(Math.max(shown > 0 ? shown : 0, guessKb()));
+            try {
+                el.focus({ preventScroll: true });
+            }
+            catch (err) {
+                el.focus();
+            }
+            const len0 = (el.value || "").length;
+            const at = caret ? Math.max(0, Math.min(caret.pos, len0)) : len0;
+            try {
+                el.setSelectionRange(at, at);
+            }
+            catch (err) { }
+            return;
+        }
         setCtx(c);
         /* 送れる余地を先に足す（見た目は動かない）。持ち上げるときに送る先になる */
         if (c !== "sheet")
@@ -21050,8 +21085,9 @@ function useLockBackground() {
             startSlide();
         else {
             pending.fallback = setTimeout(() => startSlide(true), KB_FALLBACK_MS);
+            /* 8.1.1〜 覚えている高さで進むときは待たない（キーボードと同時に持ち上げはじめる） */
             if (kbKnown())
-                pending.timer = setTimeout(() => startSlide("early"), KB_WAIT_MS);
+                pending.timer = setTimeout(() => startSlide("early"), 0);
         }
     };
     /* ---- キーボードの ^ v で移ったとき・見込みと違ったとき：隠れているぶんだけ合わせる ---- */
@@ -21148,17 +21184,60 @@ function useLockBackground() {
             }
             lastRaw = -1;
             lowerSheets();
-            if (raw >= 60)
-                return; /* キーボードが引っ込む途中。全画面・ページは引っ込みきるまで今のまま */
-            setFix(false);
-            setReserve(0);
-            setCtx("");
-            if (overlayCount > 0) {
-                const y = window.scrollY || document.documentElement.scrollTop || 0;
-                if (Math.abs(y - overlayLockY) > 1)
-                    window.scrollTo(0, overlayLockY);
+            if (raw >= 60) {
+                /* キーボードが引っ込む途中。全画面・ページは引っ込みきるまで今のまま。
+                   **引っ込みきった知らせを待つだけにしないこと（8.1.1〜）。** 下の pollDown */
+                pollDown();
+                return;
             }
+            releaseKb();
         });
+    };
+    /* キーボードのために空けていた場所を、ぜんぶ元に戻す */
+    const releaseKb = () => {
+        clearTimeout(downPoll);
+        downPoll = 0;
+        downLeft = 0;
+        lastRaw = -1;
+        lowerSheets();
+        setFix(false);
+        setReserve(0);
+        setCtx("");
+        if (overlayCount > 0) {
+            const y = window.scrollY || document.documentElement.scrollTop || 0;
+            if (Math.abs(y - overlayLockY) > 1)
+                window.scrollTo(0, overlayLockY);
+        }
+    };
+    /* ---- キーボードを閉じたのに、下が白いまま残る（8.1.1〜） ----
+       起きていたこと（iPhone 実機）：入力を終えてキーボードを閉じると、キーボードのあった辺りが真っ白のまま残った。
+       全画面の中身の箱に足した「キーボードぶんの下の余白」（--ft-kb、data-ft-kbctx="overlay"）と、
+       送り場をキーボードの上端で終わらせる印（data-ft-kbfix）が外れずに残っていた。
+       外すのは「キーボードが引っ込みきった」知らせ（visualViewport の resize で高さが戻ったとき）だけだったが、
+       iOS はその最後の知らせを出さないこと・まだ古い高さを返すことがある。引っ込む途中の知らせのあとに何も来ないと、
+       余白が残ったままになる。
+       そこで、入力欄から外れたあとは、知らせを待つだけでなく、こちらから 120ms ごとに高さを見に行き、
+       戻っていれば外す。**打っている欄が無いのに 1.5 秒たっても高さが戻らないときも外す**
+       （打つ欄にフォーカスが無ければ、画面のキーボードは出ていられない）。
+       ・打つ欄へ移った（^ v・別の欄を押した）・こちらでフォーカスを入れている途中（pending）なら、何もしない */
+    let downPoll = 0;
+    let downLeft = 0;
+    /* 見に行く回数（120ms × 12 ＝ 約 1.5 秒）。**見に行っているあいだに数え直さないこと**（ずっと終わらなくなる） */
+    const pollDown = () => {
+        if (downPoll)
+            return;
+        downLeft = 12;
+        const tick = () => {
+            downPoll = 0;
+            if (isTyping(document.activeElement) || isProxy(document.activeElement) || pending)
+                return;
+            if (rawKb() >= 60 && --downLeft > 0) {
+                downPoll = setTimeout(tick, 120);
+                return;
+            }
+            releaseKb();
+        };
+        downPoll = setTimeout(tick, 120);
     };
     /* 入力欄から外れたら（ほかの入力欄へ移ったのでなければ）、紙はキーボードといっしょに下ろしはじめる */
     const onFocusOut = () => {
@@ -21171,6 +21250,8 @@ function useLockBackground() {
             clearTimeout(settle);
             lowerSheets();
             measure();
+            /* 引っ込みきった知らせが来なくても、元に戻す（上の pollDown） */
+            pollDown();
         }, 0);
     };
     /* 紙の入力欄から始まったタップの click を、入力欄の外へ流さない（2.13.1〜）。
