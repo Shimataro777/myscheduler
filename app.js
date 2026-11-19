@@ -21215,6 +21215,9 @@ function useLockBackground() {
            1px 送って戻し、画面の大きさを測り直させる（9.0.0〜） */
         requestAnimationFrame(() => {
             try {
+                /* 縮んだままのときだけ（触れるたびに動かすと、端の跳ね返りと取り合って震える） */
+                if (!layoutShrunk() || Date.now() < bounceUntil)
+                    return;
                 const y = window.scrollY || document.documentElement.scrollTop || 0;
                 window.scrollTo(0, y + 1);
                 window.scrollTo(0, y);
@@ -21441,7 +21444,9 @@ function useLockBackground() {
     document.addEventListener("focusout", onFocusOut, true);
     vv.addEventListener("resize", measure);
     /* 見える窓が下へずれただけ（高さは同じ）のときも、紙の上端を合わせ直す */
-    vv.addEventListener("scroll", measure);
+    /* 跳ね返りのあいだ（入力中でも持ち上げ中でもない）は測り直さない（10.0.1〜） */
+    vv.addEventListener("scroll", () => { if (pending || isTyping(document.activeElement) || shown > 0 || ctx)
+        measure(); });
     window.addEventListener("orientationchange", measure);
     /* ================================================================
        画面ずれの自己修復（2.30.1〜）
@@ -21459,8 +21464,19 @@ function useLockBackground() {
        ================================================================ */
     let healTry = 0;
     let healTimer = 0;
+    /* **指が触れているあいだと、離したあとの跳ね返りのあいだは、ずれ直しをしないこと（10.0.1〜）。**
+       いちばん上・下で跳ね返るとき、iPhone は見える窓の位置（offsetTop）を一時的にずらす。
+       それを「ずれたまま」と見て scrollTo を打つと、跳ね返りと取り合って画面が上下に震える */
+    let bounceUntil = 0;
+    const bumpBounce = () => { bounceUntil = Date.now() + 900; };
+    document.addEventListener("touchstart", bumpBounce, { passive: true, capture: true });
+    document.addEventListener("touchmove", bumpBounce, { passive: true, capture: true });
+    document.addEventListener("touchend", bumpBounce, { passive: true, capture: true });
+    window.addEventListener("scroll", bumpBounce, { passive: true });
     const stuckNow = () => {
         if (pending || isTyping(document.activeElement))
+            return false;
+        if (Date.now() < bounceUntil)
             return false;
         return (vv.offsetTop || 0) > 1 || layoutShrunk();
     };
@@ -31011,10 +31027,31 @@ const isUrl = (v) => /^https?:\/\/\S+$/i.test(String(v || "").trim());
 const emLen = (v) => { let n = 0; const t = String(v == null ? "" : v).split("\n")[0]; for (let i = 0; i < t.length; i++)
     n += t.charCodeAt(i) > 255 ? 1 : 0.55; return n; };
 const COL_NAME = { id: "__name", name: "名前", type: "text" };
+/* 列の並び（10.0.0〜）。名前の列も、ほかの列と同じ並びの中に置ける（持ち主の指示：名前の列は無くせないが、場所は変えられる）。
+   ・p.cols の中に { id: "__name", type: "text" } を1つ持つ。名前は持たない（plan.nameLabel、nameColOf）
+   ・**collCols は名前の列を含めない**（ほかの列の一覧として使う所が多い）。並びの通りに全部ほしいときは colOrder
+   ・__name が無い（10.0.0 より前の）コレクションは、これまでの見え方と同じ「チェックの列（あれば）→ 名前 → ほか」
+   ・保存するときは storeCols（__name を、いまの位置のまま入れた形）。**collCols(p) をそのまま cols に書かないこと**（名前の位置が消える） */
+function colOrder(p) {
+    const all = rawCols(p);
+    const nameC = nameColOf(p);
+    if (all.some((c) => c.id === "__name"))
+        return all.map((c) => (c.id === "__name" ? nameC : c));
+    const lead = all.find((c) => c.type === "check");
+    return [...(lead ? [lead] : []), nameC, ...all.filter((c) => c !== lead)];
+}
+function storeCols(p, list) {
+    return (list || colOrder(p)).map((c) => (c.id === "__name" ? { id: "__name", type: "text" } : c));
+}
 function collCols(p) {
-    /* 7.8.0〜 列の種類「ステップ」は「リスト」と呼ぶ。前に作った列の名前が「ステップ」のままなら「リスト」と出す（データの type は steps のまま） */
+    return rawCols(p).filter((c) => c.id !== "__name");
+}
+function rawCols(p) {
+    /* 9.4.0〜 この種類は「リスト」に戻した（9.2.0〜9.3.0 だけ「チェック」と呼んでいた。持ち主の取りちがえ）。
+       その間に「チェック」の名前で保存された列も、「ステップ」の列も「リスト」と出す。
+       7.8.0〜 列の種類「ステップ」は「リスト」と呼ぶ。前に作った列の名前が「ステップ」のままなら「リスト」と出す（データの type は steps のまま） */
     if (Array.isArray(p.cols))
-        return p.cols.some((c) => c.type === "steps" && c.name === "ステップ") ? p.cols.map((c) => (c.type === "steps" && c.name === "ステップ" ? { ...c, name: "リスト" } : c)) : p.cols;
+        return p.cols.some((c) => c.type === "steps" && (c.name === "ステップ" || c.name === "チェック")) ? p.cols.map((c) => (c.type === "steps" && (c.name === "ステップ" || c.name === "チェック") ? { ...c, name: "リスト" } : c)) : p.cols;
     const todo = planTodo(p);
     const out = [{ id: "__done", name: "済み", type: "check" }];
     if (todo.some((t) => t.date))
@@ -31113,18 +31150,33 @@ function StarInput({ value, onChange, color, small }) {
 /* 1つのマス。type に合わせた入れ方。wide ＝ 表の中（枠を出さない） */
 /* 選択肢のマス。色つきの札に、端末のえらぶ欄（iPhone・iPad はドラム）を重ねる。
    placeholder ＝ 何も選んでいないときの字（縦長の札の「＋列名」など） */
+/* 選択肢を直す紙を、マスから開く入口（9.3.0〜）。CollTable が配る */
+const OptEditCtx = react_1.default.createContext(null);
+const OPT_EDIT = "__edit";
 function OptSelect({ c, value, onChange, placeholder, plus, className }) {
     const ce = react_1.default.createElement;
     const opts = optsOf(c);
     const on = !!value && optIndex(c, value) >= 0;
     const [bg, fg] = on ? optColor(c, value) : [null, null];
+    const openEdit = react_1.default.useContext(OptEditCtx);
+    /* 選択肢がまだ無いマスは、押すとそのまま選択肢を直す紙へ（えらぶものが無いため） */
+    if (!opts.length && openEdit)
+        return ce("button", { type: "button", onClick: (e) => { e.stopPropagation(); openEdit(c.id); }, className: "ft-copt ft-tap empty" + (className ? " " + className : "") },
+            ce(lucide_react_1.Plus, { size: 11 }), ce("span", { className: "ft-copt-t" }, placeholder || "選択肢を追加"));
     return ce("label", { className: "ft-copt ft-tap" + (on ? "" : " empty") + (className ? " " + className : ""), style: on ? { background: bg, color: fg } : undefined, onClick: (e) => e.stopPropagation() },
         !on && plus ? ce(lucide_react_1.Plus, { size: 11 }) : null,
         ce("span", { className: "ft-copt-t" }, on ? optLabel(c, value) : (placeholder || (opts.length ? "未選択" : "選択肢なし"))),
         !plus ? ce(lucide_react_1.ChevronDown, { size: 13, className: "ft-copt-ar" }) : null,
-        ce("select", { value: on ? value : "", onChange: (e) => onChange(e.target.value), "aria-label": c.name },
+        /* えらぶ欄のいちばん下に「選択肢を編集…」（9.3.0〜）。選択肢を足したい・直したいと思ったその場で直せる */
+        ce("select", { value: on ? value : "", onChange: (e) => { if (e.target.value === OPT_EDIT) {
+                e.target.value = on ? value : "";
+                if (openEdit)
+                    openEdit(c.id);
+                return;
+            } onChange(e.target.value); }, "aria-label": c.name },
             ce("option", { value: "" }, "未選択"),
-            opts.map((o) => ce("option", { key: o.id, value: o.id }, o.label || "（名前なし）"))));
+            opts.map((o) => ce("option", { key: o.id, value: o.id }, o.label || "（名前なし）")),
+            openEdit ? ce("option", { value: OPT_EDIT }, "選択肢を編集…") : null));
 }
 /* 選択肢の列の、選択肢を直す（列の設定の紙の中）。名前・つまんで並べ替え・削除・追加 */
 function OptEditor({ c, onChange, askDel, auto }) {
@@ -31294,6 +31346,8 @@ function colTypeSample(type) {
 }
 function ColTypeGrid({ value, onPick }) {
     const ce = react_1.default.createElement;
+    /* 10.0.0〜 「チェック」（丸い印1つ）も、ほかと同じく足せる（9.2.0〜9.4.0 は出していなかった）。
+       マスの中に印を付けられる項目を並べる種類は「リスト」（データの type は steps） */
     return ce("div", { className: "ft-ctypes", role: "group", "aria-label": "列の種類" }, COL_TYPES.map(([k, l]) => ce("button", { key: k, type: "button", onClick: () => onPick(k), "aria-pressed": value === k, className: "ft-ctype ft-tap" + (value === k ? " on" : "") },
         ce("span", { className: "ft-ctype-ic", "aria-hidden": true }, colTypeIcon(k, 17)),
         /* 8.1.0〜9.0.0 は種類の下に入れる例（見本）を出していた。**出さないこと**（使い方を決めつけて見える、と言われてやめた） */
@@ -31334,23 +31388,25 @@ function ColRow({ c, patch, sel, setSel, askDel, focusId, fixed, nameOnly, drag 
                 : ce("button", { type: "button", onClick: () => setTypeOpen((v) => !v), "aria-expanded": typeOpen, "aria-label": "列の種類を変える", className: "ft-ccol-t sel ft-tap" + (typeOpen ? " on" : "") }, colTypeName(c.type), ce(lucide_react_1.ChevronDown, { size: 14, className: "ft-ccol-tar" })),
             fixed ? ce("span", { className: "ft-ccol-fix" }, "固定") : drag ? ce(DragHandle, drag.handle) : null),
         isOpt ? ce("button", { type: "button", onClick: () => setOptOpen((v) => !v), "aria-expanded": optOpen, className: "ft-copts-tg ft-tap" + (optOpen ? " on" : "") },
-            ce("b", null, "選択肢"), ce("span", { className: "tabular-nums" }, optsOf(c).length), ce(lucide_react_1.ChevronDown, { size: 15, className: "ft-copts-ar" })) : null,
+            ce("b", null, "選択肢を編集"), ce("span", { className: "tabular-nums" }, optsOf(c).length ? optsOf(c).length + "件" : ""), ce(lucide_react_1.ChevronDown, { size: 15, className: "ft-copts-ar" })) : null,
         isOpt && optOpen ? ce(OptEditor, { c, askDel, auto: focusId === c.id, onChange: (opts) => patch({ opts }) }) : null,
         typeOpen ? ce("div", { className: "ft-ccol-tpick" }, ce(ColTypeGrid, { value: c.type, onPick: (k) => { setTypeOpen(false); if (k !== c.type)
                 patch({ type: k, ...(k === "select" && !Array.isArray(c.opts) ? { opts: [] } : {}) }); } })) : null);
 }
-function ColRows({ cols, setCols, sel, setSel, askDel, focusId }) {
+function ColRows({ cols, setCols, sel, setSel, askDel, focusId, onName }) {
     const ce = react_1.default.createElement;
     const { dragId, setRow, handleProps, rowStyle } = useReorder(cols, setCols);
-    return cols.map((c) => ce(ColRow, { key: c.id, c, sel, setSel, askDel, focusId, patch: (d) => setCols(cols.map((x) => (x.id === c.id ? { ...x, ...d } : x))),
+    return cols.map((c) => ce(ColRow, { key: c.id, c, sel, setSel, askDel, focusId, nameOnly: c.id === "__name",
+        patch: (d) => (c.id === "__name" ? (d.name && onName ? onName(d.name) : null) : setCols(cols.map((x) => (x.id === c.id ? { ...x, ...d } : x)))),
         drag: { ref: setRow(c.id), style: rowStyle(c.id), on: dragId === c.id, handle: handleProps(c.id) } }));
 }
 function CollTable({ plan, color, patch }) {
     const ce = react_1.default.createElement;
     const roomy = useRoomy();
     const cols = collCols(plan);
-    /* 名前の列（いちばん左）。名前は列の設定で変えられる（plan.nameLabel） */
+    /* 名前の列。名前は列の設定で変えられる（plan.nameLabel）。場所も変えられる（10.0.0〜、colOrder） */
     const nameC = nameColOf(plan);
+    const order = colOrder(plan);
     const todo = planTodo(plan);
     const [rowOpen, setRowOpen] = (0, react_1.useState)(null);
     /* 行の紙で開いた行の、開いたときの中身（キャンセルで戻す） */
@@ -31364,6 +31420,10 @@ function CollTable({ plan, color, patch }) {
     /* 列の設定・並び替えの紙を開いたときの中身（キャンセルで戻す） */
     const colOrig = (0, react_1.useRef)(null);
     const sortOrig = (0, react_1.useRef)(null);
+    /* マスから開く「選択肢を編集」の紙（9.3.0〜）。開いた列の id と、開いたときの選択肢（キャンセルで戻す） */
+    const [optFor, setOptFor] = (0, react_1.useState)(null);
+    const optOrig = (0, react_1.useRef)(null);
+    const openOptEdit = (id) => { const c = collCols(plan).find((x) => x.id === id); optOrig.current = c ? optsOf(c) : []; setOptFor(id); };
     const [sortOpen, setSortOpen] = (0, react_1.useState)(false);
     const [colSel, setColSel] = (0, react_1.useState)([]);
     /* 列の設定の紙で、いま足した列（名前の欄に入る） */
@@ -31372,7 +31432,19 @@ function CollTable({ plan, color, patch }) {
     const [colDrag, setColDrag] = (0, react_1.useState)(null);
     const patchRow = (id, d) => patch((p) => ({ ...p, todo: planTodo(p).map((t) => (t.id === id ? { ...t, ...d } : t)) }));
     const delRow = (id) => patch((p) => ({ ...p, todo: planTodo(p).filter((t) => t.id !== id) }));
-    const setCols = (next) => patch((p) => ({ ...p, cols: next, sort: p.sort && (p.sort.col === "__name" || next.some((c) => c.id === p.sort.col)) ? p.sort : null }));
+    /* 列を書く。next に名前の列が無いとき（削除など）は、いまの位置のまま名前の列を入れ直す（10.0.0〜） */
+    const setCols = (next) => patch((p) => {
+        let list = next;
+        if (!list.some((c) => c.id === "__name")) {
+            const cur = colOrder(p);
+            const before = cur.slice(0, cur.findIndex((c) => c.id === "__name")).map((c) => c.id);
+            let at = 0;
+            list.forEach((c, i) => { if (before.includes(c.id))
+                at = i + 1; });
+            list = [...list.slice(0, at), { id: "__name", type: "text" }, ...list.slice(at)];
+        }
+        return { ...p, cols: storeCols(p, list), sort: p.sort && (p.sort.col === "__name" || list.some((c) => c.id === p.sort.col)) ? p.sort : null };
+    });
     /* 1件、または何件かまとめて（改行のある字を貼ったとき）。貼った順のまま、いちばん上に入る */
     const add = (text) => patch((p) => ({ ...p, todo: [...(Array.isArray(text) ? text : [text]).map((x) => ({ id: uid(), text: x, done: false, date: "", sec: "", v: {} })), ...planTodo(p)] }));
     const [askDel, askNode] = useAskDel();
@@ -31414,7 +31486,7 @@ function CollTable({ plan, color, patch }) {
         ce("span", { className: "ft-ctools-n tabular-nums" }, lead ? `${todo.length}件 ・ ${lead.name} ${nDone}` : `${todo.length}件`),
         ce("label", { className: "ft-cfind" }, ce(lucide_react_1.Search, { size: 14 }), ce("input", { value: fq, onChange: (e) => setFq(e.target.value), placeholder: "絞り込み", "aria-label": "絞り込み" })),
         ce("button", { type: "button", onClick: () => { sortOrig.current = { sort: plan.sort || null }; setSortOpen(true); }, className: "ft-plbl-add ft-tap", style: sort ? { background: color.soft, color: color.deep } : undefined }, ce(lucide_react_1.ArrowRightLeft, { size: 13, style: { transform: "rotate(90deg)" } }), sortCol ? `${sortCol.name} ${sort.dir === "asc" ? "▲" : "▼"}` : "並び替え"),
-        ce("button", { type: "button", onClick: () => { colOrig.current = { cols: collCols(plan), nameLabel: plan.nameLabel, nameW: plan.nameW, sort: plan.sort || null }; setColOpen(true); }, className: "ft-plbl-add ft-tap" }, ce(lucide_react_1.SlidersHorizontal, { size: 13 }), "列"));
+        ce("button", { type: "button", onClick: () => { colOrig.current = { cols: storeCols(plan), nameLabel: plan.nameLabel, nameW: plan.nameW, sort: plan.sort || null }; setColOpen(true); }, className: "ft-plbl-add ft-tap" }, ce(lucide_react_1.SlidersHorizontal, { size: 13 }), "列"));
     const moreBtn = (t) => ce("button", { type: "button", onClick: (e) => { e.stopPropagation(); setRowOpen(t.id); }, "aria-label": "ひらく", className: "ft-crow-more ft-tap" }, ce(lucide_react_1.ChevronRight, { size: 18 }));
     const nameCell = (t) => ce(AutoText, { value: t.text, onChange: (v) => patchRow(t.id, { text: v }), onBlur: () => { if (!String(t.text || "").trim())
             delRow(t.id); }, className: "ft-ccell-in bare name", label: "名前" });
@@ -31425,14 +31497,15 @@ function CollTable({ plan, color, patch }) {
            決めるのは、見出しのさかいめをつまんで左右へ（5% きざみ。細かくしすぎると、表ごとに幅がばらばらになる） */
         const fit = (c, lo, hi, per) => Math.round(Math.max(lo, Math.min(hi, Math.max(emLen(c.name) * 13, ...todo.map((t) => emLen(colGet(t, c)) * per)) + 26)));
         const autoW = (c) => (c.type === "image" ? 72 : c.type === "check" ? 56 : c.type === "star" ? 128 : c.type === "date" ? 104 : c.type === "steps" ? Math.round(Math.max(150, Math.min(280, Math.max(emLen(c.name) * 13, ...todo.flatMap((t) => (colGet(t, c) || []).map((x) => emLen(x.text) * 14))) + 44))) : c.type === "select" ? Math.round(Math.max(96, Math.min(220, Math.max(emLen(c.name) * 13, ...todo.map((t) => emLen(optLabel(c, colGet(t, c))) * 13.5)) + 46))) : c.type === "number" ? fit(c, 72, 120, 9.5) : fit(c, 120, 300, 15.5));
-        const sized = [nameC, ...rest];
-        const custom = Number(plan.nameW) > 0 || rest.some((c) => Number(c.w) > 0);
+        /* 10.0.0〜 表の列は、並び（colOrder）のとおり。チェックの列をいちばん左に決め打ちしない・名前の列も動かせる */
+        const sized = order;
+        const custom = Number(plan.nameW) > 0 || cols.some((c) => Number(c.w) > 0);
         const autoAll = sized.map((c) => (c.id === "__name" ? Math.max(fit(nameC, 180, 360, 16) + 40, 260) : autoW(c)));
         const autoSum = autoAll.reduce((n, x) => n + x, 0) || 1;
         const pctOf = (c, i) => { const own = c.id === "__name" ? Number(plan.nameW) : Number(c.w); return custom && own > 0 ? own : (autoAll[i] / autoSum) * 100; };
         const pcts = colDrag ? colDrag.pcts : sized.map(pctOf);
         const minPx = (c) => (c.type === "image" ? 56 : c.type === "star" ? 112 : c.type === "check" ? 44 : c.type === "date" ? 84 : 0);
-        const tpl = [lead ? "52px" : null, ...sized.map((c, i) => `minmax(${minPx(c)}px,${Math.max(1, pcts[i]).toFixed(2)}fr)`)].filter(Boolean).join(" ");
+        const tpl = sized.map((c, i) => `minmax(${minPx(c)}px,${Math.max(1, pcts[i]).toFixed(2)}fr)`).join(" ");
         /* さかいめをつまむ。i ＝ 左の列（sized の番号）。左と右の2列のあいだで、幅をやりとりする */
         const grip = (i) => ce("span", { className: "ft-ctbl-grip", "aria-hidden": true, onClick: (e) => e.stopPropagation(), onPointerDown: (e) => {
                 e.preventDefault();
@@ -31469,36 +31542,42 @@ function CollTable({ plan, color, patch }) {
                     setColDrag(null);
                     if (cur) {
                         const r = cur.map((x) => Math.max(1, Math.round(x)));
-                        patch((p) => ({ ...p, nameW: r[0], cols: collCols(p).map((c) => { const k = rest.findIndex((x) => x.id === c.id); return k >= 0 ? { ...c, w: r[k + 1] } : c; }) }));
+                        const ni = sized.findIndex((x) => x.id === "__name");
+                        patch((p) => ({ ...p, nameW: r[ni], cols: storeCols(p).map((c) => { const k = sized.findIndex((x) => x.id === c.id); return k >= 0 && c.id !== "__name" ? { ...c, w: r[k] } : c; }) }));
                     }
                 };
                 window.addEventListener("pointermove", move);
                 window.addEventListener("pointerup", up);
                 window.addEventListener("pointercancel", up);
             } }, ce("i", null));
-        const hd = (c, i) => ce("div", { key: c.id, className: "ft-ctbl-hw" + (i == null ? " lead" : "") + (colDrag && (colDrag.i === i || colDrag.i + 1 === i) ? " drag" : "") },
-            ce("button", { type: "button", onClick: () => headTap(c), className: "ft-ctbl-h ft-tap" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "image" ? " c" : c.type === "number" ? " r" : "") }, ce("span", null, c.name), arrow(c)),
-            i != null && i < sized.length - 1 ? grip(i) : null);
+        const hd = (c, i) => ce("div", { key: c.id, className: "ft-ctbl-hw" + (colDrag && (colDrag.i === i || colDrag.i + 1 === i) ? " drag" : "") },
+            ce("button", { type: "button", onClick: () => headTap(c), className: "ft-ctbl-h ft-tap" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "image" ? " c" : c.type === "number" ? " r" : "") }, /* いちばん左のチェックの列は、見出しに名前を出さない（9.2.0〜） */
+                ce("span", null, c.name), arrow(c)),
+            i < sized.length - 1 ? grip(i) : null);
         body = ce("div", { className: "ft-ctbl-wrap" }, ce("div", { className: "ft-ctbl", style: { gridTemplateColumns: tpl } },
-            lead ? hd(lead, null) : null, hd(nameC, 0), rest.map((c, k) => hd(c, k + 1)),
+            sized.map((c, k) => hd(c, k)),
             rows.map((t) => ce(react_1.default.Fragment, { key: t.id },
-                lead ? ce("div", { className: "ft-ctbl-c c" }, ce(CollCell, { t, c: lead, color, onPatch: (d) => patchRow(t.id, d), bare: true })) : null,
-                /* 行を開く ＞ は、名前のマスの右はし（表を横へ送っても、いつも見える場所） */
-                ce("div", { className: "ft-ctbl-c name" + (lead && colGet(t, lead) ? " dim" : "") }, nameCell(t), moreBtn(t)),
-                rest.map((c) => ce("div", { key: c.id, className: "ft-ctbl-c" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "image" ? " c" : c.type === "select" ? " opt" : c.type === "steps" ? " st" : " in") + (c.type === "steps" ? " tap" : ""), onClick: c.type === "steps" ? () => setRowOpen(t.id) : undefined }, ce(CollCell, { t, c, color, onPatch: (d) => patchRow(t.id, d), bare: true })))))));
+                sized.map((c) => c.id === "__name"
+                    /* 行を開く ＞ は、名前のマスの右はし */
+                    ? ce("div", { key: c.id, className: "ft-ctbl-c name" + (lead && colGet(t, lead) ? " dim" : "") }, nameCell(t), moreBtn(t))
+                    : ce("div", { key: c.id, className: "ft-ctbl-c" + (c.type === "check" || c.type === "star" || c.type === "date" || c.type === "image" ? " c" : c.type === "select" ? " opt" : c.type === "steps" ? " st" : " in") + (c.type === "steps" ? " tap" : ""), onClick: c.type === "steps" ? () => setRowOpen(t.id) : undefined }, ce(CollCell, { t, c, color, onPatch: (d) => patchRow(t.id, d), bare: true })))))));
     }
     else {
         /* 縦長：1行＝1枚の札。上の段＝印と名前、下の段＝ほかの列（星はその場で付けられる。ほかは読むだけ → 札を押すと紙で直す） */
+        /* 札（10.0.0〜）：名前より前にあるチェックの列は、札の左上（名前の左）に。ほかは並びのとおり、下の段に1行ずつ */
+        const nameAt = order.findIndex((c) => c.id === "__name");
+        const topLead = lead && order.indexOf(lead) < nameAt ? lead : null;
+        const restC = order.filter((c) => c.id !== "__name" && c !== topLead);
         body = ce("div", { className: "ft-ccards" }, rows.map((t) => {
-            const lines = rest.map((c) => collLine(t, c, color, (d) => patchRow(t.id, d), fOpen === t.id + ":" + c.id)).filter(Boolean);
+            const lines = restC.map((c) => collLine(t, c, color, (d) => patchRow(t.id, d), fOpen === t.id + ":" + c.id)).filter(Boolean);
             /* まだ入っていない列は、点線の小さな札。**押すと、その場に入れる欄が出る**（日付はその場でえらぶ。ステップは行の紙） */
-            const blanks = rest.filter((c) => { const v = colGet(t, c); return fOpen !== t.id + ":" + c.id && c.type !== "star" && c.type !== "check" && (c.type === "steps" ? !v.length : v === "" || v == null); });
+            const blanks = restC.filter((c) => { const v = colGet(t, c); return fOpen !== t.id + ":" + c.id && c.type !== "star" && c.type !== "check" && (c.type === "steps" ? !v.length : v === "" || v == null); });
             return ce("div", { key: t.id, className: "ft-ccard2" + (lead && colGet(t, lead) ? " dim" : "") },
                 ce("div", { className: "ft-ccard2-top" },
-                    lead ? ce(CollCell, { t, c: lead, color, onPatch: (d) => patchRow(t.id, d), bare: true }) : null,
+                    topLead ? ce(CollCell, { t, c: topLead, color, onPatch: (d) => patchRow(t.id, d), bare: true }) : null,
                     ce("span", { className: "ft-ccard2-name" }, nameCell(t)),
                     moreBtn(t)),
-                lines.length || blanks.length ? ce("div", { className: "ft-ccard2-sub" + (lead ? " ind" : "") },
+                lines.length || blanks.length ? ce("div", { className: "ft-ccard2-sub" + (topLead ? " ind" : "") },
                     lines,
                     blanks.length ? ce("div", { className: "ft-cblanks" }, blanks.map((c) => c.type === "image"
                         ? ce(ImgColCell, { key: c.id, value: "", onChange: (v) => patchRow(t.id, colSet(t, c, v)), plus: true, label: c.name })
@@ -31511,7 +31590,8 @@ function CollTable({ plan, color, patch }) {
     }
     lastRows.current = rows;
     const openRow = rowOpen ? todo.find((t) => t.id === rowOpen) : null;
-    return ce("div", { className: "ft-coll", onFocus: (e) => { if (isEditField(e.target) && !frozen && sortCol)
+    const optCol = optFor ? cols.find((c) => c.id === optFor) : null;
+    return ce(OptEditCtx.Provider, { value: openOptEdit }, ce("div", { className: "ft-coll", onFocus: (e) => { if (isEditField(e.target) && !frozen && sortCol)
             setFrozen(lastRows.current.map((t) => t.id)); }, onBlur: (e) => { if (frozen && !isEditField(e.relatedTarget))
             setFrozen(null); } },
         ce(TextArea, { bare: true, value: plan.memo || "", onChange: (e) => patch((p) => ({ ...p, memo: e.target.value })), minRows: 1, rows: 1, placeholder: "メモ", className: "ft-cmemo" }),
@@ -31543,15 +31623,13 @@ function CollTable({ plan, color, patch }) {
                 patch((p) => ({ ...p, cols: o.cols, nameLabel: o.nameLabel, nameW: o.nameW, sort: o.sort })); },
             onConfirm: () => { colOrig.current = null; setColOpen(false); setColSel([]); setNewCol(""); } },
             ce("div", { className: "ft-shead first" }, ce("p", { className: "ft-psheet-k" }, "列"),
-                customW ? ce("button", { type: "button", onClick: () => askDel("列の幅を初期に戻しますか", () => patch((p) => ({ ...p, nameW: undefined, cols: collCols(p).map(({ w, ...c }) => c) })), "見出しのさかいめで変えた幅を、中身に合わせた幅に戻します。", "初期に戻す"), className: "ft-sreset2 ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 14 }), "幅を初期に戻す") : null),
+                customW ? ce("button", { type: "button", onClick: () => askDel("列の幅を初期に戻しますか", () => patch((p) => ({ ...p, nameW: undefined, cols: storeCols(p).map(({ w, ...c }) => c) })), "見出しのさかいめで変えた幅を、中身に合わせた幅に戻します。", "初期に戻す"), className: "ft-sreset2 ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 14 }), "幅を初期に戻す") : null),
+            /* 10.0.0〜 どの列も、つまんで好きな場所へ。名前の列も動かせる（消せない・種類は変えない）。チェックの列も、ほかの列と同じ（消せる・動かせる） */
             ce("div", { className: "ft-ccols" },
-                lead ? ce(ColRow, { key: lead.id, c: lead, fixed: true, sel: colSel, setSel: setColSel, askDel, focusId: newCol, patch: (d) => setCols(cols.map((x) => (x.id === lead.id ? { ...x, ...d } : x))) }) : null,
-                ce(ColRow, { key: "__name", c: nameC, fixed: true, nameOnly: true, sel: colSel, setSel: setColSel, askDel, patch: (d) => { if (d.name)
-                        patch((p) => ({ ...p, nameLabel: d.name === "名前" ? undefined : d.name })); } }),
-                ce(ColRows, { cols: rest, setCols: (next) => setCols(lead ? [lead, ...next] : next), sel: colSel, setSel: setColSel, askDel, focusId: newCol })),
+                ce(ColRows, { cols: order, setCols, sel: colSel, setSel: setColSel, askDel, focusId: newCol, onName: (v) => patch((p) => ({ ...p, nameLabel: v === "名前" ? undefined : v })) })),
             colSel.length ? ce("button", { type: "button", onClick: () => askDel(`${colSel.length}列を削除しますか`, () => { setCols(cols.filter((c) => !colSel.includes(c.id))); setColSel([]); }, "列に入れた中身も見えなくなります。"), className: "ft-crow-del ft-tap", style: { marginTop: 12 } }, ce(lucide_react_1.Trash2, { size: 16 }), `${colSel.length}列を削除`) : null,
             ce("p", { className: "ft-psheet-k" }, "列を追加"),
-            ce(ColTypeGrid, { onPick: (k) => { const id = "c" + uid(); patch((p) => ({ ...p, cols: [...collCols(p), { id, name: colTypeName(k), type: k, ...(k === "select" ? { opts: [] } : {}) }] })); setNewCol(id); } })) : null,
+            ce(ColTypeGrid, { onPick: (k) => { const id = "c" + uid(); patch((p) => ({ ...p, cols: [...storeCols(p), { id, name: colTypeName(k), type: k, ...(k === "select" ? { opts: [] } : {}) }] })); setNewCol(id); } })) : null,
         /* 並び替え（9.1.0 で直した）：下の帯は［キャンセル］［完了］。キャンセルは開いたときの並びへ戻す。
            「初期に戻す」（＝足した順）は「並べる列」の見出しの右 */
         sortOpen ? ce(SheetDialog, { title: "並び替え", confirmLabel: "完了",
@@ -31568,7 +31646,14 @@ function CollTable({ plan, color, patch }) {
                     c.sub ? ce("small", null, c.sub) : null); })),
             sortCol ? ce(react_1.default.Fragment, null,
                 ce("p", { className: "ft-psheet-k" }, "順番"),
-                ce("div", { className: "ft-sdir", role: "group", "aria-label": "順番" }, ["asc", "desc"].map((d, k) => ce("button", { key: d, type: "button", "aria-pressed": sort.dir === d, onClick: () => setSort(sortCol.id, d), className: "ft-tap" + (sort.dir === d ? " on" : ""), style: sort.dir === d ? { color: color.deep } : undefined }, sortDirLabels(sortCol)[k])))) : null) : null);
+                ce("div", { className: "ft-sdir", role: "group", "aria-label": "順番" }, ["asc", "desc"].map((d, k) => ce("button", { key: d, type: "button", "aria-pressed": sort.dir === d, onClick: () => setSort(sortCol.id, d), className: "ft-tap" + (sort.dir === d ? " on" : ""), style: sort.dir === d ? { color: color.deep } : undefined }, sortDirLabels(sortCol)[k])))) : null) : null,
+        /* 選択肢を編集（9.3.0〜）：マスのえらぶ欄の「選択肢を編集…」・選択肢がまだ無いマスから開く。中身は列の設定と同じ OptEditor。
+           下の帯は［キャンセル］［完了］（キャンセルで開いたときの選択肢へ戻す） */
+        optCol ? ce(SheetDialog, { title: `「${optCol.name}」の選択肢`, confirmLabel: "完了",
+            onCancel: () => { const o = optOrig.current; const id = optCol.id; optOrig.current = null; setOptFor(null); if (o)
+                setCols(cols.map((x) => (x.id === id ? { ...x, opts: o } : x))); },
+            onConfirm: () => { optOrig.current = null; setOptFor(null); } },
+            ce(OptEditor, { c: optCol, askDel, auto: !optsOf(optCol).length, onChange: (opts) => patch((p) => ({ ...p, cols: storeCols(p).map((x) => (x.id === optCol.id ? { ...x, opts } : x)) })) })) : null));
 }
 /* 計画が自分で持つ予定（5.0.0〜）。plan.events ＝ [{ id, title, date }]。日付を入れたものは、その日の Today・週・月に計画の札で出る。
    **ふつうの記録（スケジュール）を計画に結びつける形には戻さないこと。** 計画の中で書いて、計画の中で完結する */
