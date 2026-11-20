@@ -1916,3 +1916,7 @@ button.ft-ccell-date{border:0}
 .ft-copts.empty .ft-mlist-in::placeholder{color:var(--th-800,#3E7EA6);opacity:.75}
 /* 9.3.0：マスから開く「選択肢を編集」の紙では、左の字下げをしない */
 .ft-sheet-body > .ft-copts.ft-mlist{margin:0}
+
+/* 10.0.2 横に振れすぎない（縦向きの画面） */
+html{overscroll-behavior-x:none}
+body{overflow-x:clip}

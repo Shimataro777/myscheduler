@@ -20641,6 +20641,55 @@ function useLockBackground() {
             return false;
         return dx > 0 ? n.scrollLeft > 0 : n.scrollLeft + n.clientWidth < n.scrollWidth - 1;
     };
+    /* ---- 横にだけ振れてしまうのを止める（10.0.2〜） ----
+       縦にしか表示されていない画面で、指を横へ動かすと画面ぜんたいがゴムのように横へ振れていた。
+       指の動きが横向きで、横に送れる箱（表・日付の帯など）の上でなければ、その動きを止める。
+       縦の動き・2本指の拡大・横に送れる箱の中の動きは、これまでどおり。 */
+    let hx = null;
+    const hxMove = (e) => {
+        if (!hx || !e.touches || e.touches.length !== 1)
+            return;
+        const p = e.touches[0];
+        const ax = Math.abs(p.clientX - hx.x), ay = Math.abs(p.clientY - hx.y);
+        if (!hx.dir) {
+            if (ax < 6 && ay < 6)
+                return;
+            hx.dir = ax > ay ? "h" : "v";
+            if (hx.dir === "h") {
+                let free = false;
+                for (let n = hx.t; n && n.nodeType === 1; n = n.parentElement) {
+                    const cs = getComputedStyle(n);
+                    if (/(auto|scroll)/.test(cs.overflowX) && n.scrollWidth > n.clientWidth + 1) {
+                        free = true;
+                        break;
+                    }
+                    if (n.isContentEditable || n.tagName === "INPUT" || n.tagName === "TEXTAREA" || n.hasAttribute("data-ft-hswipe")) {
+                        free = true;
+                        break;
+                    }
+                }
+                hx.free = free;
+            }
+        }
+        if (hx.dir === "h" && !hx.free && e.cancelable)
+            e.preventDefault();
+    };
+    /* passive:false の touchmove は、いつも付けておくと送りが重くなる（上の注意）。触れている間だけ付ける */
+    const hxEnd = () => {
+        hx = null;
+        document.removeEventListener("touchmove", hxMove, { capture: true });
+    };
+    document.addEventListener("touchstart", (e) => {
+        document.removeEventListener("touchmove", hxMove, { capture: true });
+        if (e.touches && e.touches.length === 1) {
+            hx = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: e.target, dir: "" };
+            document.addEventListener("touchmove", hxMove, { passive: false, capture: true });
+        }
+        else
+            hx = null;
+    }, { passive: true, capture: true });
+    document.addEventListener("touchend", hxEnd, { passive: true, capture: true });
+    document.addEventListener("touchcancel", hxEnd, { passive: true, capture: true });
     const tgMove = (e) => {
         if (!tg || !e.touches || !e.touches[0])
             return;
