@@ -28111,7 +28111,7 @@ function syncLook(st) {
     if (st.phase === "syncing")
         return { mark: "sync", anim: true, tone: "ok", label: "Googleドライブとやりとり中" };
     if (st.phase === "needsAuth")
-        return { mark: "alert", tone: "warn", label: "Googleドライブ（ログインが必要）", dot: "warn" };
+        return { mark: "alert", tone: "warn", label: "Googleドライブ（押すとログインして同期）", dot: "warn" };
     if (st.phase === "offline")
         return { mark: "off", tone: "mute", label: "Googleドライブ（通信できません）" };
     if (st.phase === "error")
@@ -28129,7 +28129,20 @@ function SyncHeaderButton({ onPhoto, style }) {
         return null;
     const look = syncLook(st);
     const n = st.enabled ? st.pending : 0;
-    return (react_1.default.createElement("button", { type: "button", onClick: ui.open, "aria-label": look.label + (n > 0 ? `・${n}件` : ""), "data-mt-sync-btn": "", className: "relative flex items-center justify-center rounded-xl ft-tap ft-tap-icon shrink-0 " + (onPhoto ? "text-white" : "gs-tone-" + look.tone), style: { minWidth: 48, minHeight: 48, filter: onPhoto ? "drop-shadow(0 1px 3px rgba(0,0,0,.45))" : undefined, ...(style || {}) } },
+    /* ログインが切れているときは、押したらそのままログインして同期（10.6.0〜）。紙は開かない。
+       **ここで await を挟まないこと。** Google のログインは、指の操作の流れの中でしか開けない。
+       部品の読み込みがまだなら、読み込みを始めて、いつもの紙を開く */
+    const onTap = () => {
+        const g = getGoogleSync();
+        if (g && st.enabled && st.phase === "needsAuth" && st.ready) {
+            g.loginNow();
+            return;
+        }
+        if (g && st.enabled && st.phase === "needsAuth")
+            g.preload();
+        ui.open();
+    };
+    return (react_1.default.createElement("button", { type: "button", onClick: onTap, "aria-label": look.label + (n > 0 ? `・${n}件` : ""), "data-mt-sync-btn": "", className: "relative flex items-center justify-center rounded-xl ft-tap ft-tap-icon shrink-0 " + (onPhoto ? "text-white" : "gs-tone-" + look.tone), style: { minWidth: 48, minHeight: 48, filter: onPhoto ? "drop-shadow(0 1px 3px rgba(0,0,0,.45))" : undefined, ...(style || {}) } },
         react_1.default.createElement("span", { className: "relative inline-flex" },
             react_1.default.createElement(CloudGlyph, { mark: look.mark, anim: look.anim, size: 27 }),
             n > 0 ? (react_1.default.createElement("span", { "aria-hidden": "true", className: "gs-badge fs-caption font-bold tabular-nums" }, n > 99 ? "99+" : n)) : look.dot ? (react_1.default.createElement("span", { "aria-hidden": "true", className: "gs-dot gs-dot-" + look.dot })) : null)));
@@ -32917,10 +32930,19 @@ function AppMain() {
         look();
         return () => clearTimeout(t);
     }, [loaded, bootDone]);
+    /* 起動したとき（と長く離れて戻ったとき）にログインが切れていても、**紙を出さないこと（10.6.0〜、持ち主の指示）。**
+       開いたらすぐ使えるようにする。雲が「！」になり、押せばその場でログインして同期する（SyncHeaderButton）。
+       ログインが切れていなければ、同期は前から裏で進んでいる（雲が ⇅ で流れる）。
+       Google の通行証（トークン）は1時間ほどで切れ、取り直すには指の操作が要る（ウェブのアプリの決まり）ので、
+       ログインそのものを指なしで済ませることはできない。代わりに、下に短く知らせる */
     (0, react_1.useEffect)(() => {
-        if (bootDone && syncSt.enabled && syncSt.askLogin)
-            setSyncSheet((p) => p || "launch");
-    }, [bootDone, syncSt.enabled, syncSt.askLogin]);
+        if (!(bootDone && syncSt.enabled && syncSt.askLogin))
+            return;
+        const g = getGoogleSync();
+        if (g)
+            g.dismissLogin();
+        tell("雲を押すと同期します", 3200);
+    }, [bootDone, syncSt.enabled, syncSt.askLogin]); // eslint-disable-line
     const syncUi = (0, react_1.useMemo)(() => ({ open: () => setSyncSheet("open") }), []);
     const closeSyncSheet = (0, react_1.useCallback)(() => {
         setSyncSheet(null);
