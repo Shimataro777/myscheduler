@@ -17830,8 +17830,9 @@ function themeColorOf(themeKey) {
    ・**ここに足しすぎないこと。** 10.1.0 で6つ（日曜・土曜・今の線・＋も）にしたら、多すぎると言われて戻した
    ============================================================ */
 const ACCENTS = [
-    { key: "joy", label: "楽しみな予定", std: { fg: "#C9604A", bg: "#FCEEE9" } },
-    { key: "late", label: "期限切れ", std: { fg: "#BE123C", bg: "#FDECEC" } },
+    /* def＝はじめの色（COLORS のキー）。10.5.0〜「標準」という別の丸はやめ、ほかの行と同じ12色から選ぶ */
+    { key: "joy", label: "楽しみな予定", def: "red" },
+    { key: "late", label: "期限切れ", def: "red" },
 ];
 function mixHex(a, b, t) {
     const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
@@ -17842,10 +17843,8 @@ function mixHex(a, b, t) {
 function accentOf(prefs, key) {
     const a = ACCENTS.find((x) => x.key === key) || ACCENTS[0];
     const pick = prefs && prefs.accent && prefs.accent[key];
-    const c = pick && COLORS.find((x) => x.key === pick);
-    if (c)
-        return { key: c.key, fg: c.deep, bg: mixHex(c.soft, c.line, 0.5) };
-    return { key: "", fg: a.std.fg, bg: a.std.bg };
+    const c = (pick && COLORS.find((x) => x.key === pick)) || colorOf(a.def);
+    return { key: c.key, fg: c.deep, bg: mixHex(c.soft, c.line, 0.5) };
 }
 /* :root に書く変数（AppMain の <style>） */
 function accentVars(prefs) {
@@ -27733,7 +27732,7 @@ function ColorsSheet({ draft, onCancel, onDone }) {
             ...SCHEDULE_SLOTS.map((slot, i) => ({ id: "s:" + slot, group: "スケジュール", label: `${i + 1}つめの色`, kind: "type", k: "schedule",
                 get: () => d.schedColor[slot], set: (v) => setD((x) => ({ ...x, schedColor: { ...x.schedColor, [slot]: v } })) })),
             ...ACCENTS.map((a) => ({ id: "a:" + a.key, group: "予定のしるし", label: a.label, kind: "mark", k: a.key, std: true,
-            get: () => d.accent[a.key] || "", set: (v) => setD((x) => { const n = { ...x.accent }; if (v)
+            get: () => d.accent[a.key] || a.def, set: (v) => setD((x) => { const n = { ...x.accent }; if (v && v !== a.def)
                 n[a.key] = v;
             else
                 delete n[a.key]; return { ...x, accent: n }; }) })),
@@ -27749,14 +27748,14 @@ function ColorsSheet({ draft, onCancel, onDone }) {
         const key = r.get();
         const col = r.kind === "type" ? colorOf(key) : null;
         const ac = r.kind === "mark" ? accentOf(look, r.k) : null;
-        return { key, name: r.kind === "type" ? col.label : (key ? colorOf(key).label : "標準"),
+        return { key, name: r.kind === "type" ? col.label : colorOf(key).label,
             sample: ce(ColorSample, { kind: r.kind, k: r.k, fg: col ? col.deep : ac.fg, bg: ac ? ac.bg : undefined, soft: col ? col.soft : undefined }) };
     };
     const now = rows.find((r) => r.id === cur) || rows[0];
     const nv = view(now);
-    const opts = now.kind === "type"
-        ? COLORS.map((c) => ({ key: c.key, label: c.label, fill: c.mid }))
-        : [{ key: "", label: "標準", fill: accentOf({ ...look, accent: {} }, now.k).fg, std: true }, ...COLORS.map((c) => ({ key: c.key, label: c.label, fill: c.deep }))];
+    /* **どの行も同じ12色・同じ並び・同じ見え方（mid）にすること（10.5.0、持ち主の指示）。**
+       10.4.0 までは楽しみ・期限切れだけ「標準」の丸が増え、丸の色も濃く、並びが7列に変わっていた */
+    const opts = COLORS.map((c) => ({ key: c.key, label: c.label, fill: c.mid }));
     let lastGroup = null;
     return ce(SheetDialog, { title: "記録の色", confirmLabel: "決定", onCancel, onConfirm: () => onDone(d) },
         /* 上に留める：いまの行の見本と名前、色の丸 */
@@ -27769,7 +27768,7 @@ function ColorsSheet({ draft, onCancel, onDone }) {
             ce("div", { className: "ft-clr-sw", style: { gridTemplateColumns: `repeat(${Math.ceil(opts.length / 2)}, minmax(0, 1fr))` } }, opts.map((o) => {
                 const sel = o.key === nv.key;
                 return ce("button", { key: o.key || "std", type: "button", onClick: () => now.set(o.key), "aria-label": o.label, "aria-pressed": sel, title: o.label, className: "ft-tap ft-tap-icon" + (sel ? " sel" : "") },
-                    ce("span", { style: { background: o.fill } }, sel ? ce(lucide_react_1.Check, { size: 15, strokeWidth: 3.2 }) : (o.std ? "標" : null)));
+                    ce("span", { style: { background: o.fill } }, sel ? ce(lucide_react_1.Check, { size: 15, strokeWidth: 3.2 }) : null));
             }))),
         /* 行の一覧（1枚の箱）。押した行が、上の色の丸の行き先になる */
         ce("div", { className: "ft-clr-list", role: "radiogroup", "aria-label": "色を変えるもの" }, rows.map((r) => {
@@ -29343,7 +29342,7 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 .bg-head{background:#FFFFFF;border-bottom:2px solid var(--th-200)}
 .bg-fab{background:var(--th-950)}
 /* 予定のしるしの色（10.1.0〜。ACCENTS）。標準の値は、AppMain が書く前（読み込み中）のため */
-:root{--ac-joy-fg:#C9604A;--ac-joy-bg:#FCEEE9;--ac-late-fg:#BE123C;--ac-late-bg:#FDECEC}
+:root{--ac-joy-fg:#C9615E;--ac-joy-bg:#FAE6E5;--ac-late-fg:#C9615E;--ac-late-bg:#FAE6E5}
 /* ---- 色の設定（10.1.0〜。ColorGroupRow / ColorsSheet） ---- */
 .ft-clr-dots{display:flex;align-items:center;flex-shrink:0;padding-left:6px}
 .ft-clr-dots > span{width:16px;height:16px;border-radius:999px;margin-left:-7px;box-shadow:0 0 0 2px #FFFFFF}
