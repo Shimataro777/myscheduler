@@ -17665,7 +17665,8 @@ const daysBetween = (a, b) => {
     return Math.round((db.setHours(0, 0, 0, 0) - da.setHours(0, 0, 0, 0)) / 86400000);
 };
 const WEEK_LABELS = ["日", "月", "火", "水", "木", "金", "土"];
-const weekColor = (i) => (i === 0 ? "text-rose-600" : i === 6 ? "text-sky-700" : "text-neutral-500");
+/* 日曜・土曜の字（色は固定。10.2.0 で設定からは外した） */
+const weekColor = (i) => (i === 0 ? "ft-c-sun" : i === 6 ? "ft-c-sat" : "text-neutral-500");
 const dowOf = (s) => { const d = parseYmd(s); return d ? d.getDay() : 0; };
 const fmtDate = (s) => { const d = parseYmd(s); return d ? `${d.getMonth() + 1}月${d.getDate()}日(${WEEK_LABELS[d.getDay()]})` : ""; };
 const fmtDateFull = (s) => { const d = parseYmd(s); return d ? `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日(${WEEK_LABELS[d.getDay()]})` : ""; };
@@ -17807,6 +17808,39 @@ const THEMES = [
 function themeColorOf(themeKey) {
     const th = THEMES.find((t) => t.key === themeKey) || THEMES[0];
     return { key: th.key, label: th.label, deep: th.vars[900], mid: th.vars[700], soft: th.vars[50], line: th.vars[200] };
+}
+/* ============================================================
+   予定のしるしの色（10.1.0〜、10.2.0 で2つに絞った）
+   記録の種類ではなく「意味」に付いている色。表示設定の「記録の色」の紙の中で変えられる。
+   **記録の見え方にかかわる色だけを置くこと（10.2.0、持ち主の指示）。**
+   日曜・土曜の字、今の時刻の線は固定。＋ボタンなどの操作の部品は基調の色（--th-*）について行く。
+   ・標準（"" のまま）は、10.0.2 までの見た目そのもの。std の値を変えないこと
+   ・えらんだときは COLORS の色から作る（字・線＝deep、下じき＝soft と line の中間）
+   ・画面には CSS の変数（--ac-キー-fg / --ac-キー-bg）で届ける。AppMain が :root に書く。
+     **部品に色の数値を直に書かないこと。** var(--ac-…) を使う（設定を変えても置いていかれる）
+   ・**ここに足しすぎないこと。** 10.1.0 で6つ（日曜・土曜・今の線・＋も）にしたら、多すぎると言われて戻した
+   ============================================================ */
+const ACCENTS = [
+    { key: "joy", label: "楽しみな予定", std: { fg: "#C9604A", bg: "#FCEEE9" } },
+    { key: "late", label: "期限切れ", std: { fg: "#BE123C", bg: "#FDECEC" } },
+];
+function mixHex(a, b, t) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const ch = (sh) => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);
+    return "#" + [16, 8, 0].map((sh) => ch(sh).toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+/* いまの「しるしの色」をひとつ。{ fg, bg, key（えらんだ色。標準は ""）} */
+function accentOf(prefs, key) {
+    const a = ACCENTS.find((x) => x.key === key) || ACCENTS[0];
+    const pick = prefs && prefs.accent && prefs.accent[key];
+    const c = pick && COLORS.find((x) => x.key === pick);
+    if (c)
+        return { key: c.key, fg: c.deep, bg: mixHex(c.soft, c.line, 0.5) };
+    return { key: "", fg: a.std.fg, bg: a.std.bg };
+}
+/* :root に書く変数（AppMain の <style>） */
+function accentVars(prefs) {
+    return ACCENTS.map((a) => { const v = accentOf(prefs, a.key); return `--ac-${a.key}-fg:${v.fg};--ac-${a.key}-bg:${v.bg}`; }).join(";");
 }
 /* 名前の並べかえ。**ただの文字くらべにしないこと。**
    「01.」「02.」…「10.」を、10 が 2 より先に来ないように数として見る。
@@ -18056,6 +18090,8 @@ const DEFAULT_PREFS = {
     /* 予定の3つのわくに、どの色を当てるか */
     schedColor: { ...DEFAULT_SCHEDULE_COLORS },
     typeName: {}, // 記録の種類の呼び名を変えたいとき
+    /* しるしの色（10.1.0〜。ACCENTS）。{ joy: "teal" } のように、変えたものだけ持つ。無い＝標準 */
+    accent: {},
     /* 計画の並び順（表示設定「計画」）。"name" ＝ 名前順／"updated" ＝ 更新順。
        **以前は sortOrder ひとつをフォルダと共用していた（〜2.12.0）。**
        いまは計画だけがここを見る。フォルダは folderSortOrder（2.13.0〜）を見る */
@@ -18093,6 +18129,7 @@ async function loadPrefs() {
             typeColor: { ...DEFAULT_TYPE_COLOR, ...((p && p.typeColor) || {}) },
             schedColor: { ...DEFAULT_SCHEDULE_COLORS, ...((p && p.schedColor) || {}) },
             typeName: { ...((p && p.typeName) || {}) },
+            accent: { ...((p && p.accent && typeof p.accent === "object") ? p.accent : {}) },
             /* 「新しい順」は廃止した。**むかしの値が残っていたら、時間順に読み替える。** */
             recordOrder: (p && p.recordOrder === "recent") ? "recent" : "old",
             /* フォルダと計画の並び順を分けた（2.13.0〜）。
@@ -18102,7 +18139,7 @@ async function loadPrefs() {
         };
     }
     catch (e) {
-        return { ...DEFAULT_PREFS, typeColor: { ...DEFAULT_TYPE_COLOR }, typeName: {} };
+        return { ...DEFAULT_PREFS, typeColor: { ...DEFAULT_TYPE_COLOR }, typeName: {}, accent: {} };
     }
 }
 const persistPrefs = (p) => storageSet(PREF_KEY, JSON.stringify(p));
@@ -20074,10 +20111,11 @@ function Collapse({ open, keepMounted = false, className = "", children }) {
      （2.19.0 から、使っている画面は無い。計画の画面は白に戻した）
    ・**切り替えに動きを付けないこと。** 同じ階層の切り替えは「動かさない」（画面遷移の決まり）
    ============================================================ */
-function PillTabs({ tabs, value, onChange, onCanvas, className = "" }) {
+/* sm（10.2.0〜）：設定の行の右に置く小さい形（高さ 36・字は一段小さく）。行の中で2〜3択をその場で押させるとき */
+function PillTabs({ tabs, value, onChange, onCanvas, className = "", sm }) {
     return (react_1.default.createElement("div", { className: "ft-pill-track flex rounded-full p-1 " + (onCanvas ? "on-canvas " : "") + className }, tabs.map((t) => {
         const on = value === t.key;
-        return (react_1.default.createElement("button", { key: t.key, type: "button", onClick: () => onChange(t.key), "aria-pressed": on, style: { minHeight: 42 }, className: "flex-1 rounded-full fs-body font-bold flex items-center justify-center gap-1.5 ft-tap "
+        return (react_1.default.createElement("button", { key: t.key, type: "button", onClick: () => onChange(t.key), "aria-pressed": on, style: { minHeight: sm ? 36 : 42 }, className: "flex-1 rounded-full font-bold flex items-center justify-center gap-1.5 ft-tap whitespace-nowrap " + (sm ? "fs-body-sm " : "fs-body ")
                 + (on ? "bg-white text-th-900 card-soft" : "text-th-800/60") },
             t.label,
             t.count !== undefined && (react_1.default.createElement("span", { className: "fs-caption tabular-nums " + (on ? "text-th-800" : "text-th-800/60") }, t.count))));
@@ -21587,11 +21625,16 @@ function OverlayScreen({ from = "right", closing, children, zIndex = 50 }) {
        専用のクラスにする。**共用にすると、紙・小窓の「待たずに閉じる」まで動きが付いてしまう**
        （useClosing に ms を渡していないので、動く間もなく消え、ちらつきに見える） */
     const scrimOutCls = from === "bottom" ? "anim-scrim-out-modal" : "anim-scrim-out-push";
+    /* メニューから移ってくる画面（10.1.0〜）は、入りきるまで暗がりを出さない（anim-fade-lift）。
+       ふつうの anim-fade だと、うしろに残したメニューの白い板まで灰色に沈み、
+       入ってくる途中に画面が「暗転」したように見えた。うしろはメニューの暗がりがもう暗くしている */
+    const lift = from === "right" && zIndex >= MENU_LIFT_Z;
+    const scrimInCls = lift ? "anim-fade-lift" : "anim-fade";
     /* data-ft-lift：メニューから移ってくる途中の画面（goFromMenu が入りきったかを見る） */
     return (react_1.default.createElement("div", { className: "fixed inset-0", "data-ft-overlay": "", "data-ft-lift": zIndex >= MENU_LIFT_Z ? String(zIndex) : undefined, style: { zIndex } },
         /* 地の暗がり。左端から払って戻るときは useEdgeSwipeBack が指に合わせて薄くする。
            **data-ft-scrim を外さないこと。** 外すと、払い終えたあと画面だけ消えて暗がりが残る */
-        react_1.default.createElement("div", { "data-ft-scrim": "", className: "absolute inset-0 bg-black/25 " + (closing ? scrimOutCls : "anim-fade") }),
+        react_1.default.createElement("div", { "data-ft-scrim": "", className: "absolute inset-0 bg-black/25 " + (closing ? scrimOutCls : scrimInCls) }),
         react_1.default.createElement("div", { className: "absolute inset-0 " + (closing ? outCls : inCls) }, children)));
 }
 /* 画面左端を右へ払うと戻る。
@@ -23102,13 +23145,6 @@ function MenuRow({ it }) {
             it.desc && react_1.default.createElement("span", { className: "block fs-label text-neutral-500 mt-0.5" }, it.desc)),
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" })));
 }
-/* 【2.20.6〜 メニューから画面へ移るときは使っていない。下の MENU_UNDER_Z を見ること】
-   メニューから画面へ移るとき（instant）の板。**その場で消すこと。**
-   板を右へ滑らせて消すと、移った先の画面も右から入ってくる（画面遷移の決まり）ので、
-   ふたつが逆向きにすれ違って、どこへ行ったか分からなくなる。
-   暗がりだけは今までどおり薄れさせる（新しい画面の暗がりと入れかわるので、明るさが跳ねない）。
-   消えたあとも少しのあいだ残して、押されたぶんを受け止めるのは今までどおり */
-const SIDE_MENU_GONE = { opacity: 0, transition: "none", touchAction: "pan-y" };
 /* 移った先の画面の下へ、板を沈める（2.20.6〜）。
    メニューの行を押したら、板は**その場に残したまま**この高さへ下げ、
    右から入ってくる画面（MENU_LIFT_Z）に上からかぶせてもらう。
@@ -23118,41 +23154,57 @@ const SIDE_MENU_GONE = { opacity: 0, transition: "none", touchAction: "pan-y" };
 const MENU_UNDER_Z = 55;
 /* メニューから開いた画面の高さの始まり。続けて移るたびに 1 つずつ上がる（2.24.1〜。AppMain の menuLift） */
 const MENU_LIFT_Z = 60;
-function SideMenu({ open, onClose, items, footer, instant, under }) {
-    const [mounted, setMounted] = (0, react_1.useState)(open);
-    const [shown, setShown] = (0, react_1.useState)(false);
-    /* instant で閉じたことを覚えておく。**instant をそのまま見ないこと。**
-       呼び出し側は次の画面を開いた直後に instant を false へ戻すので、
-       板が途中から滑る動きに戻ってしまう */
-    const [gone, setGone] = (0, react_1.useState)(false);
+/* ============================================================
+   メニューの開け閉め（10.1.0〜）
+   **AppMain の state に戻さないこと。**
+   AppMain に持たせていた（〜10.0.2）ので、三本線を押すたび・閉じるたびに、Today の記録まで
+   ぜんぶ描き直していた。iPhone ではその重さが板の出はじめ・閉じはじめに重なり、
+   暗がりがいきなり濃くなる／板がつっかえて出る、の「安定しない出方」になっていた。
+   ここ（小さな置き場）で持てば、描き直すのはメニューの板だけで済む。
+   ・open  … 板を出しているか
+   ・under … メニューから画面へ移る途中。板を、入ってくる画面の下へ沈めている（goFromMenu）
+   ============================================================ */
+const menuStore = (() => {
+    let st = { open: false, under: false };
+    const subs = new Set();
+    return {
+        get: () => st,
+        set: (patch) => {
+            const next = { ...st, ...patch };
+            if (next.open === st.open && next.under === st.under)
+                return;
+            st = next;
+            subs.forEach((f) => f());
+        },
+        sub: (f) => { subs.add(f); return () => { subs.delete(f); }; },
+    };
+})();
+const useMenuState = () => react_1.default.useSyncExternalStore(menuStore.sub, menuStore.get, menuStore.get);
+/* メニューの板（10.1.0 で出し方を作り直した）。
+   **出るときは、ほかの重なる画面と同じ CSS の動き（anim-right / anim-fade）で出すこと。**
+   〜10.0.2 は、描いてから requestAnimationFrame を2回待って transition を始めていた。
+   ・ゆるめ方が cubic-bezier(0.16,1,0.3,1)（出だしが極端に速い）で、暗がりが最初の1こまで 0→0.37、
+     3こまで 0.77 まで濃くなる。iPhone で1〜2こま落ちると、いきなり暗くなったように見えた（「暗転」）
+   ・待つこまの数が、描き直しの重さで前後するので、出はじめがつっかえた
+   いまは、板は画面（右から入る）と同じ --ft-enter-push と --ease-out、暗がりは小窓と同じ anim-fade。
+   **閉じるときだけは transition。** 指で払った位置から、そのまま右へ送り出すため（keyframes だと 0 へ戻ってから動く） */
+function SideMenu({ onClose, items, footer }) {
+    const { open, under } = useMenuState();
+    /* 閉じる動きのあいだだけ true。**描き直しのときに決めること（effect で決めないこと）。**
+       effect だと、閉じた瞬間に一度「無し」で描かれて板が消え、もう一度生まれてから滑り出す */
+    const [seen, setSeen] = (0, react_1.useState)(open);
+    const [closing, setClosing] = (0, react_1.useState)(false);
+    if (open !== seen) {
+        setSeen(open);
+        /* 画面の下に沈めていたとき（under）は、もう画面に隠れている。滑らせず、すぐ外す */
+        setClosing(!open && !under && !motionIsOff());
+    }
     (0, react_1.useEffect)(() => {
-        let t;
-        if (open) {
-            setGone(false);
-            setMounted(true);
-            t = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
-            return () => cancelAnimationFrame(t);
-        }
-        /* 移った先の画面の下に沈めていたとき（under）は、もう画面に隠れている。
-           **ここで滑らせたり薄れさせたりしないこと。** under のまま、すぐ外す */
-        if (under) {
-            setShown(false);
-            setMounted(false);
+        if (!closing)
             return undefined;
-        }
-        /* 画面へ移るときは、メニューが左へ滑って消える動きを見せない。
-           ただし要素を即座に外すと、その位置にある別のものがタップを拾ってしまう。
-           透明なまま少しの間だけ残して受け止める */
-        if (instant) {
-            setGone(true);
-            setShown(false);
-            const q = setTimeout(() => setMounted(false), 320);
-            return () => clearTimeout(q);
-        }
-        setShown(false);
-        const timer = setTimeout(() => setMounted(false), 260);
-        return () => clearTimeout(timer);
-    }, [open]); // eslint-disable-line
+        const t = setTimeout(() => setClosing(false), FT_EXIT_RIGHT_MS + 20);
+        return () => clearTimeout(t);
+    }, [closing]);
     (0, react_1.useEffect)(() => {
         if (!open)
             return;
@@ -23170,7 +23222,7 @@ function SideMenu({ open, onClose, items, footer, instant, under }) {
        **touch だけで受けないこと。** 環境によっては何も起きない */
     const dragNowRef = (0, react_1.useRef)(0);
     const onPointerDown = (e) => {
-        if (under)
+        if (under || !open)
             return;
         dragRef.current = { x: e.clientX, y: e.clientY, w: e.currentTarget.offsetWidth, lock: null };
         dragNowRef.current = 0;
@@ -23196,31 +23248,34 @@ function SideMenu({ open, onClose, items, footer, instant, under }) {
         dragRef.current = null;
         const moved = dragNowRef.current;
         dragNowRef.current = 0;
-        if (d && moved > (d.w || 300) * 0.3) {
-            setDrag(null);
-            onClose();
-            return;
-        }
         setDrag(null);
+        if (d && moved > (d.w || 300) * 0.3)
+            onClose();
     };
-    if (!mounted)
+    if (!open && !closing)
         return null;
-    return (react_1.default.createElement("div", { className: "fixed inset-0", style: { zIndex: under ? MENU_UNDER_Z : 2147483200 } },
+    const dragging = open && drag !== null;
+    /* 出ているあいだ：CSS の動き（anim-*）で出て、指で払ったぶんだけ動く。離したら transition で戻る */
+    const panelStyle = !open
+        ? { transform: "translate3d(100%,0,0)", transition: "transform var(--ft-enter-push) var(--ease-out)", touchAction: "pan-y" }
+        : dragging
+            ? { transform: `translate3d(${drag}px,0,0)`, transition: "none", touchAction: "pan-y" }
+            : { transition: "transform var(--ft-enter-push) var(--ease-out)", touchAction: "pan-y" };
+    const scrimStyle = !open
+        ? { opacity: 0, transition: "opacity var(--ft-enter-push) ease-out" }
+        : dragging
+            ? { opacity: Math.max(0, 1 - drag / 260), transition: "none" }
+            : { transition: "opacity var(--ft-enter-fade) ease-out" };
+    return (react_1.default.createElement("div", { className: "fixed inset-0", "data-ft-menu": "", /* 閉じる動きのあいだも、指は受け止めておく（うしろの画面に届かせない） */
+        style: { zIndex: under ? MENU_UNDER_Z : 2147483200 } },
         react_1.default.createElement(BackgroundLock, null),
-        react_1.default.createElement("div", { onClick: under ? undefined : onClose, className: "absolute inset-0 bg-black/35", style: {
-                opacity: shown ? (drag !== null ? Math.max(0, 1 - drag / 260) : 1) : 0,
-                transition: drag !== null ? "none" : "opacity 240ms cubic-bezier(0.16,1,0.3,1)",
-            } }),
-        react_1.default.createElement("div", { className: "absolute top-0 right-0 h-full w-[67%] max-w-[320px] bg-white shadow-xl flex flex-col", onPointerDown: onPointerDown, onPointerMove: onPointerMove, onPointerUp: onPointerUp, onPointerCancel: onPointerUp, style: gone ? SIDE_MENU_GONE : {
-                transform: drag !== null ? `translateX(${drag}px)` : (shown ? "translateX(0)" : "translateX(100%)"),
-                transition: drag !== null ? "none" : "transform 280ms cubic-bezier(0.16,1,0.3,1)",
-                touchAction: "pan-y",
-            } },
+        react_1.default.createElement("div", { onClick: under || !open ? undefined : onClose, className: "absolute inset-0 bg-black/35" + (open ? " anim-fade" : ""), style: scrimStyle }),
+        react_1.default.createElement("div", { className: "ft-menu-panel absolute top-0 right-0 h-full w-[67%] max-w-[320px] bg-white shadow-xl flex flex-col" + (open ? " anim-right" : ""), onPointerDown: onPointerDown, onPointerMove: onPointerMove, onPointerUp: onPointerUp, onPointerCancel: onPointerUp, style: panelStyle },
             react_1.default.createElement("div", { className: "flex items-center justify-between px-5 border-b border-neutral-200 shrink-0 min-h-[44px]", style: { ...SAFE_TOP(18), paddingBottom: 11 } },
-                react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900" }, "\u30E1\u30CB\u30E5\u30FC"),
-                react_1.default.createElement("button", { onClick: onClose, "aria-label": "\u9589\u3058\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-600 hover:bg-neutral-100" },
+                react_1.default.createElement("span", { className: "font-display fs-subhead text-neutral-900" }, "メニュー"),
+                react_1.default.createElement("button", { onClick: onClose, "aria-label": "閉じる", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-600 hover:bg-neutral-100" },
                     react_1.default.createElement(lucide_react_1.X, { size: 28 }))),
-            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto py-2 ft-seq" }, items.map((it) => react_1.default.createElement(MenuRow, { key: it.label, it: it }))),
+            react_1.default.createElement("div", { className: "flex-1 overflow-y-auto py-2" }, items.map((it) => react_1.default.createElement(MenuRow, { key: it.label, it: it }))),
             footer && (react_1.default.createElement("div", { className: "border-t border-neutral-200 px-5 py-4 shrink-0", style: SAFE_BOTTOM(16) }, footer)))));
 }
 /* 知らせ（トースト）。**前のタイマーを必ず止めること。**
@@ -23232,6 +23287,14 @@ function useToast() {
     /* 2.4秒は長すぎる。次の画面へ移ったあとまで残って、そこの内容と重なる */
     const tell = (0, react_1.useCallback)((text, ms = 1700) => {
         clearTimeout(timer.current);
+        /* 空の知らせ（＝消すだけ）は null にそろえる（10.1.0〜）。
+           **"" を入れないこと。** 画面を開くたびに tell("") が呼ばれ、null → "" の変化で AppMain が
+           Today ごと描き直されていた。しかも開いた画面が入ってくる最中で、動きがつっかえて見えた。
+           null のままなら、React は描き直さない */
+        if (!text) {
+            setMsg(null);
+            return;
+        }
         setMsg(text);
         timer.current = setTimeout(() => setMsg(null), ms);
     }, []);
@@ -24359,7 +24422,7 @@ function DueBadge({ r, color, onToggle }) {
     const due = dueOf(r), left = daysBetween(todayStr(), due), done = listAllDone(r);
     const ce = react_1.default.createElement;
     const text = done ? "済み" : left > 0 ? `あと${left}日` : left === 0 ? "今日まで" : `${-left}日過ぎ`;
-    const st = done ? { background: "#F1F4F6", color: "#6B7883" } : left < 0 ? { background: "#FDECEC", color: "#BE123C" } : left === 0 ? { background: color.mid, color: "#fff" } : { background: color.soft, color: color.deep };
+    const st = done ? { background: "#F1F4F6", color: "#6B7883" } : left < 0 ? { background: "var(--ac-late-bg)", color: "var(--ac-late-fg)" } : left === 0 ? { background: color.mid, color: "#fff" } : { background: color.soft, color: color.deep };
     /* スケジュールを済ませたあとは、「済み」のボタンだけにする（同じ字を2つ並べない） */
     const showText = !(r.type === "schedule" && onToggle && done);
     return react_1.default.createElement(react_1.default.Fragment, null,
@@ -24529,7 +24592,7 @@ function QuoteCard({ id, selectMode, onRemove, className = "", icon, hideChain }
             open && imgs.length > 0 && (react_1.default.createElement("div", { className: "grid gap-[3px] mt-2 rounded-lg overflow-hidden bg-neutral-100", style: { gridTemplateColumns: imgs.length === 1 ? "1fr" : "1fr 1fr" } }, imgs.map((src, i) => (react_1.default.createElement("button", { key: i, type: "button", "aria-label": "\u62E1\u5927", onClick: (e) => { e.stopPropagation(); if (!selectMode)
                     setPhoto(i); }, onPointerDown: stop, className: "block overflow-hidden ft-tap ft-tap-card", style: { aspectRatio: imgs.length === 1 ? "4 / 3" : "1 / 1" } },
                 react_1.default.createElement(Photo, { src: src, className: "block w-full h-full", style: { objectFit: "cover" } })))))),
-            canOpen && (react_1.default.createElement("span", { className: "block mt-1.5 fs-caption font-bold text-sky-700" }, open ? "\u6298\u308A\u305F\u305F\u3080" : "\u3059\u3079\u3066\u8868\u793A"))),
+            canOpen && (react_1.default.createElement("span", { className: "block mt-1.5 fs-caption font-bold text-th-950" }, open ? "\u6298\u308A\u305F\u305F\u3080" : "\u3059\u3079\u3066\u8868\u793A"))),
         photo !== null && (react_1.default.createElement(PhotoViewer, { images: imgs, index: photo, onClose: () => setPhoto(null) }))));
 }
 /* ============================================================
@@ -24547,7 +24610,7 @@ function QuotedByLink({ n, onOpen, selectMode, small }) {
         return null;
     return (react_1.default.createElement("button", { type: "button", onClick: (e) => { if (selectMode)
             return; e.stopPropagation(); onOpen(); }, onPointerDown: (e) => { if (!selectMode)
-            e.stopPropagation(); }, className: "-ml-1 px-1 min-h-[36px] flex items-center gap-1 rounded-lg ft-tap text-sky-700 " + (small ? "fs-caption font-bold" : "fs-body-sm font-bold") },
+            e.stopPropagation(); }, className: "-ml-1 px-1 min-h-[36px] flex items-center gap-1 rounded-lg ft-tap text-th-950 " + (small ? "fs-caption font-bold" : "fs-body-sm font-bold") },
         react_1.default.createElement(lucide_react_1.Quote, { size: small ? 12 : 14 }),
         react_1.default.createElement("span", null, small ? `\u5F15\u7528\u3057\u305F\u8A18\u9332 ${n}\u4EF6` : `\u3053\u306E\u30E1\u30E2\u3092\u5F15\u7528\u3057\u305F\u8A18\u9332 ${n}\u4EF6`),
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: small ? 14 : 16 })));
@@ -24751,7 +24814,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                 react_1.default.createElement(LinkCards, { text: r.text }),
                 /* 「すべて表示／折りたたむ」は、本文・リンクカードの下、添付写真の上に置く（2.17.0〜）。
                    以前は写真の下（カードの最下部）だった。**写真の下へ戻さないこと** */
-                memoLong && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")))),
+                memoLong && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-th-950" }, expanded ? "折りたたむ" : "すべて表示")))),
             r.type !== "memo" && body && (react_1.default.createElement(react_1.default.Fragment, null,
                 react_1.default.createElement(LinkedText, { text: body, className: "block fs-body leading-relaxed text-neutral-800 mb-1.5" }),
                 react_1.default.createElement(LinkCards, { text: body }))),
@@ -24795,7 +24858,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     repeatLabel(r.repeat))))),
             /* カード下部の「すべて表示／折りたたむ」。リストのメモ欄（本文の折りたたみ）用。
                **折りたためる中身があるときだけ出す。** メモの本文ぶんは、上（写真の上）へ移した */
-            listBody && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-sky-700" }, expanded ? "折りたたむ" : "すべて表示")),
+            listBody && (react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); setExpanded((v) => !v); }, onPointerDown: (e) => e.stopPropagation(), className: "block mt-1.5 fs-body-sm font-bold text-th-950" }, expanded ? "折りたたむ" : "すべて表示")),
             react_1.default.createElement(FolderChips, { recId: r.id, className: "mt-2", hide: hideFolder }),
             /* 「探す」でキーワードを入れたときだけ出る。どこに当たったか */
             hits && hits.length > 0 && react_1.default.createElement(RecordHitBox, { hits: hits, words: hitWords })),
@@ -26053,7 +26116,7 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
     const label = (text, right) => ce("div", { className: "flex items-center gap-2 mb-1" },
         ce("p", { className: "flex-1 fs-label font-bold text-neutral-500 tabular-nums" }, text),
         right || null);
-    const dot = (n, on) => ce("span", { className: "rounded-full", "aria-hidden": "true", style: { width: 5, height: 5, background: n ? (on ? "#FFFFFF" : "#6FAFD2") : "transparent" } });
+    const dot = (n, on) => ce("span", { className: "rounded-full", "aria-hidden": "true", style: { width: 5, height: 5, background: n ? (on ? "#FFFFFF" : "var(--th-800)") : "transparent" } });
     return (ce("div", { className: "ft-sheet-wrap flex items-end justify-center " + (closing ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483000 }, onClick: close, onPointerDown: stopPress },
         ce(BackgroundLock, null),
         ce("div", { className: "absolute inset-0 bg-black/45" }),
@@ -26065,7 +26128,7 @@ function MoveItemSheet({ item, from, records, onCancel, onMove, onCreate }) {
                     ce(lucide_react_1.X, { size: 24 }))),
             ce("div", { ref: bodyRef, className: "ft-sheet-body overflow-y-auto px-4 pt-3", style: SAFE_BOTTOM(16) },
                 /* ① 移すもの */
-                label(`移すもの（${chosen.length}件）`, pool.length > 1 && ce("button", { type: "button", onClick: () => setPicked(allOn ? new Set() : new Set(pool.map((i) => i.id))), className: "px-2 py-1 -mr-1 rounded-lg fs-body-sm font-bold text-sky-700 ft-tap" }, allOn ? "すべて外す" : "すべて選択")),
+                label(`移すもの（${chosen.length}件）`, pool.length > 1 && ce("button", { type: "button", onClick: () => setPicked(allOn ? new Set() : new Set(pool.map((i) => i.id))), className: "px-2 py-1 -mr-1 rounded-lg fs-body-sm font-bold text-th-950 ft-tap" }, allOn ? "すべて外す" : "すべて選択")),
                 ce("div", { className: "-mx-1" }, pool.map((i) => {
                     const on = picked.has(i.id);
                     return (ce(TapOnceButton, { key: i.id, onTap: () => togglePick(i.id), "aria-pressed": on, className: "w-full flex items-start gap-2.5 rounded-xl px-2 py-2 min-h-[44px] text-left ft-tap ft-tap-card " + (on ? "bg-th-50" : "") },
@@ -26697,7 +26760,7 @@ function PlanCard({ plan, records, onOpen, onPin, pressProps, hitQ }) {
             ce("span", { className: "ft-fname font-display fs-subhead text-neutral-900" }, p.name ? (hits && hits.name ? ce(HitText, { text: p.name, words: hitWords }) : p.name) : "（名前なし）"),
             ce("span", { className: "ft-fmeta" },
                 ce("span", { className: "fs-label font-bold text-neutral-500 tabular-nums" }, isList ? (collCols(p).some((c) => c.id === "__done") ? `済み ${nDone}/${todo.length}` : `${todo.length}件`) : done ? `${fmtDateShort(p.doneAt)} 達成` : `リスト ${nDone}/${todo.length}`),
-                left != null ? ce("span", { className: "fs-label font-bold tabular-nums", style: { color: left < 0 ? "#BE123C" : c.deep, marginLeft: "auto" } }, left === 0 ? "今日まで" : left < 0 ? `${-left}日過ぎ` : `あと${left}日`) : null)),
+                left != null ? ce("span", { className: "fs-label font-bold tabular-nums", style: { color: left < 0 ? "var(--ac-late-fg)" : c.deep, marginLeft: "auto" } }, left === 0 ? "今日まで" : left < 0 ? `${-left}日過ぎ` : `あと${left}日`) : null)),
         hits && ce(PlanHitBox, { plan: p, hits: hits, words: hitWords }));
 }
 /* 上に固定する押しピン。記録・計画・カテゴリ・フォルダで同じものを使う。
@@ -26732,7 +26795,7 @@ function GoalRow({ plan, onOpen, onPin, pressProps, hitQ }) {
                 ce("span", { className: "ft-grow-name font-display" }, p.name ? (hits && hits.name ? ce(HitText, { text: p.name, words: hitWords }) : p.name) : "（名前なし）"),
                 memo ? ce("span", { className: "ft-grow-memo" }, memo) : null),
             done ? ce("span", { className: "ft-grow-left done tabular-nums", style: { color: c.deep } }, ce("small", null, fmtDateShort(p.doneAt)), ce("small", null, "達成"))
-                : left != null ? ce("span", { className: "ft-grow-left tabular-nums", style: { color: left < 0 ? "#BE123C" : c.deep } }, left === 0 ? ce("b", { className: "w" }, "今日") : ce(react_1.default.Fragment, null, left < 0 ? null : ce("small", null, "あと"), ce("b", null, Math.abs(left)), ce("small", null, left < 0 ? "日過ぎ" : "日"))) : null,
+                : left != null ? ce("span", { className: "ft-grow-left tabular-nums", style: { color: left < 0 ? "var(--ac-late-fg)" : c.deep } }, left === 0 ? ce("b", { className: "w" }, "今日") : ce(react_1.default.Fragment, null, left < 0 ? null : ce("small", null, "あと"), ce("b", null, Math.abs(left)), ce("small", null, left < 0 ? "日過ぎ" : "日"))) : null,
             onPin ? ce(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } }) : null),
         todo.length ? ce("div", { className: "ft-grow-foot" },
             ce("span", { className: "ft-grow-bar" }, ce("i", { style: { width: (nDone / todo.length) * 100 + "%", background: c.mid } })),
@@ -26849,7 +26912,7 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
        日付は小さな灰、残りの日数は色付きの札にして、ぱっと目に入るようにする。
        過ぎていたら知らせの色、3日以内はイベントの色、それより先は落ち着いた灰 */
     const leftStyle = left === null ? { background: "#F3F3F5", color: "#8A8A90" }
-        : left < 0 ? { background: "#FFF1F4", color: "#BE123C" }
+        : left < 0 ? { background: "var(--ac-late-bg)", color: "var(--ac-late-fg)" }
             : left <= 7 ? { background: color.soft, color: color.deep }
                 : { background: "#F3F3F5", color: "#63636A" };
     /* 完了の入り切りは、リスト記録カード（RecordRow）と同じ操作感にそろえる。
@@ -27605,6 +27668,112 @@ function ColorSelect({ value, options, onChange, title }) {
                     react_1.default.createElement("span", { className: "fs-caption text-neutral-600 truncate w-full text-center" }, c.label)));
             }))))));
 }
+/* ============================================================
+   色の設定（10.1.0〜）
+   表示設定には「基調の色」「記録・予定」「しるし」の3行だけを置き、
+   記録・予定としるしは、押すと紙（ColorsSheet）が出て、その中でえらぶ。
+   **表示設定に色の行をずらりと並べないこと。** 10.0.2 までは記録4行＋予定3行で画面の半分を取っていた。
+   紙の中は1行＝1つの色。押すとその行だけ色の丸が開く（Collapse。開くのは1つずつ）。
+   ・行の左の見本は、その色が実際に使われる形（札・字・線・ボタン）で見せる
+   ・紙の中の変更は「決定」で表示設定の下書きへ。表示設定の「保存」で決まる（いままでどおり）
+   ============================================================ */
+/* 色の丸を重ねて並べる（表示設定の行の右）。いま何色かが、紙を開かなくても分かる */
+function ColorDots({ list }) {
+    const ce = react_1.default.createElement;
+    return ce("span", { className: "ft-clr-dots", "aria-hidden": "true" }, list.map((c, i) => ce("span", { key: i, style: { background: c } })));
+}
+function ColorGroupRow({ label, sub, dots, onOpen, last }) {
+    const ce = react_1.default.createElement;
+    return ce("button", { type: "button", onClick: onOpen, className: "w-full flex items-center gap-2 px-4 py-2 min-h-[58px] text-left ft-tap ft-tap-card " + (last ? "" : "border-b border-neutral-200") },
+        ce("span", { className: "flex-1 min-w-0" },
+            ce("span", { className: "block fs-subhead text-neutral-900 truncate" }, label),
+            sub && ce("span", { className: "block fs-caption text-neutral-500 truncate" }, sub)),
+        ce(ColorDots, { list: dots }),
+        ce(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" }));
+}
+/* 行の左の見本。**その色が画面のどこに出るか**を、同じ形で小さく見せる */
+function ColorSample({ kind, k, fg, bg, soft }) {
+    const ce = react_1.default.createElement;
+    if (kind === "type")
+        return ce("span", { className: "ft-clr-sample", style: { background: soft, color: fg } }, typeIcon(k, 16));
+    switch (k) {
+        case "joy": return ce("span", { className: "ft-clr-sample chip tabular-nums", style: { background: bg, color: fg } }, "3", ce("small", null, "日"));
+        case "late": return ce("span", { className: "ft-clr-sample chip", style: { background: bg, color: fg } }, "過ぎ");
+        case "sun": return ce("span", { className: "ft-clr-sample txt", style: { color: fg } }, "日");
+        case "sat": return ce("span", { className: "ft-clr-sample txt", style: { color: fg } }, "土");
+        case "now": return ce("span", { className: "ft-clr-sample now", style: { color: fg } }, ce("i", null));
+        case "fab": return ce("span", { className: "ft-clr-sample fab", style: { background: fg } }, ce(lucide_react_1.Plus, { size: 16, strokeWidth: 2.6 }));
+        default: return ce("span", { className: "ft-clr-sample", style: { background: bg, color: fg } });
+    }
+}
+/* 記録の色の紙（10.2.0〜 1枚にまとめた）。記録・スケジュール・予定のしるし。draft は表示設定の下書き */
+function ColorsSheet({ draft, onCancel, onDone }) {
+    const ce = react_1.default.createElement;
+    const N = useTypeNames();
+    const [d, setD] = (0, react_1.useState)(() => ({
+        typeColor: { ...draft.typeColor },
+        schedColor: { ...(draft.schedColor || DEFAULT_SCHEDULE_COLORS) },
+        accent: { ...(draft.accent || {}) },
+    }));
+    const look = { ...draft, ...d };
+    /* 行の一覧。get＝いまの色のキー（標準は ""）、set＝えらんだとき、std＝標準の丸（しるしだけ） */
+    const rows = [
+            ...COLORED_TYPES.map((t) => ({ id: "t:" + t, group: "記録", label: N[t] || TYPE_LABELS[t], kind: "type", k: t,
+                get: () => d.typeColor[t] || DEFAULT_TYPE_COLOR[t], set: (v) => setD((x) => ({ ...x, typeColor: { ...x.typeColor, [t]: v } })) })),
+            ...SCHEDULE_SLOTS.map((slot, i) => ({ id: "s:" + slot, group: "スケジュール", label: `${i + 1}つめの色`, kind: "type", k: "schedule",
+                get: () => d.schedColor[slot], set: (v) => setD((x) => ({ ...x, schedColor: { ...x.schedColor, [slot]: v } })) })),
+            ...ACCENTS.map((a) => ({ id: "a:" + a.key, group: "予定のしるし", label: a.label, kind: "mark", k: a.key, std: true,
+            get: () => d.accent[a.key] || "", set: (v) => setD((x) => { const n = { ...x.accent }; if (v)
+                n[a.key] = v;
+            else
+                delete n[a.key]; return { ...x, accent: n }; }) })),
+        ];
+    const reset = () => setD((x) => ({ ...x, typeColor: { ...DEFAULT_TYPE_COLOR }, schedColor: { ...DEFAULT_SCHEDULE_COLORS }, accent: {} }));
+    const isDefault = COLORED_TYPES.every((t) => (d.typeColor[t] || DEFAULT_TYPE_COLOR[t]) === DEFAULT_TYPE_COLOR[t])
+        && SCHEDULE_SLOTS.every((sl) => d.schedColor[sl] === DEFAULT_SCHEDULE_COLORS[sl]) && Object.keys(d.accent).length === 0;
+    /* いま色をえらんでいる行（10.2.0〜）。**行ごとに色の丸を開け閉めさせないこと。**
+       10.1.0 は押した行の下に丸が開く形で、紙が縦に長く、開くたびに下の行がずれた。
+       いまは「行を押す → 上に留めた色の丸を押す」の2回で決まる。丸の並びは動かない */
+    const [cur, setCur] = (0, react_1.useState)(rows[0].id);
+    const view = (r) => {
+        const key = r.get();
+        const col = r.kind === "type" ? colorOf(key) : null;
+        const ac = r.kind === "mark" ? accentOf(look, r.k) : null;
+        return { key, name: r.kind === "type" ? col.label : (key ? colorOf(key).label : "標準"),
+            sample: ce(ColorSample, { kind: r.kind, k: r.k, fg: col ? col.deep : ac.fg, bg: ac ? ac.bg : undefined, soft: col ? col.soft : undefined }) };
+    };
+    const now = rows.find((r) => r.id === cur) || rows[0];
+    const nv = view(now);
+    const opts = now.kind === "type"
+        ? COLORS.map((c) => ({ key: c.key, label: c.label, fill: c.mid }))
+        : [{ key: "", label: "標準", fill: accentOf({ ...look, accent: {} }, now.k).fg, std: true }, ...COLORS.map((c) => ({ key: c.key, label: c.label, fill: c.deep }))];
+    let lastGroup = null;
+    return ce(SheetDialog, { title: "記録の色", confirmLabel: "決定", onCancel, onConfirm: () => onDone(d) },
+        /* 上に留める：いまの行の見本と名前、色の丸 */
+        ce("div", { className: "ft-clr-pick" },
+            ce("div", { className: "flex items-center gap-2.5 mb-1" },
+                nv.sample,
+                ce("span", { className: "flex-1 min-w-0 fs-body font-bold text-neutral-900 truncate" }, (now.group === "スケジュール" ? "スケジュール " : "") + now.label),
+                isDefault ? null : ce("button", { type: "button", onClick: reset, className: "ft-sreset2 ft-tap" }, ce(lucide_react_1.RotateCcw, { size: 14 }), "初期に戻す")),
+            ce("div", { className: "ft-clr-sw", style: { gridTemplateColumns: `repeat(${opts.length}, minmax(0, 1fr))` } }, opts.map((o) => {
+                const sel = o.key === nv.key;
+                return ce("button", { key: o.key || "std", type: "button", onClick: () => now.set(o.key), "aria-label": o.label, "aria-pressed": sel, title: o.label, className: "ft-tap ft-tap-icon" + (sel ? " sel" : "") },
+                    ce("span", { style: { background: o.fill } }, sel ? ce(lucide_react_1.Check, { size: 15, strokeWidth: 3.2 }) : (o.std ? "標" : null)));
+            }))),
+        /* 行の一覧（1枚の箱）。押した行が、上の色の丸の行き先になる */
+        ce("div", { className: "ft-clr-list", role: "radiogroup", "aria-label": "色を変えるもの" }, rows.map((r) => {
+            const v = view(r);
+            const on = r.id === cur;
+            const head = r.group !== lastGroup ? ce("p", { key: "g" + r.group, className: "ft-clr-g" }, r.group) : null;
+            lastGroup = r.group;
+            return ce(react_1.default.Fragment, { key: r.id },
+                head,
+                ce("button", { type: "button", role: "radio", "aria-checked": on, onClick: () => setCur(r.id), className: "ft-clr-h ft-tap ft-tap-card" + (on ? " on" : "") },
+                    v.sample,
+                    ce("span", { className: "flex-1 min-w-0 fs-body text-neutral-900 truncate" }, r.label),
+                    ce("span", { className: "fs-label text-neutral-500 shrink-0" }, v.name)));
+        })));
+}
 /* 見出しの帯の形（よこ÷たて）。**切り抜きの窓と、帯の形をそろえること（2.11.21〜）。**
    そろっていないと、決めた範囲がそのまま出ない。帯の高さは文字の大きさや
    端末の上の余白で変わるので、決め打ちせず --ft-head-h を読む（ScreenHeader が書いている） */
@@ -27642,6 +27811,7 @@ function SettingsScreen({ prefs, onSave, onClose, zIndex }) {
        試しに押しただけで元の設定が失われる。「保存」で決まる形にする */
     const [draft, setDraft] = (0, react_1.useState)(prefs);
     const [askLeave, setAskLeave] = (0, react_1.useState)(false);
+    const [colorSheet, setColorSheet] = (0, react_1.useState)(false); // 記録の色の紙（ColorsSheet）
     const dirty = JSON.stringify(draft) !== JSON.stringify(prefs);
     const N = useTypeNames();
     const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
@@ -27662,64 +27832,43 @@ function SettingsScreen({ prefs, onSave, onClose, zIndex }) {
             react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
             react_1.default.createElement(OverlayHeader, { title: "\u8868\u793A\u8A2D\u5B9A", onBack: leave, menuGuard: menuGuard }),
             react_1.default.createElement("div", { className: "flex-1 overflow-y-auto px-5 py-5 ft-col ft-pb-safe" },
-                react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u753B\u9762\u306E\u8272"),
+                /* 10.2.0：どの設定も「左に名前・右で決める」1行にそろえた。
+                   2〜3択（文字の大きさ・並び順）は、その場で押せる小さなピル（PillTabs sm）。ドラムを開かせない。
+                   色は「基調の色」と「記録の色」の2行。記録の色は紙（ColorsSheet）の中でえらぶ。
+                   **行の上に小見出しを付けて縦に積まないこと。** 10.1.0 までは縦に長く、下の並び順まで送らないと見えなかった */
+                react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u8272"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
-                    react_1.default.createElement(SheetRow, { label: "\u57FA\u8ABF\u306E\u8272", last: true },
-                        react_1.default.createElement(ColorSelect, { value: draft.theme, title: "\u753B\u9762\u306E\u8272", theme: true, options: THEMES.map((th) => ({ key: th.key, label: th.label, mid: th.swatch, deep: th.vars[800], soft: th.vars[50] })), onChange: (v) => set({ theme: v }) }))),
-                react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u8A18\u9332\u306E\u8272"),
-                react_1.default.createElement(RowCard, { className: "mb-5" }, COLORED_TYPES.map((t, i) => {
-                    const cur = colorOf(draft.typeColor[t]);
-                    return (react_1.default.createElement("div", { key: t, className: "flex items-center gap-2.5 px-4 py-2 min-h-[64px] " + (i === COLORED_TYPES.length - 1 ? "" : "border-b border-neutral-100") },
-                        react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { background: cur.soft, color: cur.deep } }, typeIcon(t, 17)),
-                        react_1.default.createElement("span", { className: "fs-subhead text-neutral-900 flex-1 min-w-0 truncate" }, TYPE_LABELS[t]),
-                        react_1.default.createElement(ColorSelect, { value: draft.typeColor[t], title: TYPE_LABELS[t] + "の色", options: COLORS, onChange: (v) => set({ typeColor: { ...draft.typeColor, [t]: v } }) })));
-                })),
-                react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u30B9\u30B1\u30B8\u30E5\u30FC\u30EB\u306E\u8272"),
-                react_1.default.createElement(RowCard, { className: "mb-5" }, SCHEDULE_SLOTS.map((slot, i) => {
-                    const cur = colorOf((draft.schedColor || DEFAULT_SCHEDULE_COLORS)[slot]);
-                    return (react_1.default.createElement("div", { key: slot, className: "flex items-center gap-2.5 px-4 py-2 min-h-[64px] " + (i === SCHEDULE_SLOTS.length - 1 ? "" : "border-b border-neutral-100") },
-                        react_1.default.createElement("span", { className: "w-9 h-9 rounded-xl flex items-center justify-center shrink-0", style: { background: cur.soft, color: cur.deep } }, typeIcon("schedule", 17)),
-                        react_1.default.createElement("span", { className: "fs-subhead text-neutral-900 flex-1 min-w-0 truncate" },
-                            i + 1,
-                            "\u3064\u3081"),
-                        react_1.default.createElement(ColorSelect, { value: (draft.schedColor || DEFAULT_SCHEDULE_COLORS)[slot], title: `スケジュールの色 ${i + 1}`, options: COLORS, onChange: (v) => set({ schedColor: { ...(draft.schedColor || DEFAULT_SCHEDULE_COLORS), [slot]: v } }) })));
-                })),
-                react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u6587\u5B57\u3068\u52D5\u304D"),
-                react_1.default.createElement(RowCard, null,
-                    react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-100" },
-                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u6587\u5B57\u306E\u5927\u304D\u3055"),
-                        react_1.default.createElement("div", { className: "flex gap-2.5" }, FONT_SIZES.map((f) => (react_1.default.createElement("button", { key: f.key, type: "button", onClick: () => set({ fontSize: f.key }), "aria-pressed": draft.fontSize === f.key, className: "flex-1 h-[44px] rounded-xl border flex items-center justify-center font-bold fs-subhead ft-tap ft-tap-card "
-                                + (draft.fontSize === f.key ? "border-th-800 bg-th-50 text-th-900" : "border-neutral-200 bg-white text-neutral-600") }, f.label))))),
-                    react_1.default.createElement(SheetRow, { label: "\u753B\u9762\u306E\u52D5\u304D", last: true },
-                        react_1.default.createElement(Switch, { on: draft.motion !== false, onChange: (v) => set({ motion: v }), label: "\u753B\u9762\u306E\u52D5\u304D" }))),
-                react_1.default.createElement("div", { className: "h-5", "aria-hidden": "true" }),
-                /* 週の「時間」の表示に出す時間帯（3.0.0〜）。終わりは始まりより後だけ選べる */
-                react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "週の時間帯"),
+                    react_1.default.createElement(SheetRow, { label: "\u57FA\u8ABF\u306E\u8272" },
+                        react_1.default.createElement(ColorSelect, { value: draft.theme, title: "\u57FA\u8ABF\u306E\u8272", theme: true, options: THEMES.map((th) => ({ key: th.key, label: th.label, mid: th.swatch, deep: th.vars[800], soft: th.vars[50] })), onChange: (v) => set({ theme: v }) })),
+                    react_1.default.createElement(ColorGroupRow, { label: "記録の色", sub: "記録・予定・楽しみ・期限", dots: [...COLORED_TYPES.map((t) => colorOf(draft.typeColor[t] || DEFAULT_TYPE_COLOR[t]).mid), ...SCHEDULE_SLOTS.map((sl) => colorOf((draft.schedColor || DEFAULT_SCHEDULE_COLORS)[sl]).mid), ...ACCENTS.map((a) => accentOf(draft, a.key).fg)], onOpen: () => setColorSheet(true), last: true })),
+                react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "表示"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
-                    react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-200" },
-                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "開始"),
-                        react_1.default.createElement(DrumSelect, { value: String(weekHours(draft).from), onChange: (v) => { const f = Number(v); set({ weekFrom: f, weekTo: Math.max(weekHours(draft).to, f + 1) }); }, options: Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: h + ":00" })), title: "開始", noEmpty: true })),
-                    react_1.default.createElement("div", { className: "px-4 py-3" },
-                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "終了"),
-                        react_1.default.createElement(DrumSelect, { value: String(weekHours(draft).to), onChange: (v) => set({ weekTo: Number(v) }), options: Array.from({ length: 24 - weekHours(draft).from }, (_, i) => { const h = weekHours(draft).from + 1 + i; return { value: String(h), label: h + ":00" }; }), title: "終了", noEmpty: true }))),
+                    react_1.default.createElement(SheetRow, { label: "文字の大きさ" },
+                        react_1.default.createElement(PillTabs, { sm: true, className: "ft-pill-s2 shrink-0", tabs: FONT_SIZES.map((f) => ({ key: f.key, label: f.label })), value: draft.fontSize || "s", onChange: (v) => set({ fontSize: v }) })),
+                    react_1.default.createElement(SheetRow, { label: "\u753B\u9762\u306E\u52D5\u304D" },
+                        react_1.default.createElement(Switch, { on: draft.motion !== false, onChange: (v) => set({ motion: v }), label: "\u753B\u9762\u306E\u52D5\u304D" })),
+                    /* 週の「時間」の表示に出す時間帯（3.0.0〜）。終わりは始まりより後だけ選べる */
+                    react_1.default.createElement(SheetRow, { label: "週の時間帯", last: true },
+                        react_1.default.createElement("span", { className: "flex items-center gap-1.5 shrink-0" },
+                            react_1.default.createElement(DrumSelect, { className: "ft-hsel", value: String(weekHours(draft).from), onChange: (v) => { const f = Number(v); set({ weekFrom: f, weekTo: Math.max(weekHours(draft).to, f + 1) }); }, options: Array.from({ length: 24 }, (_, h) => ({ value: String(h), label: h + ":00" })), title: "開始", noEmpty: true }),
+                            react_1.default.createElement("span", { className: "fs-body-sm text-neutral-400" }, "〜"),
+                            react_1.default.createElement(DrumSelect, { className: "ft-hsel", value: String(weekHours(draft).to), onChange: (v) => set({ weekTo: Number(v) }), options: Array.from({ length: 24 - weekHours(draft).from }, (_, i) => { const h = weekHours(draft).from + 1 + i; return { value: String(h), label: h + ":00" }; }), title: "終了", noEmpty: true })))),
+                /* **フォルダと計画は、2.13.0からデフォルトの並び順を別々に持つ。**
+                   以前は sortOrder ひとつを共用していた（DEFAULT_PREFS の該当コメントを参照） */
                 react_1.default.createElement("p", { className: "head-bar fs-label font-bold text-neutral-500 mb-2" }, "\u4E26\u3073\u9806"),
                 react_1.default.createElement(RowCard, { className: "mb-5" },
-                    /* **フォルダと計画は、2.13.0からデフォルトの並び順を別々に持つ。**
-                       以前は sortOrder ひとつを共用していた（DEFAULT_PREFS の該当コメントを参照） */
-                    react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-200" },
-                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u30D5\u30A9\u30EB\u30C0"),
-                        react_1.default.createElement(DrumSelect, { value: draft.folderSortOrder || "name", onChange: (v) => set({ folderSortOrder: v || "name" }), options: FOLDER_SORT_OPTIONS, title: "\u30D5\u30A9\u30EB\u30C0", noEmpty: true })),
-                    react_1.default.createElement("div", { className: "px-4 py-3 border-b border-neutral-200" },
-                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u8A08\u753B"),
-                        react_1.default.createElement(DrumSelect, { value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v || "name" }), options: SORT_NAME_OPTIONS, title: "\u8A08\u753B", noEmpty: true })),
-                    react_1.default.createElement("div", { className: "px-4 py-3" },
-                        react_1.default.createElement("p", { className: "fs-body-sm text-neutral-500 mb-2" }, "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB"),
-                        react_1.default.createElement(DrumSelect, { value: draft.recordOrder || "old", onChange: (v) => set({ recordOrder: v || "old" }), options: SORT_RECORD_OPTIONS, title: "\u8A18\u9332\u30FB\u30D5\u30A9\u30EB\u30C0\u306E\u4E2D\u8EAB", noEmpty: true })))),
+                    react_1.default.createElement(SheetRow, { label: "記録" },
+                        react_1.default.createElement(PillTabs, { sm: true, className: "ft-pill-s2 shrink-0", tabs: SORT_RECORD_OPTIONS.map((o) => ({ key: o.value, label: o.label.replace("順", "") })), value: draft.recordOrder || "old", onChange: (v) => set({ recordOrder: v }) })),
+                    react_1.default.createElement(SheetRow, { label: "\u8A08\u753B" },
+                        react_1.default.createElement(PillTabs, { sm: true, className: "ft-pill-s2 shrink-0", tabs: SORT_NAME_OPTIONS.map((o) => ({ key: o.value, label: o.label.replace("順", "") })), value: draft.sortOrder || "name", onChange: (v) => set({ sortOrder: v }) })),
+                    react_1.default.createElement(SheetRow, { label: "\u30D5\u30A9\u30EB\u30C0", last: true },
+                        react_1.default.createElement(PillTabs, { sm: true, className: "ft-pill-s3 shrink-0", tabs: FOLDER_SORT_OPTIONS.map((o) => ({ key: o.value, label: o.label.replace("順", "") })), value: draft.folderSortOrder || "name", onChange: (v) => set({ folderSortOrder: v }) })))),
             react_1.default.createElement("div", { className: "shrink-0 bg-white border-t border-neutral-200 px-4 py-3 flex gap-2", style: SAFE_BOTTOM(12) },
                 react_1.default.createElement("button", { type: "button", onClick: leave, className: BTN_SECONDARY + " btn-h-lg px-5 fs-subhead" }, "\u30AD\u30E3\u30F3\u30BB\u30EB"),
                 react_1.default.createElement("button", { type: "button", onClick: () => { onSave(draft); close(); }, disabled: !dirty, className: BTN_PRIMARY + " flex-1 btn-h-lg fs-subhead" },
                     react_1.default.createElement(lucide_react_1.Check, { size: 19 }),
                     " \u4FDD\u5B58")),
+            colorSheet && react_1.default.createElement(ColorsSheet, { draft: draft, onCancel: () => setColorSheet(false), onDone: (v) => { setColorSheet(false); set(v); } }),
             askLeave && (react_1.default.createElement(ConfirmDialog, { title: "\u4FDD\u5B58\u305B\u305A\u306B\u9589\u3058\u307E\u3059\u304B", body: "\u5909\u3048\u305F\u5185\u5BB9\u306F\u6B8B\u308A\u307E\u305B\u3093\u3002", confirmLabel: "\u9589\u3058\u308B", onCancel: () => setAskLeave(false), onConfirm: () => { setAskLeave(false); close(); } })),
             askMenu && (react_1.default.createElement(ConfirmDialog, { title: "保存せずにメニューを開きますか", body: "変えた内容は残りません。", confirmLabel: "開く", onCancel: () => setAskMenu(null), onConfirm: () => { const open = askMenu; setAskMenu(null); setDraft(prefs); open(); } })))));
 }
@@ -28832,6 +28981,11 @@ button:active { transition-duration: 60ms; }
 .anim-up:not([data-ft-entered])    { animation: ft-enter-up var(--ft-enter-modal) var(--ease-out) backwards; }
 .anim-sheet:not([data-ft-entered]) { animation: ft-enter-up var(--ft-enter-sheet) var(--ease-out) backwards; }
 .anim-fade:not([data-ft-entered])  { animation: ft-enter-fade var(--ft-enter-fade) ease-out backwards; }
+/* メニューから移ってくる画面の暗がり（10.1.0〜）。入りきる（--ft-enter-push）まで透明のまま。
+   入りきった時点で画面がうしろを覆っているので、そこで出しても見えない（左端から払って戻るときに使う）。
+   **名前を ft-enter- で始めること。** markEntered が終わりを受けて動きを外す */
+@keyframes ft-enter-lift { from { opacity: 0; } 99% { opacity: 0; } to { opacity: 1; } }
+.anim-fade-lift:not([data-ft-entered]) { animation: ft-enter-lift var(--ft-enter-push) linear backwards; }
 /* ---- 画面（OverlayScreen）の退場（2.17.0〜） ----
    2.17.2 から、紙・小窓（シート／ダイアログ）の退場にも動きを付けた（下の anim-sheet-out /
    anim-fade-out）。どの重なりも「出てきた向きへ帰る」でそろえてある。
@@ -29177,6 +29331,37 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
    **帯ごと塗らないこと**（色が主役になって中身が負ける） */
 .bg-head{background:#FFFFFF;border-bottom:2px solid var(--th-200)}
 .bg-fab{background:var(--th-950)}
+/* 予定のしるしの色（10.1.0〜。ACCENTS）。標準の値は、AppMain が書く前（読み込み中）のため */
+:root{--ac-joy-fg:#C9604A;--ac-joy-bg:#FCEEE9;--ac-late-fg:#BE123C;--ac-late-bg:#FDECEC}
+/* ---- 色の設定（10.1.0〜。ColorGroupRow / ColorsSheet） ---- */
+.ft-clr-dots{display:flex;align-items:center;flex-shrink:0;padding-left:6px}
+.ft-clr-dots > span{width:16px;height:16px;border-radius:999px;margin-left:-7px;box-shadow:0 0 0 2px #FFFFFF}
+.ft-clr-pick{position:sticky;top:-16px;z-index:2;margin:-16px -16px 10px;padding:12px 16px 6px;background:#FFFFFF;border-bottom:1px solid #EEEEEE}
+.ft-clr-list{border:1px solid #E5E5E5;border-radius:14px;overflow:hidden}
+.ft-clr-g{padding:8px 14px 4px;background:#FAFAFA;border-top:1px solid #EEEEEE;color:#737373;font-weight:700;font-size:calc(11.5px * var(--ft-scale))}
+.ft-clr-g:first-child{border-top:0}
+.ft-clr-h{width:100%;display:flex;align-items:center;gap:10px;min-height:46px;padding:5px 14px;text-align:left;border-top:1px solid #F2F2F2;background:#FFFFFF}
+.ft-clr-g + .ft-clr-h{border-top:0}
+.ft-clr-h.on{background:var(--th-50);box-shadow:inset 3px 0 0 var(--th-800)}
+.ft-clr-sample{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:700}
+.ft-clr-sample.chip{width:40px;font-size:calc(13px * var(--ft-scale));line-height:1}
+.ft-clr-sample.chip small{font-size:calc(9.5px * var(--ft-scale));margin-left:1px}
+.ft-clr-sample.txt{background:#F5F5F5;font-size:calc(16px * var(--ft-scale))}
+.ft-clr-sample.now{background:#F5F5F5;position:relative}
+.ft-clr-sample.now i{position:absolute;left:6px;right:6px;top:50%;border-top:2px solid currentColor}
+.ft-clr-sample.now i::before{content:"";position:absolute;left:-2px;top:-5px;width:8px;height:8px;border-radius:50%;background:currentColor}
+.ft-clr-sample.fab{color:#FFFFFF;border-radius:10px}
+.ft-clr-sw{display:grid;gap:2px;margin:0 -4px}
+.ft-clr-sw > button{display:flex;align-items:center;justify-content:center;height:40px}
+.ft-clr-sw > button > span{width:28px;height:28px;border-radius:999px;display:flex;align-items:center;justify-content:center;color:#FFFFFF;font-size:11px;font-weight:700}
+.ft-clr-sw > button.sel > span{box-shadow:0 0 0 2px #FFFFFF,0 0 0 4px var(--th-800)}
+/* 表示設定の行の右（10.2.0〜） */
+.ft-pill-s2{width:156px}
+.ft-pill-s3{width:198px}
+.ft-hsel{width:94px;padding-left:10px !important;padding-right:6px !important}
+.ft-hsel svg{margin-left:4px !important}
+.ft-c-sun{color:#E11D48}
+.ft-c-sat{color:#0369A1}
 /* 帯から中身へのつなぎ目をやわらげる、ごく薄い影 */
 .head-fade{background:none}
 /* 入力画面の「まとまり」レイアウト用に足す分。
@@ -29355,7 +29540,7 @@ function CountdownStrip({ records, upcoming, onEdit, onOpenPlan, plans }) {
         return null;
     items.sort((a, b) => a.left - b.left);
     return (react_1.default.createElement("div", null,
-        react_1.default.createElement("div", { className: "ft-cdstrip" }, items.map((it) => (react_1.default.createElement("button", { key: it.key, type: "button", onClick: it.onTap, className: "ft-cd ft-tap", style: it.joy ? { background: "#FCEEE9", color: "#C9604A" } : { background: it.color.soft, color: it.color.deep } },
+        react_1.default.createElement("div", { className: "ft-cdstrip" }, items.map((it) => (react_1.default.createElement("button", { key: it.key, type: "button", onClick: it.onTap, className: "ft-cd ft-tap", style: it.joy ? { background: "var(--ac-joy-bg)", color: "var(--ac-joy-fg)" } : { background: it.color.soft, color: it.color.deep } },
             react_1.default.createElement("span", { className: "ft-cd-n tabular-nums" }, it.left === 0 ? "今日" : react_1.default.createElement(react_1.default.Fragment, null, it.left, react_1.default.createElement("small", null, "日"))),
             react_1.default.createElement("span", { className: "ft-cd-t" }, it.title)))))));
 }
@@ -30909,7 +31094,7 @@ function PlanTaskRow({ t, color, onPatch, onRemove, onChecked, just }) {
             ce("button", { type: "button", onClick: () => { if (!t.done && onChecked)
                     onChecked(t.id); onPatch({ done: !t.done, doneAt: !t.done ? today : "", ...(sub.length ? { sub: sub.map((s) => ({ ...s, done: !t.done })) } : {}) }); }, "aria-label": t.done ? "済みを外す" : "済みにする", "aria-pressed": !!t.done, className: "ft-pcheck ft-tap", style: t.done ? { background: color.mid, borderColor: color.mid } : undefined }, t.done ? ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, color: "#fff" }) : null),
             ce(AutoText, { value: t.text, onChange: (v) => onPatch({ text: v }), className: "ft-scard-in", label: "リスト" }),
-            ce(DateTap, { value: t.date, onChange: (v) => onPatch({ date: v }), label: "やる日", className: "ft-scard-date ft-tap" + (t.date ? " on" : ""), style: t.date ? (late ? { background: "#FDECEC", color: "#BE123C" } : t.date === today ? { background: color.mid, color: "#fff" } : { background: color.soft, color: color.deep }) : undefined }, t.date ? (t.done && t.doneAt ? fmtDateShort(t.date) : planDayLabel(t.date, today)) : ce(lucide_react_1.CalendarDays, { size: 17 })),
+            ce(DateTap, { value: t.date, onChange: (v) => onPatch({ date: v }), label: "やる日", className: "ft-scard-date ft-tap" + (t.date ? " on" : ""), style: t.date ? (late ? { background: "var(--ac-late-bg)", color: "var(--ac-late-fg)" } : t.date === today ? { background: color.mid, color: "#fff" } : { background: color.soft, color: color.deep }) : undefined }, t.date ? (t.done && t.doneAt ? fmtDateShort(t.date) : planDayLabel(t.date, today)) : ce(lucide_react_1.CalendarDays, { size: 17 })),
             ce("button", { type: "button", onClick: () => askDel(`「${t.text || "（名前なし）"}」を削除しますか`, onRemove), "aria-label": "削除", className: "ft-mlist-x ft-tap" }, ce(lucide_react_1.X, { size: 16 }))),
         /* 手順とメモ（8.1.0〜）：入っているものだけ出す。まだ無いものは「＋ 手順」「＋ メモ」の小さな札にまとめ、押すとその場で開いて書ける。
            どの札にも空の「追加」「メモ」の欄が2段ずつ並んで、リストが読みにくかった */
@@ -31764,7 +31949,7 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
         /* ゴール：1行目は見出しの大きさ、改行した2行目からはふつうの字（iPhone の「メモ」と同じ。8.1.0〜。NoteField） */
         ce(NoteField, { value: plan.note || "", onChange: (v) => patch((p) => ({ ...p, note: v })), placeholder: "ゴール", headLabel: "ゴール", bodyPlaceholder: "くわしく", className: "goal", noGrip: true }),
         ce("div", { className: "ft-goal-when" },
-            P && !plan.doneAt ? ce("span", { className: "ft-goal-left", style: { color: P.left < 0 ? "#BE123C" : color.deep } },
+            P && !plan.doneAt ? ce("span", { className: "ft-goal-left", style: { color: P.left < 0 ? "var(--ac-late-fg)" : color.deep } },
                 P.left === 0 ? ce("b", { className: "w" }, "今日まで") : ce(react_1.default.Fragment, null, ce("small", null, P.left < 0 ? "" : "あと"), ce("b", null, Math.abs(P.left)), ce("small", null, P.left < 0 ? "日過ぎ" : "日"))) : null,
             ce("span", { className: "flex-1" }),
             ce(DateTap, { value: plan.goalDate, onChange: (v) => patch((p) => ({ ...p, goalDate: v })), label: "いつまでに", className: "ft-goal-date ft-tap" + (plan.goalDate ? " on" : ""), style: plan.goalDate ? { color: color.deep } : undefined },
@@ -31941,16 +32126,16 @@ function AppMain() {
     /* Today 以外の下タブを、いま開いているまま押した回数（useTabReturn）。
        **ほかのタブから移ってきたときは増やさないこと。** */
     const [tabReset, setTabReset] = (0, react_1.useState)({});
-    const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
-    const [menuInstant, setMenuInstant] = (0, react_1.useState)(false);
-    /* メニューから画面へ移るあいだ（2.20.6〜）。menuUnder＝板を移った先の画面の下へ沈めている。
+    /* メニューの開け閉めは menuStore（SideMenu の上）に持つ（10.1.0〜）。**ここへ state を戻さないこと。**
+       ここに持つと、開け閉めのたびに Today ごと描き直し、板の出方がつっかえる */
+    const setMenuOpen = (v) => menuStore.set({ open: !!v });
+    /* メニューから画面へ移るあいだ（2.20.6〜）。menuStore の under＝板を移った先の画面の下へ沈めている。
        menuLift＝メニューから開いた画面と、その高さ（{ settings: 60, help: 61 } のような形）。
        **入りきったあとも、その画面が閉じるまで高さを変えないこと（2.24.1〜）。**
        2.20.6〜2.24.0 は入りきったところで 60 → 50 へ戻していた。iPhone は、見えている画面の
        z-index が変わると層を作り直し、そのひとこま画面が消えて、うしろ（Today など）がのぞいた。
        ・メニューから次の画面へ移るときは、いまの画面の高さはそのままにして、次の画面を **1 つ上** に出す
        ・画面が閉じたら、ここから外す（下の useEffect）。全部閉じれば、次はまた 60 から */
-    const [menuUnder, setMenuUnder] = (0, react_1.useState)(false);
     const [menuLift, setMenuLift] = (0, react_1.useState)({});
     const menuGoTimer = (0, react_1.useRef)(null);
     (0, react_1.useEffect)(() => () => clearTimeout(menuGoTimer.current), []);
@@ -32876,6 +33061,7 @@ function AppMain() {
         backup: { isOpen: backupOpen, open: () => setBackupOpen(true) },
         help: { isOpen: helpOpen, open: () => setHelpOpen(true) },
     };
+    const closeMenu = (0, react_1.useCallback)(() => menuStore.set({ open: false }), []);
     const goFromMenu = (key) => {
         /* 移っている途中に、もう一度押されたぶんは受けない */
         if (menuGoTimer.current)
@@ -32883,11 +33069,10 @@ function AppMain() {
         const target = MENU_SCREENS[key];
         /* いま見ている画面を選んだ → 移らない。板をふつうに閉じるだけ */
         if (target.isOpen) {
-            setMenuInstant(false);
             setMenuOpen(false);
             return;
         }
-        setMenuUnder(true);
+        menuStore.set({ under: true });
         /* いま出ている画面より 1 つ上へ。**いま出ている画面の高さは変えないこと**（上の menuLift） */
         const liftZ = Math.max(MENU_LIFT_Z - 1, ...Object.values(menuLift)) + 1;
         setMenuLift((m) => ({ ...m, [key]: liftZ }));
@@ -32997,10 +33182,8 @@ function AppMain() {
                         /* 画面へ移っている途中は開かない（すぐ閉じられてしまう） */
                         if (menuGoTimer.current)
                             return;
-                        /* instant と under を戻すのは、ここ（次に開くとき）。移る途中で戻さないこと */
-                        setMenuInstant(false);
-                        setMenuUnder(false);
-                        setMenuOpen(true);
+                        /* under を戻すのは、ここ（次に開くとき）。移る途中で戻さないこと */
+                        menuStore.set({ under: false, open: true });
                     } },
                     react_1.default.createElement(NeedBackupContext.Provider, { value: { need: needBackup, count: unsavedCount, backupAt } },
                         react_1.default.createElement(SyncUiContext.Provider, { value: syncUi },
@@ -33013,7 +33196,7 @@ function AppMain() {
                                    「画面に留めた・背景色のある部品」が無いと、送った中身をそこでぼかして見せる。
                                    **消さないこと。** 横長の Today は TopChrome を使わないので、この帯だけが頼り */
                                 react_1.default.createElement("div", { className: "ft-topcap", "aria-hidden": "true" }),
-                                react_1.default.createElement("style", null, `:root{--ft-head-h:calc(env(safe-area-inset-top) + 66px);${Object.entries(theme.vars).map(([k, v]) => `--th-${k}:${v}`).join(";")}}`),
+                                react_1.default.createElement("style", null, `:root{--ft-head-h:calc(env(safe-area-inset-top) + 66px);${Object.entries(theme.vars).map(([k, v]) => `--th-${k}:${v}`).join(";")};${accentVars(prefs)}}`),
                                 !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page" },
                                     react_1.default.createElement("div", { className: "ft-col" },
                                         tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
@@ -33035,7 +33218,7 @@ function AppMain() {
                                             smoothTopCancel();
                                         setTab(k);
                                     } }),
-                                react_1.default.createElement(SideMenu, { open: menuOpen, instant: menuInstant, under: menuUnder, onClose: () => setMenuOpen(false), items: menuItems, 
+                                react_1.default.createElement(SideMenu, { onClose: closeMenu, items: menuItems, 
                                     /* **ことわりを並べないこと。** バックアップの行でもう伝えている */
                                     footer: react_1.default.createElement("p", { className: "fs-body-sm font-bold text-neutral-500 tabular-nums" },
                                         "My\u624B\u5E33 v",
