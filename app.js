@@ -26576,11 +26576,44 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
             return Math.min(4.7, SC_MAX + (v - SC_MAX) * 0.25);
         return v;
     };
-    const dist = () => {
+    /* ---- 指の動き（10.8.0 で作り直した） ----
+       10.7.0 までの不具合（つまんで大きくすると、絵が思わぬ所へ弾かれる）：
+       ① 2本指のうち1本を離したとき、動かしの起点を「離した指」の位置にしていた。残った指を少し動かしただけで、
+          2本の指の間の距離ぶん絵が飛んだ
+       ② 大きさは窓のまん中を中心に変えていた（指の間ではなく）。つまんだ所が指から逃げていく
+       ③ 大きさが変わるたびに、指を置いたまま位置を枠の中へ引き戻していた（ゴムの戻りと取り合って跳ねる）
+       いまは：
+       ・指の数が変わるたびに、**残っている指**の位置・2本の中点と、いまの位置・大きさで起点を取り直す
+       ・2本指は、指の間の点を中心に大きさを変え、中点が動いたぶん絵も動かす（つまんだ所が指についてくる）
+       ・枠の中への引き戻しは、指を全部離したときだけ（ゴムのように戻る）
+       ・いまの位置・大きさは ref でも持つ（指の処理の中で古い値を使わない） */
+    const posRef = (0, react_1.useRef)(pos);
+    const scaleRef = (0, react_1.useRef)(scale);
+    posRef.current = pos;
+    scaleRef.current = scale;
+    const limOf = (sc) => {
+        const w = nat ? nat.w * base * sc : box.w;
+        const h = nat ? nat.h * base * sc : box.h;
+        return { x: Math.max(0, (w - box.w) / 2), y: Math.max(0, (h - box.h) / 2) };
+    };
+    const centerOf = () => {
+        const r = boxRef.current ? boxRef.current.getBoundingClientRect() : { left: 0, top: 0, width: box.w, height: box.h };
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    };
+    /* いま触れている指から、起点（中点・距離）を取り直す */
+    const rebase = () => {
         const a = [...pts.current.values()];
-        if (a.length < 2)
-            return 0;
-        return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+        if (a.length === 0) {
+            start.current = null;
+            return;
+        }
+        const c = centerOf();
+        const m = a.length >= 2 ? { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2 } : { x: a[0].x, y: a[0].y };
+        start.current = {
+            pos: posRef.current, scale: scaleRef.current,
+            d: a.length >= 2 ? Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) : 0,
+            m: { x: m.x - c.x, y: m.y - c.y }, // 窓のまん中から見た指の位置
+        };
     };
     const down = (e) => {
         pts.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -26588,8 +26621,7 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
             e.currentTarget.setPointerCapture(e.pointerId);
         }
         catch (err) { /* 使えない端末は無視 */ }
-        start.current = { pos, scale, d: dist(),
-            c: { x: e.clientX, y: e.clientY } };
+        rebase();
     };
     const move = (e) => {
         if (!pts.current.has(e.pointerId))
@@ -26598,32 +26630,46 @@ function CropSheet({ file, aspect = 1, round, title = "位置を決める", onCa
         const st = start.current;
         if (!st)
             return;
-        if (pts.current.size >= 2) {
-            /* つまんで大きさを変える */
-            const d = dist();
-            if (st.d > 0 && d > 0)
-                setScale(rubberScale(st.scale * (d / st.d)));
-            return;
+        const a = [...pts.current.values()];
+        const c = centerOf();
+        let sc = st.scale;
+        let m;
+        if (a.length >= 2 && st.d > 0) {
+            const d = Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+            sc = rubberScale(st.scale * (d / st.d));
+            m = { x: (a[0].x + a[1].x) / 2 - c.x, y: (a[0].y + a[1].y) / 2 - c.y };
         }
-        setPos({
-            x: rubber(st.pos.x + (e.clientX - st.c.x), limX),
-            y: rubber(st.pos.y + (e.clientY - st.c.y), limY),
-        });
+        else
+            m = { x: a[0].x - c.x, y: a[0].y - c.y };
+        /* 起点で指の下にあった絵の点が、いまの指の下に来るように置く */
+        const k = sc / st.scale;
+        const nx = m.x - (st.m.x - st.pos.x) * k;
+        const ny = m.y - (st.m.y - st.pos.y) * k;
+        const lim = limOf(sc);
+        scaleRef.current = sc;
+        posRef.current = { x: rubber(nx, lim.x), y: rubber(ny, lim.y) };
+        setScale(sc);
+        setPos(posRef.current);
     };
     const up = (e) => {
         pts.current.delete(e.pointerId);
         if (pts.current.size === 0) {
             start.current = null;
             /* はみ出したぶんは、するっと戻す（位置も大きさも） */
-            setScale((v) => Math.max(SC_MIN, Math.min(SC_MAX, v)));
-            setPos((v) => ({ x: clamp(v.x, limX), y: clamp(v.y, limY) }));
+            const sc = Math.max(SC_MIN, Math.min(SC_MAX, scaleRef.current));
+            const lim = limOf(sc);
+            const p = { x: clamp(posRef.current.x, lim.x), y: clamp(posRef.current.y, lim.y) };
+            scaleRef.current = sc;
+            posRef.current = p;
+            setScale(sc);
+            setPos(p);
         }
-        else {
-            start.current = { pos, scale, d: dist(), c: { x: e.clientX, y: e.clientY } };
-        }
+        else
+            rebase(); // **残っている指から起点を取り直すこと**（離した指の位置を使わない）
     };
-    /* 大きさを変えたあとも、枠が外へ出ないように引き戻す */
-    (0, react_1.useEffect)(() => { setPos((v) => ({ x: clamp(v.x, limX), y: clamp(v.y, limY) })); }, [scale, box.w, box.h, nat]); // eslint-disable-line
+    /* 窓の大きさ・絵が変わったときだけ、枠の中へ戻す。**指を置いているあいだは触らないこと** */
+    (0, react_1.useEffect)(() => { if (!start.current)
+        setPos((v) => { const lim = limOf(scaleRef.current); return { x: clamp(v.x, lim.x), y: clamp(v.y, lim.y) }; }); }, [box.w, box.h, nat]); // eslint-disable-line
     const done = async () => {
         setBusy(true);
         try {
@@ -29383,6 +29429,11 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 .ft-pill-s3{width:198px}
 .ft-hsel{width:94px;padding-left:10px !important;padding-right:6px !important}
 .ft-hsel svg{margin-left:4px !important}
+/* 横長の面の送り場は、中身が短くても「1px だけ送れる」形にしておく（10.7.0〜）。
+   iPad の WebKit は、送れなかった箱に、あとから中身が足されて送れる長さになっても（手書きの札の絵が遅れて読み込まれる など）、
+   送りの層を作り直さないことがあり、その面だけ縦に送れなくなった（固まったように見える）。
+   いつも送れる長さにしておけば、層は最初からある。**消さないこと。** 幅は 0（右の余白 -1px）なので、並びは変わらない */
+.ft-wmain.list::before,.ft-wside::before,.ft-wleft::before,.ft-wscroll::before,.ft-wfind-r::before,.ft-wfind-form::before{content:"";float:left;width:1px;height:calc(100% + 1px);margin-right:-1px}
 /* アイコンと色をえらぶ欄（IconPicker、10.4.0〜）。札は5列。字は札の下に小さく */
 .ft-ipk-h{margin:14px 0 8px;color:var(--tx-3);font-weight:700;font-size:calc(var(--fs-label) * var(--ft-scale))}
 .ft-ipk-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px 6px}
@@ -32732,7 +32783,6 @@ function AppMain() {
     const [planKind, setPlanKind] = (0, react_1.useState)("goal");
     const [folderAdd, setFolderAdd] = (0, react_1.useState)(false);
     /* 新しい手書きのページは、先にタイトルをたずねる（7.0.0〜） */
-    const [noteAsk, setNoteAsk] = (0, react_1.useState)(false);
     /* フォルダのタブで、フォルダとコレクションのどちらを見ているか（5.2.0〜。端末に覚える） */
     const [folderKind, setFolderKindState] = (0, react_1.useState)(() => (uiGet("folderkind") === "coll" ? "coll" : "folder"));
     const setFolderKind = (k) => { setFolderKindState(k); uiSet("folderkind", k); };
@@ -32985,12 +33035,18 @@ function AppMain() {
             base.__folders = [fo];
         /* 手書き（2.33.0〜）はメモの一種。書く画面を先に出し、保存したらそのままメモになる */
         if (base.type === "__ink") {
-            setInkNew({ ...emptyRecord("memo", base.date, base.scope), id: base.id, planId: base.planId, __folders: base.__folders });
+            askInk({ ...emptyRecord("memo", base.date, base.scope), id: base.id, planId: base.planId, __folders: base.__folders });
             return;
         }
         setEditing(base);
     };
     const [inkNew, setInkNew] = (0, react_1.useState)(null);
+    /* 新しい手書きは、**どこから始めても、まずタイトルをたずねる**（10.7.0〜、持ち主の指示）。
+       ノートの＋・Today の「手書き」・＋の種類えらびの「手書き」（計画・フォルダ・週や月のマスの中も）、みな ここを通す。
+       **setInkNew を新しい手書きに直接呼ばないこと。** 入口ごとに動きが変わる（10.6.0 まではノートだけがたずねていた）。
+       書きかけから戻る（DraftCard）・保存ずみを開く・横長の日ごとのページ（DayInkPanel）は、たずねない */
+    const [inkAsk, setInkAsk] = (0, react_1.useState)(null);
+    const askInk = (base) => setInkAsk(base);
     /* 手書きの保存（3.3.0〜）。自動保存は何度も走るので、保存のたびに新しい絵が置き場に入る。
        ・**一列に並べること。** 前の保存が終わる前に次が走ると、古い絵を消しそこねる
        ・入れ替わった古い絵（photo:番号）は、その場で置き場から消す（この記録しか使っていない） */
@@ -33054,7 +33110,7 @@ function AppMain() {
             return;
         }
         if (tab === "note") {
-            setNoteAsk(true);
+            askInk({ ...emptyRecord("memo", todayStr()) });
             return;
         }
         /* **週や月を見ているからといって、別のものを作らないこと。**
@@ -33243,10 +33299,9 @@ function AppMain() {
                                 !loaded ? (react_1.default.createElement(LoadingBlock, { label: "\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059" })) : (react_1.default.createElement("div", { key: tab, className: "ft-page" },
                                     react_1.default.createElement("div", { className: "ft-col" },
                                         tab === "today" && (react_1.default.createElement(react_1.default.Fragment, null,
-                                            react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped, onSaveRecord: saveRecord, onNewInk: () => setInkNew({ ...emptyRecord("memo", viewDate || todayStr()) }), resetSig: todayReset }))),
+                                            react_1.default.createElement(TodayScreen, { records: records, plans: plans, onOpenBackup: () => setBackupOpen(true), order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onOpenDay: (d) => setDayOpen(d), onOpenPlan: (p) => setPlanOpen(p.id), onAddScoped: addScoped, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, onViewDate: setViewDate, onSwapScoped: swapScoped, onSaveRecord: saveRecord, onNewInk: () => askInk({ ...emptyRecord("memo", viewDate || todayStr()) }), resetSig: todayReset }))),
                                         tab === "find" && (react_1.default.createElement(FindScreen, { records: records, order: prefs.recordOrder, onOrder: (v) => savePrefs((p) => ({ ...p, recordOrder: v })), onEdit: openEdit, onToggleItem: toggleItem, onDeleteMany: deleteMany, onPin: togglePin, onSelecting: setSelecting, resetSig: tabReset.find || 0 })),
-                                        tab === "note" && react_1.default.createElement(NoteScreen, { records: records, onOpen: (r) => setNoteOpen(r.id), onNew: () => setNoteAsk(true) }),
-                                        noteAsk && react_1.default.createElement(NameDialog, { yomi: true, title: "新しいページ", placeholder: "タイトル", confirmLabel: "書く", onCancel: () => setNoteAsk(false), onConfirm: (v) => { setNoteAsk(false); setInkNew({ ...emptyRecord("memo", todayStr()), title: v }); } }),
+                                        tab === "note" && react_1.default.createElement(NoteScreen, { records: records, onOpen: (r) => setNoteOpen(r.id), onNew: () => askInk({ ...emptyRecord("memo", todayStr()) }) }),
                                         tab === "plan" && (react_1.default.createElement(PlanScreen, { plans: plans, records: records, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, sort: prefs.sortOrder, onSort: (v) => savePrefs((p) => ({ ...p, sortOrder: v })), onAdd: onFab, resetSig: tabReset.plan || 0 })),
                                         tab === "folder" && (react_1.default.createElement(FolderScreen, { folders: folders, records: records, plans: plans, onOpenPlan: (p) => setPlanOpen(p.id), onPinPlan: (pl) => changePlan(pl.id, (p) => ({ ...p, pinned: !p.pinned })), onChangePlan: changePlan, onDeletePlan: deletePlan, kind: folderKind, onKind: setFolderKind, onAdd: onFab, sort: prefs.folderSortOrder, onSort: (v) => savePrefs((p) => ({ ...p, folderSortOrder: v })), onPin: togglePinFolder, onOpen: (f) => setFolderOpen(f.id), onChange: changeFolder, onDelete: deleteFolder, resetSig: tabReset.folder || 0 }))))),
                                 loaded && !selecting && tab !== "find" && (react_1.default.createElement("button", { type: "button", onClick: onFab, "aria-label": tab === "plan" ? "計画を追加" : tab === "folder" ? (folderKind === "coll" ? "コレクションを追加" : "フォルダを追加") : tab === "note" ? "新しいページ" : "記録する", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center ft-tap ft-fab z-40 card-soft" + (tab === "today" ? " ft-fab-today" : ""), style: { bottom: "calc(var(--ft-nav-h) + 40px)" } }, react_1.default.createElement(lucide_react_1.Plus, { size: 26 }))),
@@ -33281,6 +33336,7 @@ function AppMain() {
                                 typePick && (react_1.default.createElement(TypePickSheet, { onPick: startNew, onCancel: () => { setTypePick(false); setScoped(null); setInPlan(null); setInFolder(null); }, types: [...(scoped ? SCOPED_TYPES : TYPES), "__ink"], labels: { __ink: "\u624B\u66F8\u304D" }, icons: { __ink: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }) }, colorKeys: { __ink: "memo" } })),
                                 noteObj && react_1.default.createElement(InkEditor, { key: noteObj.id, initial: noteObj.ink, initialTitle: noteObj.title || "", onDelete: () => { const id = noteObj.id; setNoteOpen(null); deleteRecord(id); tell("削除しました"); }, onCancel: () => setNoteOpen(null), onDiscard: () => { clearDraftOf(new Set([noteObj.id])); setNoteOpen(null); }, onDraft: (o) => putInkDraft(noteObj, o), onDetail: async (o, t) => { if (o)
                                         await saveInk(noteObj.id, noteObj, o.ink, o.png, { keepOpen: true }, t); const r = recordsRef.current.find((x) => x.id === noteObj.id) || noteObj; setNoteOpen(null); openEdit(r); }, onSave: ({ ink, png, title }) => { saveInk(noteObj.id, noteObj, ink, png, { keepOpen: true }, title); setNoteOpen(null); tell("保存しました"); } }),
+                                inkAsk && react_1.default.createElement(NameDialog, { yomi: true, title: "新しいページ", placeholder: "タイトル", confirmLabel: "書く", onCancel: () => setInkAsk(null), onConfirm: (v) => { const b = inkAsk; setInkAsk(null); setInkNew({ ...b, title: v }); } }),
                                 inkNew && (react_1.default.createElement(InkEditor, { key: inkNew.id, initial: inkNew.ink || null, startDirty: !!(inkNew.ink && inkNew.ink.s && inkNew.ink.s.length), initialTitle: inkNew.title || "", onDraft: (o) => putInkDraft(inkNew, o), onDiscard: () => { clearDraftOf(new Set([inkNew.id])); setInkNew(null); }, onDelete: () => { const id = inkNew.id; setInkNew(null); deleteRecord(id); tell("削除しました"); }, onDetail: async (o, t) => { const base = inkNew; if (o)
                                         await saveInk(base.id, base, o.ink, o.png, { keepOpen: true }, t); const r = recordsRef.current.find((x) => x.id === base.id) || { ...base, title: t }; setInkNew(null); openEdit(r); }, onCancel: () => setInkNew(null), onSave: ({ ink, png, title }) => { const base = inkNew; setInkNew(null); saveInk(base.id, base, ink, png, { keepOpen: true }, title); tell("保存しました"); } })),
                                 addPlanOpen && (react_1.default.createElement(NameIconSheet, { title: planKind === "list" ? "コレクションを追加" : "計画を追加", confirmLabel: "\u4F5C\u6210", presets: true, photo: true, placeholder: planKind === "list" ? "行きたい場所／見たいアニメ など" : "資格をとる／体づくり など", fallback: react_1.default.createElement(planKind === "list" ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), onCancel: () => setAddPlanOpen(false), onSave: (n, ic, col) => { addPlan(null, n, ic, col); setAddPlanOpen(false); } })),
