@@ -28248,8 +28248,10 @@ function SyncHeaderButton({ onPhoto, style }) {
     return (react_1.default.createElement("button", { type: "button", onClick: onTap, ...pressProps, "aria-busy": showBusy ? "true" : undefined, "aria-label": (showBusy ? "同期しています" : st.enabled && st.phase !== "needsAuth" ? "押すと同期・長押しでくわしく" : look.label) + (n > 0 ? `・${n}件` : ""), "data-mt-sync-btn": "", className: "relative flex items-center justify-center rounded-xl ft-tap ft-tap-icon shrink-0 " + (onPhoto ? "text-white" : "gs-tone-" + look.tone), style: { minWidth: 48, minHeight: 48, filter: onPhoto ? "drop-shadow(0 1px 3px rgba(0,0,0,.45))" : undefined, ...(style || {}) } },
         /* 点滅は、svg の中ではなく、この span（ふつうの箱）ごと（10.16.0〜）。iPhone の WebKit で、svg の中の動きが描き直されないことがあった。
            うしろに丸い光（::before）も広がって消える */
-        react_1.default.createElement("span", { className: "relative inline-flex" + (look.anim ? " gs-pulse" : "") },
-            react_1.default.createElement(CloudGlyph, { mark: look.mark, anim: look.anim, size: 27 }),
+        /* 件数の札・点は、点滅する箱の外に置く（10.18.0〜。雲といっしょに点滅させない） */
+        react_1.default.createElement("span", { className: "relative inline-flex" },
+            react_1.default.createElement("span", { className: "relative inline-flex" + (look.anim ? " gs-pulse" : "") },
+                react_1.default.createElement(CloudGlyph, { mark: look.mark, anim: look.anim, size: 27 })),
             n > 0 ? (react_1.default.createElement("span", { "aria-hidden": "true", className: "gs-badge fs-caption font-bold tabular-nums" }, n > 99 ? "99+" : n)) : look.dot ? (react_1.default.createElement("span", { "aria-hidden": "true", className: "gs-dot gs-dot-" + look.dot })) : null)));
 }
 /* 2本の矢印の1本。dir: "right"（送る）| "left"（受け取る）
