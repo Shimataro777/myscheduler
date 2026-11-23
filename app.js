@@ -20300,6 +20300,16 @@ function useLockBackground() {
         catch (e) { }
     };
     const layoutHeight = () => Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+    /* ---- 見える窓の高さ・上端（10.40.0〜） ----
+       **vv.height・vv.offsetTop をじかに使わないこと。**
+       持ち主の iPhone（iOS 18.7、ホーム画面から開く）の記録：しばらく裏に回してから戻すと、visualViewport の高さが **0** のまま返ってくる
+       （記録「vv=0/1」。上端 offsetTop だけが送りに合わせて動く）。高さ 0 をそのまま使うと、
+       「画面ぜんたいの高さ 874px のキーボードが出ている」と見なし、入力欄を押すたびに 874px の場所を空けて押し上げ（入力欄が上へ消える・下が真っ白・
+       下のボタンの帯や下タブがまん中に来る）、ずれ直し（healOnce）は上端の数を「ずれ」と見て 1px 送っては戻すをくり返した（画面が激しく上下）。
+       高さが 100px より小さいときは「測れていない」とみなし、高さはレイアウトの高さ、上端は 0 として扱う */
+    const vvOk = () => vv.height >= 100;
+    const vH = () => (vvOk() ? vv.height : layoutHeight());
+    const vTop = () => (vvOk() ? (vv.offsetTop || 0) : 0);
     const guessKb = () => {
         const m = Number(kbMem[orient()]);
         if (m >= 60 && m < 2000)
@@ -20374,8 +20384,8 @@ function useLockBackground() {
         return false;
     };
     const isProxy = (el) => !!(el && el.hasAttribute && el.hasAttribute("data-ft-kb-proxy"));
-    const rawKb = () => Math.round(layoutHeight() - vv.height);
-    const kbTopNow = () => (rawKb() >= 60 ? vv.height + (vv.offsetTop || 0) : layoutHeight() - guessKb());
+    const rawKb = () => Math.round(layoutHeight() - vH());
+    const kbTopNow = () => (rawKb() >= 60 ? vH() + vTop() : layoutHeight() - guessKb());
     /* 送れる余地（--ft-kb）。全画面の送り場の最後・ページの最後に足す。足しても見た目は動かない */
     const setReserve = (kb) => {
         kb = Math.max(0, Math.round(kb || 0));
@@ -21277,7 +21287,7 @@ function useLockBackground() {
         /* 全画面の textarea は iOS にまかせる（送り場はキーボードの上端で終わっている） */
         if (c === "overlay" && el.tagName === "TEXTAREA")
             return;
-        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - (vv.height + (vv.offsetTop || 0)));
+        const need = Math.ceil(el.getBoundingClientRect().bottom + GAP - (vH() + vTop()));
         if (c === "sheet") {
             const box = sheetBoxOf(el);
             if (!box || Math.abs(need) < 2)
@@ -21328,7 +21338,7 @@ function useLockBackground() {
         cancelAnimationFrame(raf);
         raf = requestAnimationFrame(() => {
             const lh = layoutHeight();
-            const raw = Math.round(lh - vv.height);
+            const raw = Math.round(lh - vH());
             const a = document.activeElement;
             const typing = isTyping(a);
             if (!typing && raw < 60)
@@ -21662,7 +21672,7 @@ function useLockBackground() {
             return false;
         if (Date.now() < bounceUntil)
             return false;
-        return (vv.offsetTop || 0) > 1 || layoutShrunk();
+        return vTop() > 1 || layoutShrunk();
     };
     const healOnce = () => {
         if (!stuckNow()) {
@@ -29776,13 +29786,41 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-wr.narrow .ft-wr-d .n { width: 30px; height: 30px; font-size: calc(var(--fs-subhead) * var(--ft-scale)); }
 .ft-wr.narrow .ft-wr-items { padding: 8px 10px; gap: 5px; }
 .ft-wr.narrow .ft-wr-items .ft-wb-chip, .ft-wr.narrow .ft-wr-span { max-width: 100%; }
+/* 週の時間（iPhone、10.41.0〜）：字を小さく詰め、一覧と同じ見た目にそろえる（日付が上・曜日が下、しるし、時刻は太字で頭に） */
+.ft-wt:not(.fill) .ft-wb-h.nw { padding: 6px 0 4px; gap: 0; }
+.ft-wt:not(.fill) .ft-wb-h.nw .w { font-size: calc(var(--fs-micro) * var(--ft-scale)); }
+.ft-wt:not(.fill) .ft-wb-h.nw .n { width: 28px; height: 28px; font-size: calc(var(--fs-body) * var(--ft-scale)); }
+.ft-wt-bic { display: inline-flex; flex: none; margin-right: 3px; opacity: .95; }
+.ft-wt-bic svg { display: block; }
+.ft-wb-bar .ft-wt-bt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ft-wt .ft-wb-bar { display: flex; align-items: center; }
+.ft-wt:not(.fill) .ft-wb-bar { height: 17px; font-size: calc(10px * var(--ft-scale)); padding: 0 4px; margin: 0 1px; }
+.ft-wt:not(.fill) .ft-wt-ad { gap: 2px; padding: 2px 1px 4px; }
+/* 終日の札は1列が細いので、しるしは付けず、2行まで折り返す（時間の札と同じ字の大きさ） */
+.ft-wt:not(.fill) .ft-wt-adc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-width: 0; font-size: calc(10px * var(--ft-scale)); line-height: 12px; padding: 2px 3px; border-radius: 4px; white-space: normal; word-break: break-all; overflow: hidden; }
+.ft-wt:not(.fill) .ft-wt-adc > b { margin-right: 2px; }
+.ft-wt:not(.fill) .ft-wt-ev { left: 1px; right: 1px; border-radius: 4px; border-left-width: 2px; padding: 1px 2px 1px 3px; }
+.ft-wt:not(.fill) .ft-wt-ev small { font-size: calc(9px * var(--ft-scale)); line-height: 11px; font-weight: 700; opacity: 1; }
+.ft-wt:not(.fill) .ft-wt-ev b { font-size: calc(9.5px * var(--ft-scale)); line-height: 12px; font-weight: 600; white-space: normal; word-break: break-all; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.ft-wt:not(.fill) .ft-wt-hrs { font-size: calc(9px * var(--ft-scale)); }
+/* 10.42.0〜 時刻の目盛りの欄を細く（30 → 18px）して、7列に幅を回す */
+.ft-wt:not(.fill) { grid-template-columns: 18px repeat(7, minmax(0, 1fr)); }
+.ft-wt:not(.fill) .ft-wt-hrs span { right: 2px; }
+/* 時刻のある予定（串の形）。線・丸は .ft-wt-sk の color（帯の色）。名前は終日の札と同じ 10px */
+.ft-wt-sk { position: absolute; left: 0; right: 0; display: block; text-align: left; overflow: hidden; background: none; padding: 0; z-index: 1; }
+.ft-wt-sk > .ln { position: absolute; left: 4px; top: 3px; bottom: 3px; width: 2px; margin-left: -1px; background: currentColor; opacity: .55; border-radius: 1px; }
+.ft-wt-sk > .nd { position: absolute; left: 4px; top: 3px; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: currentColor; }
+.ft-wt-sk > .nd.e { top: auto; bottom: 3px; margin: 0 0 -3px -3px; }
+.ft-wt-sk > .tx { position: absolute; left: 9px; right: 1px; top: -2px; bottom: 0; overflow: hidden; display: flex; flex-direction: column; }
+.ft-wt-sk > .tx > small { font-size: calc(9px * var(--ft-scale)); line-height: 11px; font-weight: 700; }
+.ft-wt-sk > .tx > .t { font-size: calc(10px * var(--ft-scale)); line-height: 12px; font-weight: 600; word-break: break-all; color: var(--tx-1); }
 /* iPhone の週の一覧（10.34.0〜。WeekBoard の rows && !fill） */
 .ft-wv { display: flex; flex-direction: column; background: #fff; border: 1px solid #E6E6E9; border-radius: 16px; overflow: hidden; }
-.ft-wv-row { position: relative; display: flex; align-items: stretch; width: 100%; min-height: 48px; text-align: left; border-top: 1px solid #EEF1F3; background: #fff; border-radius: 0; }
+.ft-wv-row { position: relative; display: flex; align-items: stretch; width: 100%; min-height: 56px; text-align: left; border-top: 1px solid #EEF1F3; background: #fff; border-radius: 0; }
 .ft-wv-row:first-child { border-top: 0; }
 .ft-wv-row.we { background: #FAFBFC; }
 .ft-wv-row.sel { background: var(--th-50, #EEF6FB); }
-.ft-wv-row .ft-wr-d { width: 50px; }
+.ft-wv-row .ft-wr-d { width: 50px; padding: 8px 0; gap: 3px; justify-content: flex-start; }
 .ft-wv-row .ft-wr-d .n { width: 30px; height: 30px; font-size: calc(var(--fs-subhead) * var(--ft-scale)); }
 .ft-wv-row.t .ft-wr-d .n { background: var(--th-800, #3E7EA6); color: #fff; }
 .ft-wv-row.sel:not(.t) .ft-wr-d .n { box-shadow: 0 0 0 2px var(--th-300, #9FCBE3); background: #fff; }
@@ -31127,7 +31165,7 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
                 ce("span", { className: "ft-wr-items" }, spans, chips, !spans.length && !chips.length ? ce("span", { className: "ft-wr-none" }) : null));
         }));
     }
-    return ce("div", { className: "ft-wb" + (fill ? " fill" : ""), style: { gridTemplateRows: `auto repeat(${count}, 21px) minmax(${fill ? 0 : 76}px, 1fr)` } },
+    return ce("div", { className: "ft-wb" + (fill ? " fill" : ""), style: { gridTemplateRows: `auto${count ? ` repeat(${count}, 21px)` : ""} minmax(${fill ? 0 : 76}px, 1fr)` } },
         days.map((d, i) => {
             const w = dowOf(d);
             return ce("button", { key: "c" + d, type: "button", onClick: () => onSelect(d), "aria-label": fmtDate(d), "aria-pressed": d === selected, className: "ft-wb-col ft-tap" + (d === selected ? " sel" : "") + (w === 0 || w === 6 ? " we" : ""), style: { gridColumn: i + 1, gridRow: "1 / -1" } });
@@ -31152,6 +31190,8 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
    ・日をまたぐものは、上に帯で（WeekBoard と同じ詰め方）。その日だけの終日は、その下に札で
    ・日付の下の小さな四角（リストの数）はやめた（3.0.0〜）
    ============================================================ */
+/* **grid-template-rows に repeat(0, …) を書かないこと（10.40.0〜）。** 0 回のくり返しは CSS として無効で、行の決まりがまるごと捨てられる。
+   日をまたぐ予定が無い週は count が 0 になり、時間の欄の高さが 0 につぶれていた（「登録のない週の時間の表が見えない」）。WeekBoard も同じ */
 function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
     const calColor = useCalColor();
     const prefs = react_1.default.useContext(PrefsContext) || DEFAULT_PREFS;
@@ -31171,19 +31211,21 @@ function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
         marks.push(h);
     const lines = `repeating-linear-gradient(180deg, #E3E8EC 0, #E3E8EC 1px, transparent 1px, transparent calc(100% / ${n}))`;
     const ce = react_1.default.createElement;
-    return ce("div", { className: "ft-wt" + (fill ? " fill" : ""), style: { gridTemplateRows: `auto repeat(${count}, 21px) auto ${fill ? "minmax(0, 1fr)" : Math.max(360, n * 30) + "px"}` } },
+    return ce("div", { className: "ft-wt" + (fill ? " fill" : ""), style: { gridTemplateRows: `auto${count ? ` repeat(${count}, 21px)` : ""} auto ${fill ? "minmax(0, 1fr)" : Math.max(360, n * 30) + "px"}` } },
         days.map((d, i) => {
             const w = dowOf(d);
-            return ce("button", { key: "h" + d, type: "button", onClick: () => onSelect(d), "aria-pressed": d === selected, className: "ft-wb-h btn ft-tap" + (w === 0 ? " sun" : w === 6 ? " sat" : "") + (d === today ? " t" : "") + (d === selected ? " sel" : ""), style: { gridColumn: i + 2, gridRow: 1 } }, ce("span", { className: "w" }, WEEK_LABELS[w]), ce("span", { className: "n tabular-nums" }, Number(d.slice(8, 10))));
+            return ce("button", { key: "h" + d, type: "button", onClick: () => onSelect(d), "aria-pressed": d === selected, className: "ft-wb-h btn ft-tap" + (fill ? "" : " nw") + (w === 0 ? " sun" : w === 6 ? " sat" : "") + (d === today ? " t" : "") + (d === selected ? " sel" : ""), style: { gridColumn: i + 2, gridRow: 1 } },
+                /* 10.41.0〜 iPhone は一覧と同じく「日付が上・曜日が下」 */
+                fill ? ce("span", { className: "w" }, WEEK_LABELS[w]) : null, ce("span", { className: "n tabular-nums" }, Number(d.slice(8, 10))), fill ? null : ce("span", { className: "w" }, WEEK_LABELS[w]));
         }),
         bars.map((x) => {
             const c = calColor(x.r);
-            return ce("button", { key: "b" + x.r.id, type: "button", onClick: () => onEdit(x.r), className: "ft-wb-bar ft-tap" + (x.openL ? " ol" : "") + (x.openR ? " or" : ""), style: { gridColumn: `${x.a + 2} / ${x.b + 3}`, gridRow: x.lane + 2, background: c.mid } }, x.r.type === "checklist" ? "□ " : "", recordTitle(x.r));
+            return ce("button", { key: "b" + x.r.id, type: "button", onClick: () => onEdit(x.r), className: "ft-wb-bar ft-tap" + (x.openL ? " ol" : "") + (x.openR ? " or" : ""), style: { gridColumn: `${x.a + 2} / ${x.b + 3}`, gridRow: x.lane + 2, background: c.mid } }, ce("span", { className: "ft-wt-bic", "aria-hidden": true }, typeIcon(x.r.type, 11)), ce("span", { className: "ft-wt-bt" }, recordTitle(x.r)));
         }),
         per.map((list, i) => {
             /* 終日の予定と、出している時間帯の外にある予定 */
             const out = list.filter((r) => (r.type === "schedule" && !dueOf(r) && (!r.time || hm(r.time) >= to || (r.endTime ? hm(r.endTime) <= from : hm(r.time) + 1 <= from))) || (dueOf(r) && !listAllDone(r) && calShows(r, days[i]))).sort(compareTimeline);
-            return ce("div", { key: "a" + i, className: "ft-wt-ad", style: { gridColumn: i + 2, gridRow: count + 2 } }, out.map((r) => { const c = calColor(r); return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wb-chip ft-tap" + (dueOf(r) ? " list due" : ""), style: dueOf(r) ? { color: c.deep, borderColor: c.mid } : { background: c.soft, color: c.deep } }, !dueOf(r) && r.time ? ce("b", { className: "tabular-nums" }, r.time.replace(/^0/, "")) : null, recordTitle(r), dueOf(r) ? "〆" : null); }));
+            return ce("div", { key: "a" + i, className: "ft-wt-ad", style: { gridColumn: i + 2, gridRow: count + 2 } }, out.map((r) => { const c = calColor(r); return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wb-chip ft-wt-adc ft-tap" + (dueOf(r) ? " list due" : ""), style: dueOf(r) ? { color: c.deep, borderColor: c.mid } : { background: c.soft, color: c.deep } }, !dueOf(r) && r.time ? ce("b", { className: "tabular-nums" }, r.time.replace(/^0/, "")) : null, recordTitle(r), dueOf(r) ? "〆" : null); }));
         }),
         ce("div", { className: "ft-wt-hrs", style: { gridColumn: 1, gridRow: count + 3 } }, marks.map((h) => ce("span", { key: h, style: { top: pos(h) + "%" } }, h))),
         per.map((list, i) => {
@@ -31193,7 +31235,12 @@ function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
                 timedR.map((r) => {
                     const a = pos(hm(r.time)), b = pos(r.endTime && hm(r.endTime) > hm(r.time) ? hm(r.endTime) : hm(r.time) + 1);
                     const c = calColor(r);
-                    return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wt-ev ft-tap", style: { top: a + "%", height: `calc(${Math.max(b - a, 100 / n / 2)}% - 2px)`, background: c.soft, color: c.deep, borderColor: c.mid } }, ce("b", null, recordTitle(r)), ce("small", null, r.time + (r.endTime ? "–" + r.endTime : "")));
+                    /* 10.42.0〜 iPhone は、一覧の串と同じ形：始まりと終わりに丸、そのあいだを細い線でつなぎ、線の右に時刻と名前。色の塊は置かない */
+                    if (!fill)
+                        return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wt-sk ft-tap", style: { top: a + "%", height: `${Math.max(b - a, 100 / n / 2)}%`, color: c.mid } },
+                            ce("i", { className: "ln" }), ce("b", { className: "nd" }), ce("b", { className: "nd e" }),
+                            ce("span", { className: "tx", style: { color: c.deep } }, ce("small", { className: "tabular-nums" }, r.time.replace(/^0/, "")), ce("span", { className: "t" }, recordTitle(r))));
+                    return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wt-ev ft-tap", style: { top: a + "%", height: `calc(${Math.max(b - a, 100 / n / 2)}% - 2px)`, background: c.soft, color: c.deep, borderColor: c.mid } }, ce("small", { className: "tabular-nums" }, r.time + (r.endTime ? "–" + r.endTime : "")), ce("b", null, recordTitle(r)));
                 }),
                 d === today && nowH >= from && nowH <= to ? ce("span", { className: "ft-wt-now", style: { top: pos(nowH) + "%" } }) : null);
         }));
@@ -31379,7 +31426,7 @@ if (typeof document !== "undefined")
         if (!body || !(t.tagName === "INPUT" || t.tagName === "TEXTAREA"))
             return;
         const go = () => { if (document.activeElement !== t)
-            return; const vv = window.visualViewport; const lim = (vv ? vv.height + vv.offsetTop : window.innerHeight) - 90; const r = t.getBoundingClientRect(); if (r.bottom > lim)
+            return; const vv = window.visualViewport; const lim = (vv && vv.height >= 100 ? vv.height + vv.offsetTop : window.innerHeight) - 90; const r = t.getBoundingClientRect(); if (r.bottom > lim)
             body.scrollTop += r.bottom - lim + 40; };
         setTimeout(go, 350);
         setTimeout(go, 800);
