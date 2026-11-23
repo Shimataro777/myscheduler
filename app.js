@@ -31105,7 +31105,8 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
             return ce("button", { key: d, type: "button", onClick: () => onSelect(d), "aria-label": fmtDate(d), "aria-pressed": d === selected, className: "ft-wv-row ft-tap" + (d === selected ? " sel" : "") + (w === 0 || w === 6 ? " we" : "") + (d === today ? " t" : "") },
                 ce("span", { className: "ft-wr-d" + (w === 0 ? " sun" : w === 6 ? " sat" : "") }, ce("span", { className: "n tabular-nums" }, Number(d.slice(8, 10))), ce("span", { className: "w" }, WEEK_LABELS[w])),
                 laneBox ? ce("span", { className: "ft-wv-lanes", style: { width: laneBox } }, lanes) : null,
-                ce("span", { className: "ft-wv-items" }, items.length ? items : ce("span", { className: "ft-wr-none" })));
+                /* 何もない日は空のまま（10.37.0〜。前は短い灰の横線を出していたが、串の線とまぎらわしかった） */
+                ce("span", { className: "ft-wv-items" }, items.length ? items : null));
         }));
     }
     if (rows) {
