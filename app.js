@@ -24259,18 +24259,20 @@ function RecordForm({ initial, onSave, onCancel, onDelete, knownTags, onCreateTa
    ＋を押したあとの「記録の種類」
    **ここは順に現れさせないこと。** 開いた瞬間から選べるほうがよい
    ============================================================ */
-function TypeRow({ t, onPick, label, icon, colorKey }) {
+function TypeRow({ t, onPick, label, icon, colorKey, danger }) {
     const N = useTypeNames();
     /* しるしは変えたいが色はほかにそろえたい、というときに colorKey で借りる */
-    const color = useTypeColor(colorKey || t);
+    const base = useTypeColor(colorKey || t);
+    /* 削除など、取り消せないもの（10.11.0〜）。赤い字と赤いしるし */
+    const color = danger ? { soft: "#FDECEA", line: "#F7C9C4", deep: "#B42318" } : base;
     const [pressed, go] = useTapThen(() => onPick(t));
     return (react_1.default.createElement("button", { type: "button", onClick: go, className: "w-full flex items-center gap-3 px-3 py-3 min-h-[64px] rounded-xl text-left ft-tap ft-tap-card "
             + (pressed ? "bg-neutral-200 ft-tap-pressed" : "hover:bg-neutral-50") },
         react_1.default.createElement("span", { className: "w-12 h-12 rounded-xl flex items-center justify-center shrink-0", style: { background: color.soft, border: `1px solid ${color.line}`, color: color.deep } }, icon || typeIcon(t, 22)),
-        react_1.default.createElement("span", { className: "flex-1 min-w-0 fs-subhead font-bold text-neutral-900" }, label || N[t] || TYPE_LABELS[t]),
+        react_1.default.createElement("span", { className: "flex-1 min-w-0 fs-subhead font-bold " + (danger ? "" : "text-neutral-900"), style: danger ? { color: color.deep } : undefined }, label || N[t] || TYPE_LABELS[t]),
         react_1.default.createElement(lucide_react_1.ChevronRight, { size: 18, className: "text-neutral-400 shrink-0" })));
 }
-function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons, colorKeys, top }) {
+function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TYPES, labels, icons, colorKeys, top, danger }) {
     /* 選んだときも下へ滑らせる（2.17.2〜）。**onPick を素通しにしないこと** */
     const [closing, requestClose] = useClosing((fn) => fn(), FT_EXIT_SHEET_MS);
     const close = () => requestClose(onCancel);
@@ -24285,7 +24287,11 @@ function TypePickSheet({ onPick, onCancel, title = "記録の種類", types = TY
                 react_1.default.createElement("button", { type: "button", onClick: close, "aria-label": "\u9589\u3058\u308B", className: "min-w-[52px] min-h-[46px] flex items-center justify-center rounded-xl text-neutral-500 hover:bg-neutral-100" },
                     react_1.default.createElement(lucide_react_1.X, { size: 28 }))),
             top ? react_1.default.createElement("div", { className: "px-4 pt-3" }, top) : null,
-            react_1.default.createElement("div", { className: "p-2" }, types.map((t) => (react_1.default.createElement(TypeRow, { key: t, t: t, onPick: pick, colorKey: colorKeys ? colorKeys[t] : null, label: labels ? labels[t] : null, icon: icons ? icons[t] : null })))))));
+            react_1.default.createElement("div", { className: "p-2" },
+                types.filter((t) => !(danger || []).includes(t)).map((t) => (react_1.default.createElement(TypeRow, { key: t, t: t, onPick: pick, colorKey: colorKeys ? colorKeys[t] : null, label: labels ? labels[t] : null, icon: icons ? icons[t] : null }))),
+                /* 削除などは、すこし離して下に（10.11.0〜）。ほかの行と押しまちがえない */
+                (danger || []).some((t) => types.includes(t)) ? react_1.default.createElement("div", { className: "ft-tps-sep", "aria-hidden": "true" }) : null,
+                types.filter((t) => (danger || []).includes(t)).map((t) => (react_1.default.createElement(TypeRow, { key: t, t: t, onPick: pick, danger: true, label: labels ? labels[t] : null, icon: icons ? icons[t] : null })))))));
 }
 /* 前回、保存しないまま閉じられた記録を知らせるカード */
 function DraftCard({ draft, onResume, onDiscard }) {
@@ -26793,7 +26799,7 @@ function AddTile({ onClick, label, icon }) {
 }
 /* 計画の札（5.0.0）。**フォルダの札と同じ形**（四角い絵＋名前＋ひとこと）。つぎのステップ・線は出さない。
    目標＝「ステップ 1/5」と「あと154日」。コレクション＝「済み 2/6」 */
-function PlanCard({ plan, records, onOpen, onPin, pressProps, hitQ }) {
+function PlanCard({ plan, records, onOpen, onPin, onMore, pressProps, hitQ }) {
     const p = plan;
     const hits = (0, react_1.useMemo)(() => planHits(p, hitQ), [p, hitQ]);
     const hitWords = hits ? [String(hitQ).trim().toLowerCase()] : null;
@@ -26811,7 +26817,8 @@ function PlanCard({ plan, records, onOpen, onPin, pressProps, hitQ }) {
             ce(ItemIcon, { icon: p.icon, fallback: ce(isList ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 40 }), color: c }),
             done ? ce("span", { className: "ft-pcard-done", style: { background: c.deep } }, ce(lucide_react_1.Check, { size: 14, strokeWidth: 3.5, className: "thick" })) : null,
             onPin ? ce("span", { className: "ft-fpin" }, ce(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } })) : null),
-        ce("span", { className: "ft-fbody" },
+        ce("span", { className: "ft-fbody" + (onMore ? " has-more" : "") },
+            onMore ? ce(MoreButton, { onClick: onMore, label: `「${p.name || "（名前なし）"}」の操作`, className: "ft-fmore absolute" }) : null,
             ce("span", { className: "ft-fname font-display fs-subhead text-neutral-900" }, p.name ? (hits && hits.name ? ce(HitText, { text: p.name, words: hitWords }) : p.name) : "（名前なし）"),
             ce("span", { className: "ft-fmeta" },
                 ce("span", { className: "fs-label font-bold text-neutral-500 tabular-nums" }, isList ? (collCols(p).some((c) => c.id === "__done") ? `済み ${nDone}/${todo.length}` : `${todo.length}件`) : done ? `${fmtDateShort(p.doneAt)} 達成` : `リスト ${nDone}/${todo.length}`),
@@ -26826,9 +26833,16 @@ function PinButton({ on, onClick, color }) {
         react_1.default.createElement("span", { key: on ? "on" : "off", className: "flex " + (on ? "ft-mark" : "") },
             react_1.default.createElement(lucide_react_1.Pin, { size: 19, fill: on ? "currentColor" : "none" }))));
 }
+/* 「…」（10.11.0〜）。札ごと・ひらいた画面ごとの「この1件にできること」（名前とアイコン・達成・削除など）を出す。
+   **長押しだけにしないこと。** 長押しは気づけない。押しピンと同じ大きさ・同じ灰で、押しピンの右に置く。
+   押しても札はひらかない（pointerdown・click を止める） */
+function MoreButton({ onClick, label = "操作", className = "" }) {
+    return react_1.default.createElement("button", { type: "button", onClick: (e) => { e.stopPropagation(); onClick(e); }, onPointerDown: (e) => e.stopPropagation(), "aria-label": label, "aria-haspopup": "dialog", className: "ft-more w-9 h-9 shrink-0 flex items-center justify-center rounded-full ft-tap ft-tap-icon " + className },
+        react_1.default.createElement(lucide_react_1.Ellipsis, { size: 20 }));
+}
 /* 計画の札（7.1.0〜）。**フォルダ・コレクションの札（四角い絵）とは別の形**：横長の1枚。
    左＝絵、まん中＝名前と一言メモ、右＝あと何日（大きな数）、下＝進み具合の線と「ステップ 1/5」。ステップの中身は出さない */
-function GoalRow({ plan, onOpen, onPin, pressProps, hitQ }) {
+function GoalRow({ plan, onOpen, onPin, onMore, pressProps, hitQ }) {
     const p = plan;
     const hits = (0, react_1.useMemo)(() => planHits(p, hitQ), [p, hitQ]);
     const hitWords = hits ? [String(hitQ).trim().toLowerCase()] : null;
@@ -26852,9 +26866,11 @@ function GoalRow({ plan, onOpen, onPin, pressProps, hitQ }) {
             done ? ce("span", { className: "ft-grow-left done tabular-nums", style: { color: c.deep } }, ce("small", null, fmtDateShort(p.doneAt)), ce("small", null, "達成"))
                 : left != null ? ce("span", { className: "ft-grow-left tabular-nums", style: { color: left < 0 ? "var(--ac-late-fg)" : c.deep } }, left === 0 ? ce("b", { className: "w" }, "今日") : ce(react_1.default.Fragment, null, left < 0 ? null : ce("small", null, "あと"), ce("b", null, Math.abs(left)), ce("small", null, left < 0 ? "日過ぎ" : "日"))) : null,
             onPin ? ce(PinButton, { on: p.pinned, color: c, onClick: (e) => { e.stopPropagation(); onPin(p); } }) : null),
-        todo.length ? ce("div", { className: "ft-grow-foot" },
-            ce("span", { className: "ft-grow-bar" }, ce("i", { style: { width: (nDone / todo.length) * 100 + "%", background: c.mid } })),
-            ce("span", { className: "ft-grow-n tabular-nums" }, `リスト ${nDone}/${todo.length}`)) : null,
+        /* 「…」は下の段の右はし（10.11.0〜）。上の段に足すと、名前が2文字ずつで折り返した */
+        todo.length || onMore ? ce("div", { className: "ft-grow-foot" + (todo.length ? "" : " only") },
+            todo.length ? ce("span", { className: "ft-grow-bar" }, ce("i", { style: { width: (nDone / todo.length) * 100 + "%", background: c.mid } })) : ce("span", { className: "flex-1" }),
+            todo.length ? ce("span", { className: "ft-grow-n tabular-nums" }, `リスト ${nDone}/${todo.length}`) : null,
+            onMore ? ce(MoreButton, { onClick: onMore, label: `「${p.name || "（名前なし）"}」の操作`, className: "ft-grow-more" }) : null) : null,
         hits && ce(PlanHitBox, { plan: p, hits: hits, words: hitWords }));
 }
 function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onChangePlan, onDeletePlan, onAdd, resetSig = 0 }) {
@@ -26871,7 +26887,7 @@ function PlanScreen({ plans, records, onOpenPlan, onPinPlan, sort, onSort, onCha
     const live = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => !p.doneAt), sort).sort(pinFirst), [shown, sort]);
     const done = (0, react_1.useMemo)(() => sortItems(shown.filter((p) => !!p.doneAt), sort).sort(pinFirst), [shown, sort]);
     useTabReturn(resetSig, { viewKey: q, atDefault: !q, toDefault: () => setQ("") });
-    const card = (p) => ce(GoalRow, { key: p.id, plan: p, onOpen: () => onOpenPlan(p), onPin: onPinPlan, pressProps: press({ plan: p }), hitQ: q.trim() ? q : "" });
+    const card = (p) => ce(GoalRow, { key: p.id, plan: p, onOpen: () => onOpenPlan(p), onPin: onPinPlan, onMore: () => setMenu({ plan: p }), pressProps: press({ plan: p }), hitQ: q.trim() ? q : "" });
     return (ce("div", { className: "pad-fab" },
         ce(TopChrome, null,
             ce(ScreenHeader, { title: "計画" }),
@@ -26923,7 +26939,7 @@ function PlanMenus({ menu, setMenu, edit, setEdit, del, setDel, onChangePlan, on
     const ce = react_1.default.createElement;
     const isList = (m) => planKindOf(m.plan) === "list";
     return ce(react_1.default.Fragment, null,
-        menu && ce(TypePickSheet, { title: menu.plan.name || "計画", types: isList(menu) ? ["__rename", "__delete"] : menu.plan.doneAt ? ["__undone", "__rename", "__delete"] : ["__done", "__rename", "__delete"], labels: { __done: "達成済みにする", __undone: "達成を取り消す", __rename: "名前とアイコン", __delete: "削除" },
+        menu && ce(TypePickSheet, { title: menu.plan.name || "計画", types: isList(menu) ? ["__rename", "__delete"] : menu.plan.doneAt ? ["__rename", "__undone", "__delete"] : ["__rename", "__done", "__delete"], danger: ["__delete"], labels: { __done: "達成済みにする", __undone: "達成を取り消す", __rename: "名前とアイコン", __delete: isList(menu) ? "このコレクションを削除" : "この計画を削除" },
             icons: { __done: ce(lucide_react_1.Check, { size: 22 }), __undone: ce(lucide_react_1.RotateCcw, { size: 22 }), __rename: ce(lucide_react_1.Pencil, { size: 22 }), __delete: ce(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => {
                 const m = menu;
                 setMenu(null);
@@ -27283,8 +27299,9 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
            札の境目は、札そのものの細いふち（card-soft）で足りる。**この画面だけ灰に戻さないこと** */
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "\u8A2D\u5B9A", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
-                    react_1.default.createElement(lucide_react_1.Settings, { size: 20 })) }),
+            /* 右上は「…」（10.11.0〜。前は歯車）。一覧の札の「…」と同じ印・同じ中身 */
+            react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": plan.kind === "list" ? "このコレクションの操作" : "この計画の操作", "aria-haspopup": "dialog", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap ft-tap-icon" },
+                    react_1.default.createElement(lucide_react_1.Ellipsis, { size: 22 })) }),
             react_1.default.createElement("div", { ref: stepSwipeRef, className: "flex-1 overflow-y-auto px-4 py-4 ft-col ft-colwide pad-fab ft-planpage" },
                 /* 計画の中身は 2.33.0 で組み直した（PlanBody）。イベント（段階）はやめて、
                    ふつうの記録（予定・リスト・メモ）を付けて進める。**イベントの欄を戻さないこと** */
@@ -27295,7 +27312,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                         react_1.default.createElement("span", { className: "flex-1 min-w-0" },
                             react_1.default.createElement("span", { className: "block fs-subhead font-bold", style: { color: color.deep } }, "達成しました"),
                             react_1.default.createElement("span", { className: "block fs-body-sm text-neutral-500" }, fmtDate(plan.doneAt)))))),
-                react_1.default.createElement(PlanBody, { onIcon: () => setSettingsOpen(true), plan: plan, records: records, color: color, onChange: onChange, onEditRecord: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, onAdd: (k) => onAddRecord(plan, k), onDone: () => setDoneAsk(true) })),
+                react_1.default.createElement(PlanBody, { onIcon: () => setSettingsOpen(true), onKind: () => onChange(plan.id, (pl) => ({ ...pl, kind: pl.kind === "list" ? "goal" : "list", updatedAt: new Date().toISOString() })), onDelete: () => setDelOpen(true), plan: plan, records: records, color: color, onChange: onChange, onEditRecord: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, onAdd: (k) => onAddRecord(plan, k), onDone: () => setDoneAsk(true) })),
             react_1.default.createElement(SelectBar, { sel: sel, list: planRecords }),
             false && !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 })),
@@ -27308,9 +27325,9 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                     }
                     onAddRecord(plan, k);
                 } })),
-            menuOpen && (react_1.default.createElement(TypePickSheet, { title: plan.kind === "list" ? "コレクションの設定" : "計画の設定", 
-                /* コレクションには「達成」が無い（4.0.0〜）。済みは1件ずつ付ける */
-                types: plan.kind === "list" ? ["__edit", "__kind", "__delete"] : plan.doneAt ? ["__undone", "__edit", "__kind", "__delete"] : ["__done", "__edit", "__kind", "__delete"], labels: {
+            menuOpen && (react_1.default.createElement(TypePickSheet, { title: plan.name || (plan.kind === "list" ? "コレクション" : "計画"), danger: ["__delete"],
+                /* コレクションには「達成」が無い（4.0.0〜）。済みは1件ずつ付ける。並びは一覧の「…」と同じ（名前とアイコンが先） */
+                types: plan.kind === "list" ? ["__edit", "__kind", "__delete"] : plan.doneAt ? ["__edit", "__undone", "__kind", "__delete"] : ["__edit", "__done", "__kind", "__delete"], labels: {
                     __done: "この計画を達成済みにする", __undone: "達成を取り消す",
                     __edit: "名前とアイコン", __delete: plan.kind === "list" ? "このコレクションを削除" : "この計画を削除",
                     __kind: plan.kind === "list" ? "「計画」に切り替える" : "「コレクション」に切り替える",
@@ -27528,8 +27545,8 @@ function FolderDetail({ folder, records, onClose, onChange, onDelete, onAddRecor
     return (ce(OverlayScreen, { from: "right", closing: closing },
         ce("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             ce("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            ce(OverlayHeader, { title: folder.name || "（名前なし）", onBack: close, right: ce("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "設定", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-500 ft-tap ft-tap-icon" },
-                    ce(lucide_react_1.Settings, { size: 20 })) }),
+            ce(OverlayHeader, { title: folder.name || "（名前なし）", onBack: close, right: ce("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": "このフォルダの操作", "aria-haspopup": "dialog", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap ft-tap-icon" },
+                    ce(lucide_react_1.Ellipsis, { size: 22 })) }),
             ce("div", { className: "flex-1 overflow-y-auto px-5 py-4 ft-col ft-colwide pad-fab" },
                 /* 5.0.0：新しく書くのは右下の＋だけ。いまある記録は、見出しの行の「選んで入れる」から */
                 ce("div", { className: "-mx-5 px-4" },
@@ -27541,8 +27558,8 @@ function FolderDetail({ folder, records, onClose, onChange, onDelete, onAddRecor
             !sel.on && (ce("button", { type: "button", onClick: () => onAddRecord(folder), "aria-label": "このフォルダに新しく書く", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 ce(lucide_react_1.Plus, { size: 26 }))),
             ce(SelectBar, { sel: sel, list: list, extraLabel: "フォルダから外す", onExtra: removeFromFolder }),
-            menuOpen && (ce(TypePickSheet, { title: "フォルダの設定",
-                types: ["__rename", "__delete"], labels: { __rename: "名前とアイコン", __delete: "このフォルダを削除" }, icons: { __rename: ce(lucide_react_1.Pencil, { size: 22 }), __delete: ce(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
+            menuOpen && (ce(TypePickSheet, { title: folder.name || "フォルダ",
+                types: ["__rename", "__delete"], danger: ["__delete"], labels: { __rename: "名前とアイコン", __delete: "このフォルダを削除" }, icons: { __rename: ce(lucide_react_1.Pencil, { size: 22 }), __delete: ce(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenuOpen(false), onPick: (k) => {
                     setMenuOpen(false);
                     if (k === "__rename")
                         setRenameOpen(true);
@@ -27675,7 +27692,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
             q.trim() ? null : react_1.default.createElement(AddTile, { key: "__add", onClick: onAdd, label: kind === "coll" ? "新しいコレクション" : "新しいフォルダ", icon: kind === "coll" ? lucide_react_1.ListTodo : lucide_react_1.Folder }),
             sorted.map((f) => {
                 if (Array.isArray(f.todo))
-                    return react_1.default.createElement(PlanCard, { key: f.id, plan: f, records: records, onOpen: () => onOpenPlan(f), onPin: onPinPlan, pressProps: ppress({ plan: f }) });
+                    return react_1.default.createElement(PlanCard, { key: f.id, plan: f, records: records, onOpen: () => onOpenPlan(f), onPin: onPinPlan, onMore: () => setPm({ plan: f }), pressProps: ppress({ plan: f }) });
                 const myc = fc;
                 const n = counts.get(f.id) || 0;
                 const art = f.icon && ICON_ART[f.icon];
@@ -27686,7 +27703,8 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
                         /* 固定は絵の右上に重ねる。押しても札はひらかない（PinButton が pointerdown を止めている） */
                         react_1.default.createElement("span", { className: "ft-fpin" },
                             react_1.default.createElement(PinButton, { on: f.pinned, onClick: (e) => { e.stopPropagation(); onPin(f); } }))),
-                    react_1.default.createElement("span", { className: "ft-fbody" },
+                    react_1.default.createElement("span", { className: "ft-fbody has-more" },
+                        react_1.default.createElement(MoreButton, { onClick: () => setMenu(f), label: `「${f.name || "（名前なし）"}」の操作`, className: "ft-fmore absolute" }),
                         react_1.default.createElement("span", { className: "ft-fname font-display fs-subhead text-neutral-900" }, f.name || "（名前なし）"),
                         react_1.default.createElement("span", { className: "ft-fmeta" },
                             react_1.default.createElement("span", { className: "fs-label font-bold text-neutral-500 tabular-nums" },
@@ -27695,7 +27713,7 @@ function FolderScreen({ folders, records, onOpen, onPin, sort, onSort, onChange,
             }),
             null),
         react_1.default.createElement(PlanMenus, { menu: pm, setMenu: setPm, edit: pe, setEdit: setPe, del: pd, setDel: setPd, onChangePlan: onChangePlan, onDeletePlan: onDeletePlan }),
-        menu && (react_1.default.createElement(TypePickSheet, { title: menu.name || "フォルダ", types: ["__rename", "__delete"], labels: { __rename: "フォルダの設定", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => { const f = menu; setMenu(null); if (k === "__rename")
+        menu && (react_1.default.createElement(TypePickSheet, { title: menu.name || "フォルダ", types: ["__rename", "__delete"], danger: ["__delete"], labels: { __rename: "名前とアイコン", __delete: "このフォルダを削除" }, icons: { __rename: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => { const f = menu; setMenu(null); if (k === "__rename")
                 setEdit(f);
             else
                 setDel(f); } })),
@@ -29532,6 +29550,49 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 .gs-arr-dn { animation-name: gs-arr-dn; animation-delay: -0.55s; }
 @keyframes gs-arr-up { 0%, 100% { transform: translateY(0); opacity: 1; } 45% { transform: translateY(-1.6px); opacity: 1; } 50% { transform: translateY(-1.6px); opacity: 0; } 55% { transform: translateY(1.6px); opacity: 0; } }
 @keyframes gs-arr-dn { 0%, 100% { transform: translateY(0); opacity: 1; } 45% { transform: translateY(1.6px); opacity: 1; } 50% { transform: translateY(1.6px); opacity: 0; } 55% { transform: translateY(-1.6px); opacity: 0; } }
+
+/* ===== 10.11.0：名前を変える・消す場所を、見て分かる形に ===== */
+/* 「…」。押しピンと同じ大きさ・同じ灰 */
+.ft-more { background: #F3F3F5; color: #63636A; }
+/* 計画の札：押しピンと「…」を右に並べる */
+.ft-grow-foot .ft-grow-more { margin: -8px -4px -8px 2px; }
+.ft-grow-foot.only { margin-top: 4px; }
+/* 四角い札（フォルダ・コレクション）：名前の右上に「…」 */
+.ft-fbody.has-more, .ft-fgrid .ft-fbody.has-more { position: relative; padding-right: 40px; }
+.ft-fbody > .ft-fmore { position: absolute; top: 4px; right: 0; }
+.ft-fgrid.dens1 .ft-fbody.has-more { padding-right: 32px; }
+.ft-fgrid.dens1 .ft-fbody > .ft-fmore { transform: scale(.85); transform-origin: top right; top: 3px; }
+.ft-fgrid.dens2 .ft-fbody.has-more { padding-right: 26px; }
+.ft-fgrid.dens2 .ft-fbody > .ft-fmore { transform: scale(.68); transform-origin: top right; top: 2px; }
+/* 下からの選び紙：削除の前の区切り */
+.ft-tps-sep { height: 1px; background: #EEF1F4; margin: 6px 12px; }
+/* 計画の中の名前：アイコンと名前でひとつのボタン。鉛筆はアイコンの角と名前の右 */
+.ft-phero-btn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; text-align: left; padding: 4px 8px 4px 4px; margin: -4px 0 -4px -4px; border-radius: 22px; background: none; border: 0; color: inherit; font: inherit; }
+.ft-phero-btn .ft-phero-ic { overflow: visible; }
+.ft-phero-btn .ft-phero-pen { right: -5px; bottom: -5px; width: 24px; height: 24px; box-shadow: 0 0 0 2px #fff; }
+.ft-phero-npen { display: inline-flex; vertical-align: middle; margin-left: 8px; color: var(--tx-5); position: relative; top: -2px; }
+/* 計画の中のいちばん下：切り替え・削除 */
+.ft-pdanger { margin: 40px 0 8px; padding-top: 6px; border-top: 1px solid #EEF1F4; display: flex; flex-direction: column; }
+.ft-pdanger > button { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 4px; text-align: left; font-weight: 700; color: var(--tx-2); font-size: calc(var(--fs-body) * var(--ft-scale)); }
+.ft-pdanger > button svg { color: var(--tx-4); }
+.ft-pdanger > button.del, .ft-pdanger > button.del svg { color: #B42318; }
+/* コレクションの「編集」 */
+.ft-cedit.on { color: #fff; }
+.ft-carr .ft-arr-row { padding-right: 2px; }
+.ft-carr .ft-arr-row.nodrag { padding-right: 10px; }
+.ft-carr .ft-arr-del { width: 44px; height: 44px; margin-left: -8px; }
+.ft-carr .ft-arr-del span { transition: transform .2s cubic-bezier(.22,1,.36,1); }
+.ft-arr-row > .ft-arr-go, .ft-arr-go { flex: none; min-height: 38px; padding: 0 16px; margin-right: 4px; border-radius: 10px; background: #E5484D; color: #fff; font-weight: 700; font-size: calc(var(--fs-body-sm) * var(--ft-scale)); animation: ft-arr-go .18s cubic-bezier(.22,1,.36,1); }
+@keyframes ft-arr-go { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: none; } }
+/* 左へ払うと出る「削除」 */
+.ft-swipe { position: relative; border-radius: 14px; }
+.ft-swipe.live { overflow: hidden; }
+.ft-swipe-del { position: absolute; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 0 14px 14px 0; background: #E5484D; color: #fff; font-weight: 700; font-size: calc(var(--fs-label) * var(--ft-scale)); visibility: hidden; }
+.ft-swipe.live .ft-swipe-del { visibility: visible; }
+.ft-swipe-face { position: relative; touch-action: pan-y; transition: transform .22s cubic-bezier(.22,1,.36,1); }
+.ft-swipe + .ft-swipe { margin-top: 0; }
+/* 行の紙のいちばん下の「この行を削除」 */
+.ft-rowdel { display: flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 14px; padding: 0 2px; color: #B42318; font-weight: 700; font-size: calc(var(--fs-body-sm) * var(--ft-scale)); }
 
 /* ============================================================
    2.34.0：横長（iPad 横）は、下のタブを左の帯にして、中身を横いっぱいに使う。
@@ -31743,7 +31804,108 @@ function ColRows({ cols, setCols, sel, setSel, askDel, focusId, onName }) {
         patch: (d) => (c.id === "__name" ? (d.name && onName ? onName(d.name) : null) : setCols(cols.map((x) => (x.id === c.id ? { ...x, ...d } : x)))),
         drag: { ref: setRow(c.id), style: rowStyle(c.id), on: dragId === c.id, handle: handleProps(c.id) } }));
 }
-function CollTable({ plan, color, patch }) {
+/* コレクションの「編集」（10.11.0〜）。左の赤い丸を押すと、その行の右に「削除」が出る（iPhone の設定やリマインダーと同じ2段）。
+   右の持ち手で並べ替え。**並べ替え・絞り込みをしているあいだは、持ち手を出さないこと**（見えている順と、足した順がちがう） */
+function CollArrange({ rows, canDrag, onReorder, onDel }) {
+    const ce = react_1.default.createElement;
+    const [openId, setOpenId] = (0, react_1.useState)(null);
+    const { dragId, setRow, handleProps, rowStyle } = useReorder(rows, onReorder);
+    return ce("div", { className: "ft-arr ft-carr" }, rows.map((t) => {
+        const open = openId === t.id;
+        const name = String(t.text || "").trim() || "（名前なし）";
+        return ce("div", { key: t.id, ref: setRow(t.id), style: rowStyle(t.id), className: "ft-arr-row" + (open ? " open" : "") + (dragId === t.id ? " drag" : "") + (canDrag ? "" : " nodrag") },
+            ce("button", { type: "button", onClick: () => setOpenId(open ? null : t.id), "aria-label": open ? "削除をやめる" : `「${name}」を削除`, "aria-expanded": open, className: "ft-arr-del ft-tap" }, ce("span", null)),
+            ce("span", { className: "ft-arr-t", onClick: open ? () => setOpenId(null) : undefined }, name),
+            open ? ce("button", { type: "button", onClick: () => { setOpenId(null); onDel(t.id); }, className: "ft-arr-go ft-tap" }, "削除") : null,
+            canDrag ? ce(DragHandle, handleProps(t.id)) : null);
+    }));
+}
+/* 左へ払うと、右に赤い「削除」が出る札（10.11.0〜。iPhone のメール・リマインダーと同じ）。
+   ・横にはっきり動いたときだけ（10px 以上・縦の 1.5 倍以上）。縦に送るのは横取りしない（touch-action: pan-y）
+   ・半分より多く払えば開いたまま、少なければ戻る。ほかの札を払う・札のどこかを押すと閉じる
+   ・**書いている最中の欄（フォーカスのある入力）から払いはじめたときは動かさないこと**（字の選び直しと取り合う）
+   ・払ったあとの click は捨てる（指を離した拍子に、中のボタンや欄が反応しない） */
+const SWIPE_DEL_W = 84;
+function SwipeDel({ open, onOpen, onDelete, label, children }) {
+    const ce = react_1.default.createElement;
+    const faceRef = (0, react_1.useRef)(null);
+    const g = (0, react_1.useRef)(null);
+    const [dx, setDx] = (0, react_1.useState)(null);
+    const ate = (0, react_1.useRef)(0);
+    const boxRef = (0, react_1.useRef)(null);
+    const base = open ? -SWIPE_DEL_W : 0;
+    /* 開いているあいだに、この札の外を押したら閉じる */
+    (0, react_1.useEffect)(() => {
+        if (!open)
+            return undefined;
+        const off = (e) => { if (boxRef.current && !boxRef.current.contains(e.target))
+            onOpen(false); };
+        document.addEventListener("pointerdown", off, true);
+        return () => document.removeEventListener("pointerdown", off, true);
+    }, [open]); // eslint-disable-line
+    const x = dx == null ? base : dx;
+    const end = () => {
+        const st = g.current;
+        g.current = null;
+        if (!st || !st.on) {
+            setDx(null);
+            return;
+        }
+        ate.current = Date.now();
+        const cur = dx == null ? base : dx;
+        setDx(null);
+        onOpen(cur < -SWIPE_DEL_W / 2);
+    };
+    return ce("div", { ref: boxRef, className: "ft-swipe" + (open || dx != null ? " live" : "") },
+        ce("button", { type: "button", onClick: onDelete, tabIndex: open ? 0 : -1, "aria-hidden": open ? undefined : "true", className: "ft-swipe-del ft-tap", style: { width: SWIPE_DEL_W } }, ce(lucide_react_1.Trash2, { size: 18 }), "削除"),
+        ce("div", { ref: faceRef, className: "ft-swipe-face", style: { transform: x ? `translate3d(${x}px,0,0)` : undefined, transition: dx == null ? undefined : "none" },
+            onPointerDown: (e) => {
+                if (e.pointerType === "mouse" && e.button !== 0)
+                    return;
+                const t = e.target;
+                if (t && t === document.activeElement && /^(INPUT|TEXTAREA)$/.test(t.tagName))
+                    return;
+                g.current = { x: e.clientX, y: e.clientY, id: e.pointerId, on: false };
+            },
+            onPointerMove: (e) => {
+                const st = g.current;
+                if (!st || st.id !== e.pointerId)
+                    return;
+                const mx = e.clientX - st.x, my = e.clientY - st.y;
+                if (!st.on) {
+                    if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) {
+                        g.current = null;
+                        return;
+                    }
+                    if (Math.abs(mx) < 10 || Math.abs(mx) < Math.abs(my) * 1.5)
+                        return;
+                    st.on = true;
+                    try {
+                        faceRef.current.setPointerCapture(e.pointerId);
+                    }
+                    catch (err) { /* noop */ }
+                }
+                const v = base + mx;
+                setDx(Math.max(-SWIPE_DEL_W - 24, Math.min(0, v)));
+            },
+            onPointerUp: end,
+            onPointerCancel: () => { g.current = null; setDx(null); },
+            onClickCapture: (e) => {
+                /* 払い終わりの click（指を離した拍子に来る）は捨てるだけ。閉じない */
+                if (Date.now() - ate.current < 400) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                if (open) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onOpen(false);
+                }
+            },
+            "aria-label": label }, children));
+}
+function CollTable({ plan, color, patch, editing = false }) {
     const ce = react_1.default.createElement;
     const roomy = useRoomy();
     const cols = collCols(plan);
@@ -31791,6 +31953,9 @@ function CollTable({ plan, color, patch }) {
     /* 1件、または何件かまとめて（改行のある字を貼ったとき）。貼った順のまま、いちばん上に入る */
     const add = (text) => patch((p) => ({ ...p, todo: [...(Array.isArray(text) ? text : [text]).map((x) => ({ id: uid(), text: x, done: false, date: "", sec: "", v: {} })), ...planTodo(p)] }));
     const [askDel, askNode] = useAskDel();
+    /* 編集（10.11.0〜）：赤い丸で消す・持ち手で並べ替える。swOpen ＝ 払って「削除」を出している札 */
+    const [swOpen, setSwOpen] = (0, react_1.useState)(null);
+    (0, react_1.useEffect)(() => { setSwOpen(null); }, [editing]);
     const customW = Number(plan.nameW) > 0 || cols.some((c) => Number(c.w) > 0);
     /* 縦長の札で、いま入れようとしているマス（"行:列"）。＋の札を押すと、その場に入れる欄が出る */
     const [fOpen, setFOpen] = (0, react_1.useState)("");
@@ -31834,7 +31999,11 @@ function CollTable({ plan, color, patch }) {
     const nameCell = (t) => ce(AutoText, { value: t.text, onChange: (v) => patchRow(t.id, { text: v }), onBlur: () => { if (!String(t.text || "").trim())
             delRow(t.id); }, className: "ft-ccell-in bare name", label: "名前" });
     let body;
-    if (roomy) {
+    if (editing) {
+        body = rows.length ? ce(CollArrange, { rows, canDrag: !sortCol && !fq.trim(), onReorder: (next) => patch((p) => ({ ...p, todo: next.map((t) => planTodo(p).find((x) => x.id === t.id) || t) })), onDel: delRow })
+            : ce("p", { className: "ft-empty-s" }, "まだありません");
+    }
+    else if (roomy) {
         /* 列の幅（7.6.0〜）。**表はいつも画面の幅ちょうど。横へ送らない**（列が増えたら、中身を折り返す）。
            幅は比率（fr）。自分で決めた幅（c.w / plan.nameW、ぜんたいを 100 とした割合）があればそれ、無ければ中身から決めためやす。
            決めるのは、見出しのさかいめをつまんで左右へ（5% きざみ。細かくしすぎると、表ごとに幅がばらばらになる） */
@@ -31915,7 +32084,7 @@ function CollTable({ plan, color, patch }) {
             const lines = restC.map((c) => collLine(t, c, color, (d) => patchRow(t.id, d), fOpen === t.id + ":" + c.id)).filter(Boolean);
             /* まだ入っていない列は、点線の小さな札。**押すと、その場に入れる欄が出る**（日付はその場でえらぶ。ステップは行の紙） */
             const blanks = restC.filter((c) => { const v = colGet(t, c); return fOpen !== t.id + ":" + c.id && c.type !== "star" && c.type !== "check" && (c.type === "steps" ? !v.length : v === "" || v == null); });
-            return ce("div", { key: t.id, className: "ft-ccard2" + (lead && colGet(t, lead) ? " dim" : "") },
+            return ce(SwipeDel, { key: t.id, open: swOpen === t.id, onOpen: (v) => setSwOpen(v ? t.id : null), onDelete: () => { setSwOpen(null); delRow(t.id); }, label: null }, ce("div", { className: "ft-ccard2" + (lead && colGet(t, lead) ? " dim" : "") },
                 ce("div", { className: "ft-ccard2-top" },
                     topLead ? ce(CollCell, { t, c: topLead, color, onPatch: (d) => patchRow(t.id, d), bare: true }) : null,
                     ce("span", { className: "ft-ccard2-name" }, nameCell(t)),
@@ -31928,7 +32097,7 @@ function CollTable({ plan, color, patch }) {
                         ? ce(OptSelect, { key: c.id, c, value: "", onChange: (v) => patchRow(t.id, colSet(t, c, v)), placeholder: c.name, plus: true, className: "blank" })
                         : c.type === "date"
                         ? ce(DateTap, { key: c.id, value: "", onChange: (v) => patchRow(t.id, colSet(t, c, v)), label: c.name, className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 11 }), c.name)
-                        : ce("button", { key: c.id, type: "button", onClick: () => setFOpen(t.id + ":" + c.id), className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 11 }), c.name))) : null) : null);
+                        : ce("button", { key: c.id, type: "button", onClick: () => setFOpen(t.id + ":" + c.id), className: "ft-tap" }, ce(lucide_react_1.Plus, { size: 11 }), c.name))) : null) : null));
         }));
     }
     lastRows.current = rows;
@@ -31946,7 +32115,8 @@ function CollTable({ plan, color, patch }) {
             onCancel: () => { const o = rowOrig.current; rowOrig.current = {}; setRowOpen(null); if (Object.keys(o).length)
                 patch((p) => ({ ...p, todo: planTodo(p).map((t) => o[t.id] || t) })); },
             onConfirm: () => { rowOrig.current = {}; setRowOpen(null); },
-            midBtn: ce("button", { type: "button", onClick: () => { const id = openRow.id; askDel(`「${openRow.text || "（名前なし）"}」を削除しますか`, () => { delete rowOrig.current[id]; const o = rowOrig.current; rowOrig.current = {}; setRowOpen(null); patch((p) => ({ ...p, todo: planTodo(p).filter((t) => t.id !== id).map((t) => o[t.id] || t) })); }); }, className: BTN_DANGER_SOFT + " flex-1 btn-h-lg fs-subhead ft-tap" }, "削除") },
+            /* 削除は下の帯に置かない（10.11.0〜）。帯はキャンセル・保存だけにして、中のいちばん下に赤い字で */
+            },
             /* 行を行き来する（閉じずに、つぎの行を続けて入れられる） */
             (() => { const i = rows.findIndex((t) => t.id === openRow.id); const go = (k) => { const n = rows[i + k]; if (n)
                 setRowOpen(n.id); }; return ce("div", { className: "ft-crow-nav" }, ce("button", { type: "button", onClick: () => go(-1), disabled: i <= 0, "aria-label": "前の行", className: "ft-tap" }, ce(lucide_react_1.ChevronLeft, { size: 20 })), ce("span", { className: "tabular-nums" }, `${i + 1} / ${rows.length}`), ce("button", { type: "button", onClick: () => go(1), disabled: i >= rows.length - 1, "aria-label": "次の行", className: "ft-tap" }, ce(lucide_react_1.ChevronRight, { size: 20 }))); })(),
@@ -31954,7 +32124,8 @@ function CollTable({ plan, color, patch }) {
             ce(TextArea, { value: openRow.text, onChange: (e) => patchRow(openRow.id, { text: e.target.value.replace(/\n/g, " ") }), minRows: 1, rows: 1 }),
             /* よみ（7.11.0〜）。名前に漢字があるときだけ。名前順・「あ→ん」に使う */
             ce(YomiField, { name: openRow.text, value: (YOMI.names && YOMI.names[String(openRow.text || "").trim()]) || "", onChange: (v) => setNameYomi(openRow.text, v) }),
-            cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" || c.type === "image" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) })))) : null,
+            cols.map((c) => ce("div", { key: openRow.id + c.id, className: "ft-crow-f" + (c.type === "text" || c.type === "number" || c.type === "steps" || c.type === "url" || c.type === "image" ? "" : " inline") }, ce("p", { className: "ft-psheet-k" }, c.name), ce(CollCell, { t: openRow, c, color, onPatch: (d) => patchRow(openRow.id, d) }))),
+            ce("button", { type: "button", onClick: () => { const id = openRow.id; askDel(`「${openRow.text || "（名前なし）"}」を削除しますか`, () => { delete rowOrig.current[id]; const o = rowOrig.current; rowOrig.current = {}; setRowOpen(null); patch((p) => ({ ...p, todo: planTodo(p).filter((t) => t.id !== id).map((t) => o[t.id] || t) })); }); }, className: "ft-rowdel ft-tap" }, ce(lucide_react_1.Trash2, { size: 17 }), "この行を削除")) : null,
         askNode,
         /* 列の設定（9.1.0 で直した）。
            ・下の帯は［キャンセル］［完了］。**キャンセルの場所に、ほかの働きのボタンを置かないこと**（9.0.0 までは「幅を初期に戻す」が左にあり、押しまちがえやすかった）。
@@ -32023,7 +32194,7 @@ function PlanEvents({ plan, color, patch }) {
    ・関連する記録 ＝ 記録の入力画面の「計画を選択」で結びつけた記録。計画の中の「予定」「メモ」の欄はやめた
      （5.0.0〜7.0.0 で入れた予定 plan.events は、残っていれば下に出す。足す入口は無い）
    ・コレクション ＝ 表（CollTable） */
-function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, onPin, onDone, onIcon }) {
+function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, onPin, onDone, onIcon, onKind, onDelete }) {
     const S = planSummary(plan, records);
     const wide = useWideLand();
     const ce = react_1.default.createElement;
@@ -32035,6 +32206,7 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
     const addTask = (text) => { const list = (Array.isArray(text) ? text : [text]).map((x) => String(x).trim()).filter(Boolean); if (!list.length)
         return; patch((p) => ({ ...p, todo: [...planOrdered(p).map((t) => ({ ...t, sec: "" })), ...list.map((x) => ({ id: uid(), text: x, done: false, date: "", sec: "", sub: [] }))], secs: [] })); };
     const [arrange, setArrange] = (0, react_1.useState)(false);
+    const [collEdit, setCollEdit] = (0, react_1.useState)(false);
     const [just, setJust] = (0, react_1.useState)(() => new Set());
     const justTimers = (0, react_1.useRef)({});
     (0, react_1.useEffect)(() => () => Object.values(justTimers.current).forEach(clearTimeout), []);
@@ -32046,12 +32218,24 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
     const [askItemDel, askItemNode] = useAskDel();
     const linked = S.recs.length ? ce("div", { className: "ft-pblock" }, ce("div", { className: "ft-plbl" }, ce("span", null, "関連する記録"), ce("i", null)), ce("div", { className: "ft-precs" }, S.recs.map((r) => ce(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true })))) : null;
     const art = plan.icon && ICON_ART[plan.icon];
+    /* 名前とアイコン（10.11.0〜）：アイコンと名前をひとつのボタンにして、アイコンの角と名前の右に鉛筆を出す。
+       **鉛筆を消さないこと。** 押せると分からず、名前を変える場所が見つからなかった */
     const hero = ce("div", { className: "ft-phero" },
-        ce("button", { type: "button", onClick: onIcon, "aria-label": "名前とアイコンを変える", className: "ft-phero-ic ft-tap", style: { background: art ? iconBgOf(color) : color.soft, color: color.deep, borderColor: color.line } },
-            ce(ItemIcon, { icon: plan.icon, size: 28, fallback: ce(isList ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), color: color })),
-        ce("span", { className: "min-w-0 flex-1" }, ce("span", { className: "ft-phero-name font-display" }, plan.name || "（名前なし）")));
+        ce("button", { type: "button", onClick: onIcon, "aria-label": `名前とアイコンを変える（${plan.name || "名前なし"}）`, className: "ft-phero-btn ft-tap" },
+            ce("span", { className: "ft-phero-ic", style: { background: art ? iconBgOf(color) : color.soft, color: color.deep, borderColor: color.line } },
+                ce(ItemIcon, { icon: plan.icon, size: 28, fallback: ce(isList ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), color: color }),
+                ce("span", { className: "ft-phero-pen", "aria-hidden": "true", style: { background: color.deep, color: "#fff" } }, ce(lucide_react_1.Pencil, { size: 11, strokeWidth: 2.6 }))),
+            ce("span", { className: "min-w-0 flex-1" }, ce("span", { className: "ft-phero-name font-display" }, plan.name || "（名前なし）", ce("span", { className: "ft-phero-npen", "aria-hidden": "true" }, ce(lucide_react_1.Pencil, { size: 15 }))))));
+    /* いちばん下（10.11.0〜）：切り替えと削除。iPhone の連絡先と同じく、送りきった所に置く（右上の「…」にも同じものがある） */
+    const tail = onDelete ? ce("div", { className: "ft-pdanger" },
+        onKind ? ce("button", { type: "button", onClick: onKind, className: "ft-tap" }, ce(isList ? lucide_react_1.Target : lucide_react_1.ListTodo, { size: 19 }), isList ? "「計画」に切り替える" : "「コレクション」に切り替える") : null,
+        ce("button", { type: "button", onClick: onDelete, className: "ft-tap del" }, ce(lucide_react_1.Trash2, { size: 19 }), isList ? "このコレクションを削除" : "この計画を削除")) : null;
     if (isList)
-        return ce("div", null, hero, ce(CollTable, { plan, color, patch }), linked);
+        /* 「編集」は名前の右（10.11.0〜。iPhone の「編集」と同じ右上）。押すと「完了」に変わる（同じ場所・同じ大きさ） */
+        return ce("div", null,
+            ce("div", { className: "ft-phero" }, ...react_1.default.Children.toArray(hero.props.children),
+                planTodo(plan).length || collEdit ? ce("button", { type: "button", onClick: () => setCollEdit((v) => !v), "aria-pressed": collEdit, className: "ft-pfin2 ft-cedit ft-tap" + (collEdit ? " on" : ""), style: collEdit ? { background: color.deep, borderColor: color.deep, color: "#fff" } : { color: color.deep, borderColor: color.line } }, collEdit ? "完了" : ce(react_1.default.Fragment, null, ce(lucide_react_1.Pencil, { size: 15 }), "編集")) : null),
+            ce(CollTable, { plan, color, patch, editing: collEdit }), linked, tail);
     const flat = planOrdered(plan);
     const P = planPeriod(plan, S);
     const goal = ce("div", { className: "ft-goal", style: { borderColor: color.line } },
@@ -32084,8 +32268,8 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
     /* 横長（8.1.0〜）：上に名前（と達成）、その下を Today と同じ割り方（左＝ゴール → リスト、右＝関連する記録）。
        左右はそれぞれで送れる。**左の枠（ゴール）と右の見出しの線の上を、同じ高さから始めること** */
     if (wide)
-        return ce("div", { className: "ft-psplit" }, heroF, ce("div", { className: "ft-wsplit" }, ce("div", { className: "ft-wmain list" }, goal, todo, ev), ce("div", { className: "ft-wside" }, recs)));
-    return ce("div", null, heroF, goal, todo, ev, recs);
+        return ce("div", { className: "ft-psplit" }, heroF, ce("div", { className: "ft-wsplit" }, ce("div", { className: "ft-wmain list" }, goal, todo, ev, tail), ce("div", { className: "ft-wside" }, recs)));
+    return ce("div", null, heroF, goal, todo, ev, recs, tail);
 }
 /* その日にやると決めた計画のやること・手順（Today の「やること」に、計画ごとの札で出る）。
    その日が「いつまでに」の計画も、ここに出す（3.0.0〜。週・月のマスにも同じものが出る） */
@@ -33465,6 +33649,7 @@ exports.Download = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "curre
 exports.Upload = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }, "child": [] }, { "tag": "polyline", "attr": { "points": "17 8 12 3 7 8" }, "child": [] }, { "tag": "line", "attr": { "x1": "12", "x2": "12", "y1": "3", "y2": "15" }, "child": [] }]);
 exports.Copy = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "rect", "attr": { "width": "14", "height": "14", "x": "8", "y": "8", "rx": "2", "ry": "2" }, "child": [] }, { "tag": "path", "attr": { "d": "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }, "child": [] }]);
 exports.ClipboardPaste = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1Z" }, "child": [] }, { "tag": "path", "attr": { "d": "M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2M16 4h2a2 2 0 0 1 2 2v2M11 14h10" }, "child": [] }, { "tag": "path", "attr": { "d": "m17 10 4 4-4 4" }, "child": [] }]);
+exports.Ellipsis = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "1.4", "fill": "currentColor" }, "child": [] }, { "tag": "circle", "attr": { "cx": "19", "cy": "12", "r": "1.4", "fill": "currentColor" }, "child": [] }, { "tag": "circle", "attr": { "cx": "5", "cy": "12", "r": "1.4", "fill": "currentColor" }, "child": [] }]);
 exports.Settings = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" }, "child": [] }, { "tag": "circle", "attr": { "cx": "12", "cy": "12", "r": "3" }, "child": [] }]);
 exports.ListTodo = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "rect", "attr": { "x": "3", "y": "5", "width": "6", "height": "6", "rx": "1" }, "child": [] }, { "tag": "path", "attr": { "d": "m3 17 2 2 4-4" }, "child": [] }, { "tag": "path", "attr": { "d": "M13 6h8" }, "child": [] }, { "tag": "path", "attr": { "d": "M13 12h8" }, "child": [] }, { "tag": "path", "attr": { "d": "M13 18h8" }, "child": [] }]);
 exports.Heart = mk({ "viewBox": "0 0 24 24", "fill": "none", "stroke": "currentColor", "strokeWidth": "2", "strokeLinecap": "round", "strokeLinejoin": "round" }, [{ "tag": "path", "attr": { "d": "M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" }, "child": [] }]);
