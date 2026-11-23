@@ -25688,7 +25688,7 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
                                 marginRight: openR ? -2 : 0,
                                 letterSpacing: "-0.02em",
                                 ...(dueOf(r) ? { background: "#fff", boxShadow: `inset 0 0 0 1px ${c.mid}` } : {}),
-                            } }, showTitle ? (dueOf(r) ? "〆" : "") + shortTitle(recordTitle(r) || "予定", fill ? 9 : (dueOf(r) ? 3 : 4)) : "\u00A0"));
+                            } }, showTitle ? shortTitle(recordTitle(r) || "予定", fill ? 9 : (dueOf(r) ? 3 : 4)) + (dueOf(r) ? "〆" : "") : "\u00A0"));
                     }), planGoalsOn(planCtx.plans, ds).map((pl) => { const c = planColorOf(pl, planCol); return react_1.default.createElement("span", { key: "g" + pl.id, className: "block fs-micro leading-[13px] whitespace-nowrap overflow-hidden ft-goalchip", style: { color: c.deep, borderColor: c.mid } }, shortTitle(pl.name || "計画", fill ? 8 : 3)); })),
                     (() => { const n = dayRecordsOf(records, ds).filter((r) => !(r.type === "schedule" || spansDays(r) || dueOf(r))).length + planDayItems(planCtx.plans, ds).length; return n > 0 ? react_1.default.createElement("span", { className: "ft-mv-more tabular-nums", "aria-label": `ほか${n}件` }, react_1.default.createElement("i", null), n) : null; })()));
             })))));
@@ -29806,12 +29806,13 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-wv-it { display: flex; align-items: center; gap: 6px; min-width: 0; line-height: 22px; font-size: calc(var(--fs-body-sm) * var(--ft-scale)); color: var(--tx-1); }
 .ft-wv-it > .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ft-wv-it > .t.b, .ft-wv-it.span > .t { font-weight: 700; }
+.ft-wv-it > .dl { flex: none; font-size: calc(var(--fs-label) * var(--ft-scale)); font-weight: 700; margin-left: -2px; }
 .ft-wv-it > .tm { flex: none; font-size: calc(var(--fs-label) * var(--ft-scale)); font-weight: 700; }
 .ft-wv-it > .s { flex: none; margin-left: auto; padding-left: 6px; font-size: calc(var(--fs-caption) * var(--ft-scale)); font-weight: 700; color: var(--tx-4); }
 .ft-wv-it.span > .s { margin-left: 0; padding-left: 2px; color: var(--tx-4); font-weight: 600; }
 .ft-wv-ic { flex: none; display: inline-flex; color: var(--tx-4); }
 .ft-wv-it.done > .t { color: var(--tx-5); text-decoration: line-through; }
-.ft-wv-it.done .ft-wv-ic, .ft-wv-it.done > .tm, .ft-wv-it.done > .s { opacity: .55; }
+.ft-wv-it.done .ft-wv-ic, .ft-wv-it.done > .tm, .ft-wv-it.done > .dl, .ft-wv-it.done > .s { opacity: .55; }
 /* 計画の中のいちばん下：切り替え・削除（10.17.0 でやめた） */
 .ft-pdanger { margin: 40px 0 8px; padding-top: 6px; border-top: 1px solid #EEF1F4; display: flex; flex-direction: column; }
 .ft-pdanger > button { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 4px; text-align: left; font-weight: 700; color: var(--tx-2); font-size: calc(var(--fs-body) * var(--ft-scale)); }
@@ -31035,12 +31036,12 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
             list.forEach((r) => {
                 const c = calColor(r);
                 if (r.type === "schedule" && dueOf(r))
-                    chips.push(ce("span", { key: r.id, className: "ft-wb-chip list due" + (listAllDone(r) ? " done" : ""), style: { color: c.deep, borderColor: c.mid } }, "〆", recordTitle(r)));
+                    chips.push(ce("span", { key: r.id, className: "ft-wb-chip list due" + (listAllDone(r) ? " done" : ""), style: { color: c.deep, borderColor: c.mid } }, recordTitle(r), "〆"));
                 else if (r.type === "schedule")
                     chips.push(ce("span", { key: r.id, className: "ft-wb-chip sch", style: { background: c.soft, color: c.deep } }, r.time ? ce("b", { className: "tabular-nums" }, r.time.replace(/^0/, "")) : null, ic("schedule"), recordTitle(r)));
                 else if (r.type === "checklist") {
                     const dr = doneRatio(r);
-                    chips.push(ce("span", { key: r.id, className: "ft-wb-chip list" + (dr.total > 0 && dr.done === dr.total ? " done" : "") + (dueOf(r) ? " due" : ""), style: { color: c.deep, borderColor: dueOf(r) ? c.mid : undefined } }, ce("i", { style: { borderColor: c.mid, background: dr.total > 0 && dr.done === dr.total ? c.mid : "transparent" } }), dueOf(r) ? "〆" : "", recordTitle(r)));
+                    chips.push(ce("span", { key: r.id, className: "ft-wb-chip list" + (dr.total > 0 && dr.done === dr.total ? " done" : "") + (dueOf(r) ? " due" : ""), style: { color: c.deep, borderColor: dueOf(r) ? c.mid : undefined } }, ce("i", { style: { borderColor: c.mid, background: dr.total > 0 && dr.done === dr.total ? c.mid : "transparent" } }), recordTitle(r), dueOf(r) ? "〆" : ""));
                 }
                 else
                     chips.push(ce("span", { key: r.id, className: "ft-wb-chip memo" }, ic("memo"), recordTitle(r)));
@@ -31081,8 +31082,9 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
                 const done = dr ? dr.total > 0 && dr.done === dr.total : !!(due && listAllDone(r));
                 out.push(ce("span", { key: r.id + (r.__repeat ? "r" : ""), className: "ft-wv-it" + (done ? " done" : "") }, vic(r.type, c.deep),
                     r.type === "schedule" && r.time && !due ? ce("b", { className: "tm tabular-nums", style: { color: c.deep } }, r.time.replace(/^0/, "")) : null,
-                    due ? ce("b", { className: "tm", style: { color: c.deep } }, "〆") : null,
                     ce("span", { className: "t" }, recordTitle(r)),
+                    /* 締め切りの印は名前のうしろ（10.39.0〜。前は頭に付けていた） */
+                    due ? ce("b", { className: "dl", style: { color: c.deep } }, "〆") : null,
                     dr && dr.total ? ce("span", { className: "s tabular-nums" }, `${dr.done}/${dr.total}`) : null));
             });
             planDayItems(planCtx.plans, d).forEach((x) => { const c = planColorOf(x.p, planCol); out.push(ce("span", { key: "t" + x.t.id, className: "ft-wv-it" + (x.t.done ? " done" : "") }, vic("plan", c.deep), ce("span", { className: "t" }, x.label || x.t.text || ""))); });
@@ -31181,7 +31183,7 @@ function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
         per.map((list, i) => {
             /* 終日の予定と、出している時間帯の外にある予定 */
             const out = list.filter((r) => (r.type === "schedule" && !dueOf(r) && (!r.time || hm(r.time) >= to || (r.endTime ? hm(r.endTime) <= from : hm(r.time) + 1 <= from))) || (dueOf(r) && !listAllDone(r) && calShows(r, days[i]))).sort(compareTimeline);
-            return ce("div", { key: "a" + i, className: "ft-wt-ad", style: { gridColumn: i + 2, gridRow: count + 2 } }, out.map((r) => { const c = calColor(r); return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wb-chip ft-tap" + (dueOf(r) ? " list due" : ""), style: dueOf(r) ? { color: c.deep, borderColor: c.mid } : { background: c.soft, color: c.deep } }, dueOf(r) ? "〆" : r.time ? ce("b", { className: "tabular-nums" }, r.time.replace(/^0/, "")) : null, recordTitle(r)); }));
+            return ce("div", { key: "a" + i, className: "ft-wt-ad", style: { gridColumn: i + 2, gridRow: count + 2 } }, out.map((r) => { const c = calColor(r); return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wb-chip ft-tap" + (dueOf(r) ? " list due" : ""), style: dueOf(r) ? { color: c.deep, borderColor: c.mid } : { background: c.soft, color: c.deep } }, !dueOf(r) && r.time ? ce("b", { className: "tabular-nums" }, r.time.replace(/^0/, "")) : null, recordTitle(r), dueOf(r) ? "〆" : null); }));
         }),
         ce("div", { className: "ft-wt-hrs", style: { gridColumn: 1, gridRow: count + 3 } }, marks.map((h) => ce("span", { key: h, style: { top: pos(h) + "%" } }, h))),
         per.map((list, i) => {
