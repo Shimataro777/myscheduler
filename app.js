@@ -29755,6 +29755,61 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-phero-npen { display: inline-flex; vertical-align: middle; margin-left: 8px; color: var(--tx-5); position: relative; top: -2px; }
 /* 重なる画面の縦の送り場は、横に動かさない（10.17.0〜）。中身が数 px でもはみ出すと、iPhone で縦に送るたびに横へ大きく振れた */
 [data-ft-overlay] .overflow-y-auto { overflow-x: hidden; }
+/* 週の一覧・7列（iPad 縦・iPhone。10.33.0〜）：1列が細いので、字は小さく・行は詰めて、3行まで折り返す。
+   しるしは字と同じ行の頭に（前はリストの四角だけが1行を取って、字が下へ押し出されていた）。予定の時刻は1行め */
+.ft-wb:not(.fill) .ft-wb-cell { padding: 5px 2px 8px; gap: 3px; }
+.ft-wb:not(.fill) .ft-wb-chip { display: block; font-size: calc(10px * var(--ft-scale)); line-height: 13px; padding: 2px 3px; border-radius: 4px;
+  white-space: normal; word-break: break-all; overflow: hidden; -webkit-line-clamp: 3; display: -webkit-box; -webkit-box-orient: vertical; }
+.ft-wb:not(.fill) .ft-wb-chip > b { display: block; font-size: calc(9.5px * var(--ft-scale)); line-height: 12px; margin: 0; }
+.ft-wb-chip .ft-wb-ic { display: inline-flex; vertical-align: -1px; margin-right: 2px; opacity: .85; }
+.ft-wb-chip .ft-wb-ic svg { display: block; }
+.ft-wb-chip.list > i, .ft-wb:not(.fill) .ft-wb-chip.list > i { display: inline-block; width: 8px; height: 8px; vertical-align: 0; margin: 0 3px 0 0; }
+.ft-wb:not(.fill) .ft-wb-chip.list { padding-left: 2px; background: #fff; }
+.ft-wb:not(.fill) .ft-wb-chip.due { padding: 1px 3px; }
+.ft-wb:not(.fill) .ft-wb-chip.memo { background: #F3F4F6; color: var(--tx-2); }
+.ft-wb:not(.fill) .ft-wb-chip.done { text-decoration: line-through; opacity: .5; }
+.ft-wb:not(.fill) .ft-wb-bar { font-size: calc(10px * var(--ft-scale)); padding: 0 4px; }
+/* 週の一覧を iPhone で1日＝1段に（10.32.0。10.33.0 でやめたが、横長の段と同じ決まりなので残す） */
+.ft-wr.narrow { height: auto; overflow: visible; }
+.ft-wr.narrow .ft-wr-row { flex: none; min-height: 52px; }
+.ft-wr.narrow .ft-wr-d { width: 52px; }
+.ft-wr.narrow .ft-wr-d .n { width: 30px; height: 30px; font-size: calc(var(--fs-subhead) * var(--ft-scale)); }
+.ft-wr.narrow .ft-wr-items { padding: 8px 10px; gap: 5px; }
+.ft-wr.narrow .ft-wr-items .ft-wb-chip, .ft-wr.narrow .ft-wr-span { max-width: 100%; }
+/* iPhone の週の一覧（10.34.0〜。WeekBoard の rows && !fill） */
+.ft-wv { display: flex; flex-direction: column; background: #fff; border: 1px solid #E6E6E9; border-radius: 16px; overflow: hidden; }
+.ft-wv-row { position: relative; display: flex; align-items: stretch; width: 100%; min-height: 48px; text-align: left; border-top: 1px solid #EEF1F3; background: #fff; border-radius: 0; }
+.ft-wv-row:first-child { border-top: 0; }
+.ft-wv-row.we { background: #FAFBFC; }
+.ft-wv-row.sel { background: var(--th-50, #EEF6FB); }
+.ft-wv-row .ft-wr-d { width: 50px; }
+.ft-wv-row .ft-wr-d .n { width: 30px; height: 30px; font-size: calc(var(--fs-subhead) * var(--ft-scale)); }
+.ft-wv-row.t .ft-wr-d .n { background: var(--th-800, #3E7EA6); color: #fff; }
+.ft-wv-row.sel:not(.t) .ft-wr-d .n { box-shadow: 0 0 0 2px var(--th-300, #9FCBE3); background: #fff; }
+/* 串の線。段の境目の線（1px）もまたいで、上下の段とつなぐ。**段の ft-tap の縮みで線がずれないよう、段は縮めない** */
+.ft-wv-row.ft-tap:active { transform: none; }
+.ft-wv-lanes { position: relative; flex: none; align-self: stretch; }
+/* 串（10.36.0〜）。色は .ft-wv-lw の color（帯の色）を currentColor で使う */
+.ft-wv-lw { position: absolute; top: 0; bottom: 0; width: 12px; pointer-events: none; }
+.ft-wv-lw > .ln { position: absolute; left: 50%; width: 2px; margin-left: -1px; top: -1px; bottom: -1px; background: currentColor; opacity: .5; }
+.ft-wv-lw > .ln.top { top: 24px; }
+.ft-wv-lw > .ln.bot { bottom: auto; height: 25px; }
+.ft-wv-lw > .ln.top.bot { display: none; }
+.ft-wv-lw > .nd { position: absolute; left: 50%; top: 24px; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: currentColor; }
+.ft-wv-lw > .cn { position: absolute; left: 50%; top: 24px; height: 2px; margin-top: -1px; background: currentColor; opacity: .5; }
+/* 1行めのまん中を段の上から 24px（丸の高さ）にそろえる。中身が1行の段（高さ 48px）では、ちょうどまん中 */
+.ft-wv-items { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-start; gap: 3px; padding: 13px 10px 13px 4px; }
+.ft-wv-pill { display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 22px; padding: 0 8px 0 6px; border-radius: 6px; }
+.ft-wv-pill > .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.ft-wv-it { display: flex; align-items: center; gap: 6px; min-width: 0; line-height: 22px; font-size: calc(var(--fs-body-sm) * var(--ft-scale)); color: var(--tx-1); }
+.ft-wv-it > .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ft-wv-it > .t.b, .ft-wv-it.span > .t { font-weight: 700; }
+.ft-wv-it > .tm { flex: none; font-size: calc(var(--fs-label) * var(--ft-scale)); font-weight: 700; }
+.ft-wv-it > .s { flex: none; margin-left: auto; padding-left: 6px; font-size: calc(var(--fs-caption) * var(--ft-scale)); font-weight: 700; color: var(--tx-4); }
+.ft-wv-it.span > .s { margin-left: 0; padding-left: 2px; color: var(--tx-4); font-weight: 600; }
+.ft-wv-ic { flex: none; display: inline-flex; color: var(--tx-4); }
+.ft-wv-it.done > .t { color: var(--tx-5); text-decoration: line-through; }
+.ft-wv-it.done .ft-wv-ic, .ft-wv-it.done > .tm, .ft-wv-it.done > .s { opacity: .55; }
 /* 計画の中のいちばん下：切り替え・削除（10.17.0 でやめた） */
 .ft-pdanger { margin: 40px 0 8px; padding-top: 6px; border-top: 1px solid #EEF1F4; display: flex; flex-direction: column; }
 .ft-pdanger > button { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 4px; text-align: left; font-weight: 700; color: var(--tx-2); font-size: calc(var(--fs-body) * var(--ft-scale)); }
@@ -30955,6 +31010,12 @@ function useCalColor() {
    ============================================================ */
 function WeekBoard({ start, records, selected, onSelect, fill }) {
     const calColor = useCalColor();
+    /* 10.32.0〜 iPhone（幅の狭い画面）は「1日＝1段」。7列だと1列が 50px ほどしかなく、字が途中で折れて読めなかった。
+       10.33.0 で一度7列に戻す作業があったが、持ち主の指示で縦（10.34.0：串の線・しるし・縦に左そろえ）にした。iPad 縦（幅 700 以上）は7列 */
+    const roomy = useRoomy();
+    const rows = fill || !roomy;
+    /* 種類のしるし（10.33.0〜）：予定＝カレンダー、メモ＝ふせん。リストは前からの四角（済みは塗る） */
+    const ic = (t) => ce("span", { className: "ft-wb-ic", "aria-hidden": true }, typeIcon(t, 10));
     const planCtx = react_1.default.useContext(PlanCtx);
     const planCol = useTypeColor(PLAN_TYPE);
     const today = todayStr();
@@ -30974,13 +31035,13 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
                 if (r.type === "schedule" && dueOf(r))
                     chips.push(ce("span", { key: r.id, className: "ft-wb-chip list due" + (listAllDone(r) ? " done" : ""), style: { color: c.deep, borderColor: c.mid } }, "〆", recordTitle(r)));
                 else if (r.type === "schedule")
-                    chips.push(ce("span", { key: r.id, className: "ft-wb-chip", style: { background: c.soft, color: c.deep } }, fill && r.time ? ce("b", { className: "tabular-nums" }, r.time.replace(/^0/, "")) : null, recordTitle(r)));
+                    chips.push(ce("span", { key: r.id, className: "ft-wb-chip sch", style: { background: c.soft, color: c.deep } }, r.time ? ce("b", { className: "tabular-nums" }, r.time.replace(/^0/, "")) : null, ic("schedule"), recordTitle(r)));
                 else if (r.type === "checklist") {
                     const dr = doneRatio(r);
                     chips.push(ce("span", { key: r.id, className: "ft-wb-chip list" + (dr.total > 0 && dr.done === dr.total ? " done" : "") + (dueOf(r) ? " due" : ""), style: { color: c.deep, borderColor: dueOf(r) ? c.mid : undefined } }, ce("i", { style: { borderColor: c.mid, background: dr.total > 0 && dr.done === dr.total ? c.mid : "transparent" } }), dueOf(r) ? "〆" : "", recordTitle(r)));
                 }
                 else
-                    chips.push(ce("span", { key: r.id, className: "ft-wb-chip memo" }, recordTitle(r)));
+                    chips.push(ce("span", { key: r.id, className: "ft-wb-chip memo" }, ic("memo"), recordTitle(r)));
             });
             tasks.forEach((x) => { const c = planColorOf(x.p, planCol); chips.push(ce("span", { key: "t" + x.t.id, className: "ft-wb-chip list" + (x.t.done ? " done" : ""), style: { color: c.deep } }, ce("i", { className: "r", style: { borderColor: c.mid, background: x.t.done ? c.mid : "transparent" } }), x.label)); });
             return chips;
@@ -30989,8 +31050,66 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
        7列のままだと、横長の左の面では1列が細く高い柱になり、ほとんどが空白のまま縦にのびていた。
        手帳の「週間レフト」と同じく、左に日付・右にその日のことを横へ並べる。段の高さは7等分（多い日だけのびて、面ごと送れる）。
        日をまたぐものは、かかる日の段それぞれに、つながった形の札で出す（ol / or ＝ 前の日・次の日へ続く） */
-    if (fill) {
-        return ce("div", { className: "ft-wr" }, days.map((d, i) => {
+    /* ---- iPhone の週の一覧（10.34.0〜）：1日＝1段、その日のことは縦に1行ずつ左そろえ ----
+       ・何日かにわたる予定・リストは、日付の右の細い「串」の線で、かかる日の段をまたいで縦につなぐ（何日続くかが線の長さで分かる）。
+         名前は始まりの日（週の前から続くものは週のはじめの日）に1回だけ、線と同じ色で「〜11/27」と終わりの日を添えて出す
+       ・1行の頭に種類のしるし（予定＝時計つきの暦、リスト＝チェックの並び、メモ、計画＝的）。予定は時刻を頭に、リストは右に「済み/全部」
+       ・**予定とそれ以外を見出しで分けないこと。** 段が倍に伸びる。並びの順（予定 → リスト・メモ → 計画のやること）としるしで分かる
+       ・字は 13.5px（fs-body-sm）・1行。はみ出す分は「…」 */
+    if (rows && !fill) {
+        const laneW = 12;
+        const laneBox = bars.length ? 8 + count * laneW : 0;
+        const vic = (t, color) => ce("span", { className: "ft-wv-ic", style: color ? { color } : undefined, "aria-hidden": true }, typeIcon(t, 14));
+        const itemsOf = (d, i) => {
+            const out = [];
+            bars.filter((x) => x.a === i).forEach((x) => {
+                const c = calColor(x.r);
+                /* 10.35.0〜 名前は帯の色の薄い地の札に。終わりの日と日数を「〜11/27・4日」（週の前から続くものは始まりの日も） */
+                const nd = daysBetween(x.r.date, x.r.endDate) + 1;
+                out.push(ce("span", { key: "b" + x.r.id, className: "ft-wv-it span" }, ce("span", { className: "ft-wv-pill", style: { background: c.soft, color: c.deep } }, vic(x.r.type, c.deep),
+                    ce("span", { className: "t" }, recordTitle(x.r))),
+                    ce("span", { className: "s tabular-nums" }, (x.openL ? fmtDateShort(x.r.date) : "") + "〜" + fmtDateShort(x.r.endDate) + "・" + nd + "日")));
+            });
+            planGoalsOn(planCtx.plans, d).forEach((pl) => { const c = planColorOf(pl, planCol); out.push(ce("span", { key: "g" + pl.id, className: "ft-wv-it", style: { color: c.deep } }, vic("plan", c.deep), ce("span", { className: "t b" }, (pl.name || "計画") + " の期日"))); });
+            const list = dayRecordsOf(records, d).filter((r) => !spansDays(r) && calShows(r, d)).sort(compareTimeline).sort((a, b) => dayGroup(a) - dayGroup(b));
+            list.forEach((r) => {
+                const c = calColor(r);
+                const due = dueOf(r);
+                const dr = r.type === "checklist" ? doneRatio(r) : null;
+                const done = dr ? dr.total > 0 && dr.done === dr.total : !!(due && listAllDone(r));
+                out.push(ce("span", { key: r.id + (r.__repeat ? "r" : ""), className: "ft-wv-it" + (done ? " done" : "") }, vic(r.type, c.deep),
+                    r.type === "schedule" && r.time && !due ? ce("b", { className: "tm tabular-nums", style: { color: c.deep } }, r.time.replace(/^0/, "")) : null,
+                    due ? ce("b", { className: "tm", style: { color: c.deep } }, "〆") : null,
+                    ce("span", { className: "t" }, recordTitle(r)),
+                    dr && dr.total ? ce("span", { className: "s tabular-nums" }, `${dr.done}/${dr.total}`) : null));
+            });
+            planDayItems(planCtx.plans, d).forEach((x) => { const c = planColorOf(x.p, planCol); out.push(ce("span", { key: "t" + x.t.id, className: "ft-wv-it" + (x.t.done ? " done" : "") }, vic("plan", c.deep), ce("span", { className: "t" }, x.label || x.t.text || ""))); });
+            return out;
+        };
+        return ce("div", { className: "ft-wv" }, days.map((d, i) => {
+            const w = dowOf(d);
+            const items = itemsOf(d, i);
+            /* 串（10.36.0〜）：かかる日の段をまたぐ細い線。丸は始まりと終わりの日だけ（あいだの日には付けない）。
+               始まりの日は、丸から右へ短い横線を引いて、名前の札につなぐ（どの線がどの予定か分かる）。
+               **線・丸・横線は、同じ箱（.ft-wv-lw）の中で、箱のまん中を基準に置くこと**（別々に left を決めると、丸と線の中心がずれる）。
+               丸と横線は段の上から 24px（1行めのまん中）。線は始まりの丸から下へ、終わりの丸までで止める。週の前・後へ続くものは段の上・下いっぱい */
+            const lanes = bars.filter((x) => x.a <= i && x.b >= i).map((x) => {
+                const c = calColor(x.r);
+                const top = x.a === i && !x.openL, bot = x.b === i && !x.openR;
+                const cx = 8 + x.lane * laneW;
+                return ce("span", { key: "l" + x.r.id, className: "ft-wv-lw", style: { left: cx - 6, color: c.mid } },
+                    ce("i", { className: "ln" + (top ? " top" : "") + (bot ? " bot" : "") }),
+                    top || bot ? ce("b", { className: "nd" }) : null,
+                    x.a === i ? ce("i", { className: "cn", style: { width: laneBox - cx + 4 } }) : null);
+            });
+            return ce("button", { key: d, type: "button", onClick: () => onSelect(d), "aria-label": fmtDate(d), "aria-pressed": d === selected, className: "ft-wv-row ft-tap" + (d === selected ? " sel" : "") + (w === 0 || w === 6 ? " we" : "") + (d === today ? " t" : "") },
+                ce("span", { className: "ft-wr-d" + (w === 0 ? " sun" : w === 6 ? " sat" : "") }, ce("span", { className: "n tabular-nums" }, Number(d.slice(8, 10))), ce("span", { className: "w" }, WEEK_LABELS[w])),
+                laneBox ? ce("span", { className: "ft-wv-lanes", style: { width: laneBox } }, lanes) : null,
+                ce("span", { className: "ft-wv-items" }, items.length ? items : ce("span", { className: "ft-wr-none" })));
+        }));
+    }
+    if (rows) {
+        return ce("div", { className: "ft-wr" + (fill ? "" : " narrow") }, days.map((d, i) => {
             const w = dowOf(d);
             const spans = bars.filter((x) => x.a <= i && x.b >= i).sort((x, y) => x.lane - y.lane).map((x) => {
                 const c = calColor(x.r);
