@@ -21378,9 +21378,18 @@ function useLockBackground() {
         downLeft = 0;
         lastRaw = -1;
         lowerSheets();
-        setFix(false);
+        /* **外す順番を変えないこと（10.29.0〜）。** 先にキーボードぶんの高さ（--ft-kb）を 0 にし、印（data-ft-kbfix・ctx）は次のこまで外す。
+           持ち主の iPhone の記録：印を先に外したこまで、下のボタンの帯が「ふつうの並び（static）」に戻ったのに、
+           箱の下の余白（padding-bottom: var(--ft-kb)）がまだ 404px 効いていて、帯が画面のまん中（上端 363px）に一瞬出た。
+           高さを先に 0 にしておけば、印がどちらの順で外れても、帯はいつも画面の下にある */
         setReserve(0);
-        setCtx("");
+        requestAnimationFrame(() => {
+            /* そのこまのうちに、また打ちはじめていたら（別の欄を押した・キーボードがまた出た）、外さない */
+            if (shown > 0 || pending || isTyping(document.activeElement) || isProxy(document.activeElement))
+                return;
+            setFix(false);
+            setCtx("");
+        });
         if (overlayCount > 0) {
             const y = window.scrollY || document.documentElement.scrollTop || 0;
             if (Math.abs(y - overlayLockY) > 1)
@@ -28827,6 +28836,18 @@ function HelpScreen({ onClose, zIndex }) {
     const [, closeInstant] = useClosing(onClose);
     const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     const [open, setOpen] = (0, react_1.useState)(null);
+    /* ログを取る（10.31.0〜。10.30.0 はメニューにあった）。index.html の動きの記録（window.__mtDiag）を入り切りする */
+    const [diagOn, setDiagOn] = (0, react_1.useState)(() => !!(window.__mtDiag && window.__mtDiag.isOn()));
+    (0, react_1.useEffect)(() => { const f = () => setDiagOn(!!(window.__mtDiag && window.__mtDiag.isOn())); window.addEventListener("mt-diag", f); return () => window.removeEventListener("mt-diag", f); }, []);
+    const diagCard = window.__mtDiag ? react_1.default.createElement("div", { key: "__diag", className: "rounded-2xl bg-white card-soft px-3.5 py-3.5 mt-4" },
+        react_1.default.createElement("div", { className: "flex items-center gap-2 mb-1" },
+            react_1.default.createElement(lucide_react_1.Clock, { size: 18, className: "text-th-800 shrink-0" }),
+            react_1.default.createElement("span", { className: "flex-1 font-display fs-subhead text-neutral-900" }, "ログを取る"),
+            diagOn ? react_1.default.createElement("span", { className: "fs-caption font-bold", style: { color: "#B45309" } }, "記録中") : null),
+        react_1.default.createElement("p", { className: "fs-body-sm leading-relaxed text-neutral-600 mb-3" }, diagOn
+            ? "画面の上に記録が出ています。気になる動きを起こしたら「コピー」を押して、伝える相手に貼り付けてください。"
+            : "うまく動かないときに、画面の動きを記録します。記録は画面の上に出て、「コピー」で写せます。"),
+        react_1.default.createElement("button", { type: "button", onClick: () => window.__mtDiag.setOn(!diagOn), className: (diagOn ? BTN_SECONDARY : BTN_PRIMARY) + " w-full " + BTN_H + " fs-body" }, diagOn ? "記録をやめる" : "ログを取る")) : null;
     return (react_1.default.createElement(OverlayScreen, { from: "right", closing: closing, zIndex: zIndex },
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
@@ -28835,7 +28856,7 @@ function HelpScreen({ onClose, zIndex }) {
                 react_1.default.createElement("button", { type: "button", onClick: () => setOpen(open === i ? null : i), className: "w-full flex items-center gap-2 px-3.5 py-3 text-left min-h-[56px] ft-tap ft-tap-card hover:bg-neutral-50" },
                     react_1.default.createElement("span", { className: "flex-1 font-display fs-subhead text-neutral-900" }, s.title),
                     react_1.default.createElement(lucide_react_1.ChevronDown, { size: 18, className: "text-neutral-400 ft-chev " + (open === i ? "ft-chev-on" : "") })),
-                open === i && (react_1.default.createElement("p", { className: "px-3.5 pb-3.5 fs-body-sm leading-relaxed text-neutral-600 ft-open-y", style: { whiteSpace: "pre-line" } }, s.body)))))))));
+                open === i && (react_1.default.createElement("p", { className: "px-3.5 pb-3.5 fs-body-sm leading-relaxed text-neutral-600 ft-open-y", style: { whiteSpace: "pre-line" } }, s.body))))), diagCard))));
 }
 /* ============================================================
    グローバルCSS
