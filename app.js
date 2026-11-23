@@ -29796,10 +29796,12 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-wv-lw > .ln.bot { bottom: auto; height: 25px; }
 .ft-wv-lw > .ln.top.bot { display: none; }
 .ft-wv-lw > .nd { position: absolute; left: 50%; top: 24px; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: currentColor; }
-.ft-wv-lw > .cn { position: absolute; left: 50%; top: 24px; height: 2px; margin-top: -1px; background: currentColor; opacity: .5; }
+/* 横線は点線（10.38.0〜）。名前の札の地の左はしまで */
+.ft-wv-lw > .cn { position: absolute; left: 50%; top: 24px; height: 0; margin-top: -1px; border-top: 2px dotted currentColor; opacity: .75; }
 /* 1行めのまん中を段の上から 24px（丸の高さ）にそろえる。中身が1行の段（高さ 48px）では、ちょうどまん中 */
 .ft-wv-items { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: flex-start; gap: 3px; padding: 13px 10px 13px 4px; }
-.ft-wv-pill { display: inline-flex; align-items: center; gap: 5px; min-width: 0; height: 22px; padding: 0 8px 0 6px; border-radius: 6px; }
+/* 札の地は左へ 6px はみ出させ、しるしと名前の位置は、ほかの行（予定・リスト）とそろえる（10.38.0〜） */
+.ft-wv-pill { display: inline-flex; align-items: center; gap: 6px; min-width: 0; height: 22px; padding: 0 8px 0 6px; margin-left: -6px; border-radius: 6px; }
 .ft-wv-pill > .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
 .ft-wv-it { display: flex; align-items: center; gap: 6px; min-width: 0; line-height: 22px; font-size: calc(var(--fs-body-sm) * var(--ft-scale)); color: var(--tx-1); }
 .ft-wv-it > .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -31100,7 +31102,7 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
                 return ce("span", { key: "l" + x.r.id, className: "ft-wv-lw", style: { left: cx - 6, color: c.mid } },
                     ce("i", { className: "ln" + (top ? " top" : "") + (bot ? " bot" : "") }),
                     top || bot ? ce("b", { className: "nd" }) : null,
-                    x.a === i ? ce("i", { className: "cn", style: { width: laneBox - cx + 4 } }) : null);
+                    x.a === i ? ce("i", { className: "cn", style: { width: laneBox - cx - 2 } }) : null);
             });
             return ce("button", { key: d, type: "button", onClick: () => onSelect(d), "aria-label": fmtDate(d), "aria-pressed": d === selected, className: "ft-wv-row ft-tap" + (d === selected ? " sel" : "") + (w === 0 || w === 6 ? " we" : "") + (d === today ? " t" : "") },
                 ce("span", { className: "ft-wr-d" + (w === 0 ? " sun" : w === 6 ? " sat" : "") }, ce("span", { className: "n tabular-nums" }, Number(d.slice(8, 10))), ce("span", { className: "w" }, WEEK_LABELS[w])),
