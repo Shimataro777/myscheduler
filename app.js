@@ -28124,18 +28124,25 @@ function CloudGlyph({ mark = "check", size = 26, anim = false }) {
         up: react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("path", { d: "M12 17v-5.6" }),
             react_1.default.createElement("path", { d: "M9.6 13.6 12 11.2l2.4 2.4" })),
-        sync: react_1.default.createElement("g", { className: anim ? "gs-bob" : undefined },
-            react_1.default.createElement("path", { d: "M10 16.6v-5" }),
-            react_1.default.createElement("path", { d: "M8.4 13.1 10 11.5l1.6 1.6" }),
-            react_1.default.createElement("path", { d: "M14 11.5v5" }),
-            react_1.default.createElement("path", { d: "M12.4 15 14 16.6l1.6-1.6" })),
+        sync: react_1.default.createElement("g", null,
+            react_1.default.createElement("g", { className: anim ? "gs-arr-up" : undefined },
+                react_1.default.createElement("path", { d: "M10 16.6v-5" }),
+                react_1.default.createElement("path", { d: "M8.4 13.1 10 11.5l1.6 1.6" })),
+            react_1.default.createElement("g", { className: anim ? "gs-arr-dn" : undefined },
+                react_1.default.createElement("path", { d: "M14 11.5v5" }),
+                react_1.default.createElement("path", { d: "M12.4 15 14 16.6l1.6-1.6" }))),
         alert: react_1.default.createElement(react_1.default.Fragment, null,
             react_1.default.createElement("path", { d: "M12 11v3" }),
             react_1.default.createElement("path", { d: "M12 16.6h.01" })),
         off: react_1.default.createElement("path", { d: "M4 4l16 16" }),
     };
-    return (react_1.default.createElement("svg", { viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
-        react_1.default.createElement("path", { d: "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" }),
+    /* やりとり中（anim）は、雲そのものが光って点滅する（10.9.0〜）。
+       中が薄く満ちては引き（gs-cloud-glow）、ふちが明滅し（gs-cloud-blink）、↑↓が上下へ流れる。
+       「画面の動き」オフ／視差効果を減らすでは、動きが止まってふつうの雲＋↑↓に戻る（どの keyframes も終わりがふだんの姿） */
+    const CLOUD = "M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z";
+    return (react_1.default.createElement("svg", { viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true", className: anim ? "gs-cloud-live" : undefined, style: { overflow: "visible" } },
+        anim && react_1.default.createElement("path", { d: CLOUD, className: "gs-cloud-glow", fill: "currentColor", stroke: "none" }),
+        react_1.default.createElement("path", { d: CLOUD, className: anim ? "gs-cloud-blink" : undefined }),
         marks[mark] || null));
 }
 function PhoneGlyph({ size = 24 }) {
@@ -28222,7 +28229,7 @@ function SyncFlow({ st }) {
         react_1.default.createElement("div", { className: "flex-1 min-w-0 flex flex-col gap-1" },
             react_1.default.createElement(FlowArrow, { dir: "right", label: "\u9001\u308B", mode: sendMode, chip: on && st.pending > 0 ? `${st.pending}件` : "", meta: sentMeta }),
             react_1.default.createElement(FlowArrow, { dir: "left", label: "\u53D7\u3051\u53D6\u308B", mode: recvMode, meta: recvMeta })),
-        react_1.default.createElement(FlowNode, { icon: react_1.default.createElement(CloudGlyph, { mark: !on ? "off" : "check", size: 26 }), label: react_1.default.createElement(react_1.default.Fragment, null,
+        react_1.default.createElement(FlowNode, { icon: react_1.default.createElement(CloudGlyph, { mark: !on ? "off" : run ? "sync" : "check", anim: run, size: 26 }), label: react_1.default.createElement(react_1.default.Fragment, null,
                 "Google",
                 react_1.default.createElement("br", null),
                 "\u30C9\u30E9\u30A4\u30D6"), dim: stop })));
@@ -29432,8 +29439,14 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 /* 横長の面の送り場は、中身が短くても「1px だけ送れる」形にしておく（10.7.0〜）。
    iPad の WebKit は、送れなかった箱に、あとから中身が足されて送れる長さになっても（手書きの札の絵が遅れて読み込まれる など）、
    送りの層を作り直さないことがあり、その面だけ縦に送れなくなった（固まったように見える）。
-   いつも送れる長さにしておけば、層は最初からある。**消さないこと。** 幅は 0（右の余白 -1px）なので、並びは変わらない */
-.ft-wmain.list::before,.ft-wside::before,.ft-wleft::before,.ft-wscroll::before,.ft-wfind-r::before,.ft-wfind-form::before{content:"";float:left;width:1px;height:calc(100% + 1px);margin-right:-1px}
+   いつも送れる長さにしておけば、層は最初からある。**消さないこと。** */
+/* 10.10.0〜：float をやめ、送り場の中に「絶対位置」で置く。
+   **float に戻さないこと。** iPad の WebKit は、float のとなりに、自分で区切りを持つ箱（overflow や flex の箱）で
+   左右に負の余白があるもの（あと何日の帯 .ft-cdstrip など）が来ると、その箱を float の下（＝面の高さぶん下）へ押し出した。
+   Today の日の表示で、あと何日の札や記録が画面のいちばん下に落ちていた。
+   絶対位置の箱は並びに一切かかわらず、送り場の送れる長さにだけ入る（送り場を position:relative にして、その中に置く） */
+.ft-wmain.list,.ft-wside,.ft-wleft,.ft-wscroll,.ft-wfind-r,.ft-wfind-form{position:relative}
+.ft-wmain.list::before,.ft-wside::before,.ft-wleft::before,.ft-wscroll::before,.ft-wfind-r::before,.ft-wfind-form::before{content:"";position:absolute;top:0;left:0;width:1px;height:calc(100% + 1px);pointer-events:none;visibility:hidden}
 /* アイコンと色をえらぶ欄（IconPicker、10.4.0〜）。札は5列。字は札の下に小さく */
 .ft-ipk-h{margin:14px 0 8px;color:var(--tx-3);font-weight:700;font-size:calc(var(--fs-label) * var(--ft-scale))}
 .ft-ipk-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px 6px}
@@ -29506,8 +29519,19 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 .gs-arrow-run .gs-flow-l { animation: gs-flow-l 0.55s linear infinite; }
 @keyframes gs-flow-r { from { background-position: 0 0; } to { background-position: 12px 0; } }
 @keyframes gs-flow-l { from { background-position: 12px 0; } to { background-position: 0 0; } }
-.gs-bob { animation: gs-bob 1s ease-in-out infinite; }
-@keyframes gs-bob { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+/* やりとり中の雲（10.9.0〜）。矢印だけでなく、雲ごと点滅させて「いま動いている」と分かるようにする。
+   **keyframes の 0% と 100% はふだんの姿にすること。** 動きを止める設定（.ft-still / prefers-reduced-motion）は
+   1回だけ一瞬で回すので、終わりの姿が残る */
+.gs-cloud-blink { animation: gs-cloud-blink 1.1s ease-in-out infinite; }
+@keyframes gs-cloud-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.gs-cloud-glow { opacity: 0; animation: gs-cloud-glow 1.1s ease-in-out infinite; }
+@keyframes gs-cloud-glow { 0%, 100% { opacity: 0; } 50% { opacity: 0.32; } }
+.gs-cloud-live { animation: gs-cloud-breathe 1.1s ease-in-out infinite; transform-origin: 50% 60%; }
+@keyframes gs-cloud-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.gs-arr-up, .gs-arr-dn { animation: gs-arr-up 1.1s ease-in-out infinite; }
+.gs-arr-dn { animation-name: gs-arr-dn; animation-delay: -0.55s; }
+@keyframes gs-arr-up { 0%, 100% { transform: translateY(0); opacity: 1; } 45% { transform: translateY(-1.6px); opacity: 1; } 50% { transform: translateY(-1.6px); opacity: 0; } 55% { transform: translateY(1.6px); opacity: 0; } }
+@keyframes gs-arr-dn { 0%, 100% { transform: translateY(0); opacity: 1; } 45% { transform: translateY(1.6px); opacity: 1; } 50% { transform: translateY(1.6px); opacity: 0; } 55% { transform: translateY(-1.6px); opacity: 0; } }
 
 /* ============================================================
    2.34.0：横長（iPad 横）は、下のタブを左の帯にして、中身を横いっぱいに使う。
