@@ -20260,7 +20260,36 @@ function useLockBackground() {
             kbMem = o;
     }
     catch (e) { }
+    /* ---- 画面のキーボードの知らせが来ない大きな画面（10.25.0〜） ----
+       持ち主の iPad（ホーム画面から開く）の記録：見えない入力欄に入ってもキーボードの知らせ（visualViewport の resize）が一度も来ず、
+       毎回 0.9 秒待ってから本物へ移していた（カーソルが出るまで遅い）。
+       大きな画面（iPad）だけ、知らせが**1回**来なかったら（10.26.0 で2回→1回）、その向きでは見えない入力欄を通さず、タップの中で本物へ入れる。
+       知らせが一度でも来たら、すぐ数え直す。**iPhone ではこの近道を使わないこと**（10.20.0 で、iPhone の知らせの遅れを
+       「来ない」と見まちがえ、カーソルが出なくなった。あのときは本物へ移すのが早すぎて、キーボードが本当に出ていなかった）。
+       10.20.0 の印（"p-none" / "l-none"）は読み捨てる */
+    const bigScreen = () => Math.min(window.screen ? Math.min(screen.width, screen.height) : 0, 9999) >= 700;
+    const noKbKey = () => orient() + "-nokb";
+    const noKbNow = () => bigScreen() && Number(kbMem[noKbKey()]) >= 1; /* 10.26.0〜 1回で（持ち主の指示。前は続けて2回） */
+    const saveKbMem = () => { try {
+        window.localStorage.setItem(KB_KEY, JSON.stringify(kbMem));
+    }
+    catch (e) { } };
+    if (kbMem["p-none"] || kbMem["l-none"]) {
+        delete kbMem["p-none"];
+        delete kbMem["l-none"];
+        saveKbMem();
+    }
+    const noteNoKb = () => {
+        if (!bigScreen())
+            return;
+        kbMem[noKbKey()] = Math.min(9, (Number(kbMem[noKbKey()]) || 0) + 1);
+        saveKbMem();
+    };
     const rememberKb = (raw) => {
+        if (raw >= 60 && kbMem[noKbKey()]) {
+            delete kbMem[noKbKey()];
+            saveKbMem();
+        }
         const k = orient();
         if (Math.abs(raw - (kbMem[k] || 0)) < 4)
             return;
@@ -21051,6 +21080,7 @@ function useLockBackground() {
                 return;
             }
             noKb = true;
+            noteNoKb();
         }
         const wait = (fromFallback === "early" ? 0 : KB_WAIT_MS) - (Date.now() - p.at);
         if (wait > 0) {
@@ -21111,6 +21141,8 @@ function useLockBackground() {
             if (pending !== p)
                 return;
             if (noKb || rawKb() >= 60 || layoutShrunk() || Date.now() - kbStart >= 900) {
+                if (!noKb && rawKb() < 60 && !layoutShrunk())
+                    noteNoKb();
                 finishPending(true);
                 return;
             }
@@ -21170,6 +21202,22 @@ function useLockBackground() {
         if (pending)
             finishPending(false);
         const c = ctxOf(el);
+        /* ---- キーボードの知らせが来ない iPad：見えない入力欄を通さず、タップの中で本物へ（10.25.0〜）。キーボードぶんの場所も空けない ---- */
+        if (noKbNow() && rawKb() < 60 && !layoutShrunk()) {
+            try {
+                el.focus({ preventScroll: true });
+            }
+            catch (err) {
+                el.focus();
+            }
+            const len1 = (el.value || "").length;
+            const at1 = caret ? Math.max(0, Math.min(caret.pos, len1)) : len1;
+            try {
+                el.setSelectionRange(at1, at1);
+            }
+            catch (err) { }
+            return;
+        }
         /* ---- すぐ本物へ（8.1.1〜） ----
            見えない入力欄を通すのは「押した欄がキーボードの裏になる」ときに、iOS が本物のカーソルの位置で
            画面ぜんたいを押し上げるのを避けるため（2.16.x）。押した欄が、**測って覚えているキーボードの高さ**より
@@ -21263,7 +21311,8 @@ function useLockBackground() {
         if (pending)
             finishPending(false);
         setCtx(ctxOf(t));
-        if (ctx !== "sheet" && shown <= 0)
+        /* キーボードの知らせが来ない iPad（noKbNow）では、場所を空けない（空けても知らせが来ず、1.5 秒後に外れるだけ） */
+        if (ctx !== "sheet" && shown <= 0 && !noKbNow())
             setReserve(guessKb());
         adjustFor(t);
         clearTimeout(settle);
