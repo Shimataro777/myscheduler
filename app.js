@@ -21100,7 +21100,23 @@ function useLockBackground() {
                 moved = true;
             }
         }
-        p.timer = setTimeout(() => finishPending(true), (moved && motionOn()) ? KB_UP_MS + 20 : 0);
+        /* **画面のキーボードが出る前に、本物の欄へフォーカスを移さないこと（10.24.0〜）。**
+           持ち主の iPhone（iOS 18.7・ホーム画面から開く）の記録：「画面の動き」を減らしていると持ち上げが一瞬で終わり（moved=false）、
+           見えない入力欄に入ってから 20ms で本物へ移していた。iOS はキーボードを出す前にフォーカスが移ると、キーボードを出さない
+           （指の操作の外の focus になる）。visualViewport の resize は一度も来ず、カーソルも出ないまま、1.5 秒後に持ち上げぶんが外れて欄が下がった。
+           キーボードの出た知らせ（rawKb / layoutShrunk）を見てから移す。来なければ 900ms で移す（外付けキーボードなど） */
+        const minWait = (moved && motionOn()) ? KB_UP_MS + 20 : 0;
+        const kbStart = p.at;
+        const handOff = () => {
+            if (pending !== p)
+                return;
+            if (noKb || rawKb() >= 60 || layoutShrunk() || Date.now() - kbStart >= 900) {
+                finishPending(true);
+                return;
+            }
+            p.timer = setTimeout(handOff, 50);
+        };
+        p.timer = setTimeout(handOff, minWait);
     };
     let fa = null;
     const faStart = (e) => {
