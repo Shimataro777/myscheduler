@@ -28121,6 +28121,14 @@ function useSyncShown() {
    ・ログインが要る／つながらない → 矢印が灰色の点線。雲は ! か 斜線
    色は .gs-* （GLOBAL_CSS）にまとめてある。テーマの色は var(--th-*) から取る
    ============================================================ */
+/* 雲の中のしるしだけ（雲の線なし）。ヘッダーの同期中に、雲の上へ重ねて点滅させる（10.19.0〜） */
+function CloudMarks({ mark = "sync", size = 26 }) {
+    const ce = react_1.default.createElement;
+    return ce("svg", { viewBox: "0 0 24 24", width: size, height: size, fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true", style: { display: "block" } },
+        mark === "sync" ? ce(react_1.default.Fragment, null,
+            ce("path", { d: "M10 16.6v-5" }), ce("path", { d: "M8.4 13.1 10 11.5l1.6 1.6" }),
+            ce("path", { d: "M14 11.5v5" }), ce("path", { d: "M12.4 15 14 16.6l1.6-1.6" })) : null);
+}
 function CloudGlyph({ mark = "check", size = 26, anim = false }) {
     const marks = {
         check: react_1.default.createElement("path", { d: "M9.4 14.1l2 2 3.6-3.6" }),
@@ -28250,8 +28258,12 @@ function SyncHeaderButton({ onPhoto, style }) {
            うしろに丸い光（::before）も広がって消える */
         /* 件数の札・点は、点滅する箱の外に置く（10.18.0〜。雲といっしょに点滅させない） */
         react_1.default.createElement("span", { className: "relative inline-flex" },
-            react_1.default.createElement("span", { className: "relative inline-flex" + (look.anim ? " gs-pulse" : "") },
-                react_1.default.createElement(CloudGlyph, { mark: look.mark, anim: look.anim, size: 27 })),
+            /* 10.19.0〜 同期中は、雲はそのまま・中の矢印だけ点滅。雲（しるし無し）の上に、矢印だけの絵を重ね、
+               その絵を包む span（ふつうの箱）ごと濃さを変える（svg の中の動きは WebKit で描き直されないことがある） */
+            look.anim ? react_1.default.createElement("span", { className: "relative inline-flex" },
+                react_1.default.createElement(CloudGlyph, { mark: "none", size: 27 }),
+                react_1.default.createElement("span", { className: "gs-pulse gs-arrows", "aria-hidden": "true" }, react_1.default.createElement(CloudMarks, { mark: "sync", size: 27 })))
+                : react_1.default.createElement(CloudGlyph, { mark: look.mark, size: 27 }),
             n > 0 ? (react_1.default.createElement("span", { "aria-hidden": "true", className: "gs-badge fs-caption font-bold tabular-nums" }, n > 99 ? "99+" : n)) : look.dot ? (react_1.default.createElement("span", { "aria-hidden": "true", className: "gs-dot gs-dot-" + look.dot })) : null)));
 }
 /* 2本の矢印の1本。dir: "right"（送る）| "left"（受け取る）
@@ -29578,7 +29590,10 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
    **keyframes の 0% と 100% はふだんの姿にすること。** 動きを止める設定（.ft-still / prefers-reduced-motion）は
    1回だけ一瞬で回すので、終わりの姿が残る */
 .gs-pulse { animation: gs-pulse 1.1s ease-in-out infinite; will-change: opacity; }
-@keyframes gs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+/* 10.19.0〜 ヘッダーの雲：矢印だけを雲にぴったり重ねて点滅（丸い光は出さない） */
+.gs-arrows { position: absolute; inset: 0; display: block; }
+.gs-arrows::before { content: none !important; }
+@keyframes gs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.12; } }
 .gs-pulse::before { content: ""; position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 9999px; background: currentColor; opacity: 0; pointer-events: none; animation: gs-halo 1.1s ease-out infinite; }
 @keyframes gs-halo { 0% { opacity: 0.22; transform: scale(0.55); } 100% { opacity: 0; transform: scale(1.15); } }
 /* svg の中の点滅は、紙の見出しなど小さなところ用に残す（ヘッダーでは gs-pulse と重ねない） */
