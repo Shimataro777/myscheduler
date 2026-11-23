@@ -20260,25 +20260,18 @@ function useLockBackground() {
             kbMem = o;
     }
     catch (e) { }
-    /* 画面のキーボードが出なかった（外付けキーボード・浮かせたキーボードの iPad など）ことを、向きごとに覚える（10.20.0〜）。
-       覚えているあいだは、見えない入力欄を通さず、すぐ本物へフォーカスする（前は毎回 0.9 秒待ってからだった） */
-    const noKbKey = () => orient() + "-none";
-    const setNoKb = (on) => {
-        const k = noKbKey();
-        if (!!kbMem[k] === !!on)
-            return;
-        if (on)
-            kbMem[k] = 1;
-        else
-            delete kbMem[k];
+    /* 10.20.0 の「キーボードが出なかったことを覚えて、すぐ本物へフォーカスする」はやめた（10.21.0）。
+       キーボードの知らせが一度遅れただけで覚えてしまい、以後どの欄も iOS にじかに入れて、欄が上がって下がる・カーソルが出ない、になった。
+       そのとき覚えた印（"p-none" / "l-none"）は、ここで読み捨てる。**同じ近道を戻さないこと** */
+    if (kbMem["p-none"] || kbMem["l-none"]) {
+        delete kbMem["p-none"];
+        delete kbMem["l-none"];
         try {
             window.localStorage.setItem(KB_KEY, JSON.stringify(kbMem));
         }
         catch (e) { }
-    };
+    }
     const rememberKb = (raw) => {
-        if (raw >= 60)
-            setNoKb(false);
         const k = orient();
         if (Math.abs(raw - (kbMem[k] || 0)) < 4)
             return;
@@ -20322,7 +20315,7 @@ function useLockBackground() {
     const KB_WAIT_MS = 90;   /* タップからこれより前には持ち上げはじめない（キーボードを先に見せる） */
     const KB_FALLBACK_MS = 420; /* キーボードの出た知らせを、ここまで待つ */
     const KB_FALLBACK2_MS = 480; /* それでも来なければ、さらにここまで待つ。来なければ画面のキーボードは無いとみなす */
-    const KB_UP_MS = 200;     /* 持ち上げる時間（8.1.1 で 300 → 260、10.20.0 で 260 → 200。カーソルが出るまでを短く） */
+    const KB_UP_MS = 260;     /* 持ち上げる時間（8.1.1 で 300 → 260。10.20.0 で 200 にしたが、10.21.0 で戻した） */
     /* 8.1.1〜：覚えている高さのキーボードより、さらにこれだけ上にある欄は、見えない入力欄を通さず、
        touchend の中でじかに本物へフォーカスする（カーソルがすぐ出る）。日本語の変換候補の帯が伸びるぶんを多めに見る */
     const KB_DIRECT_PAD = 44;
@@ -21069,7 +21062,6 @@ function useLockBackground() {
                 return;
             }
             noKb = true;
-            setNoKb(true);
         }
         const wait = (fromFallback === "early" ? 0 : KB_WAIT_MS) - (Date.now() - p.at);
         if (wait > 0) {
@@ -21180,8 +21172,8 @@ function useLockBackground() {
            本物へ入れる（指の操作の中なので、キーボードも出る）。
            ・覚えている高さが無い（はじめて）・キーボードがもう出ている・下のほうの欄 → これまでどおり見えない入力欄の流れ
            ・iOS の「タップで入れる」は使わない（preventDefault はしたまま）。押したところへカーソルを置くのもこちら */
-        if ((kbMem[noKbKey()] && rawKb() < 60 && !layoutShrunk()) || (kbKnown() && rawKb() < 60 && !layoutShrunk()
-            && fieldBottom({ el, caret }) + GAP + KB_DIRECT_PAD <= layoutHeight() - guessKb())) {
+        if (kbKnown() && rawKb() < 60 && !layoutShrunk()
+            && fieldBottom({ el, caret }) + GAP + KB_DIRECT_PAD <= layoutHeight() - guessKb()) {
             setCtx(c);
             if (c !== "sheet")
                 setReserve(Math.max(shown > 0 ? shown : 0, guessKb()));
@@ -21252,6 +21244,8 @@ function useLockBackground() {
             scrollPageBy(need, KB_UP_MS);
     };
     let baseH = 0;
+    /* この欄に入ってから、画面のキーボードが一度でも出たか（10.21.0〜。見張りが「出てくる前」を「引っ込んだ」と見まちがえないため） */
+    let kbSeenUp = false;
     /* 最後に合わせたキーボードの高さ。**高さが変わったときだけ**合わせ直す（2.16.7〜）。
        見える窓が指で動いただけ（visualViewport の scroll）で合わせ直すと、紙が指について動いて崩れた */
     let lastRaw = -1;
@@ -21261,6 +21255,7 @@ function useLockBackground() {
         const t = e.target;
         if (isProxy(t) || !isTyping(t) || !coarse())
             return;
+        kbSeenUp = false;
         if (pending && t === pending.el)
             return;
         if (pending)
@@ -21296,6 +21291,7 @@ function useLockBackground() {
                 return;
             }
             if (typing && raw >= 60) {
+                kbSeenUp = true;
                 rememberKb(raw);
                 if (ctx !== "sheet")
                     setReserve(raw);
@@ -21678,6 +21674,11 @@ function useLockBackground() {
                 a.parentNode.removeChild(a);
         }
         if (isTyping(document.activeElement)) {
+            /* 欄にフォーカスがあるときは、**キーボードが一度出て、そのあと引っ込んだ**ときだけ（iPad の「キーボードを隠す」など）。
+               まだ出ていない（出てくる途中・知らせが遅れている）ときは触らない（10.21.0〜） */
+            if (!kbSeenUp)
+                return;
+            kbSeenUp = false;
             lastRaw = -1;
             lowerSheets();
             setFix(false);
