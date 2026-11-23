@@ -28196,18 +28196,50 @@ function SyncHeaderButton({ onPhoto, style }) {
     /* ログインが切れているときは、押したらそのままログインして同期（10.6.0〜）。紙は開かない。
        **ここで await を挟まないこと。** Google のログインは、指の操作の流れの中でしか開けない。
        部品の読み込みがまだなら、読み込みを始めて、いつもの紙を開く */
+    /* 10.16.0〜 押したら、その場で同期を始める（紙は開かない）。同期はうしろで進むので、ほかの画面をそのまま使える。
+       ・まだ連携していない → 紙（連携のボタンがある）
+       ・同期の最中 → 何もしない（雲が点滅している）
+       ・くわしく見たい（図・アカウント・連携の解除）→ 長押しで紙。メニューの「バックアップ」のカードからも開ける */
+    const press = (0, react_1.useRef)({ t: null, fired: false });
     const onTap = () => {
-        const g = getGoogleSync();
-        if (g && st.enabled && st.phase === "needsAuth" && st.ready) {
-            g.loginNow();
+        if (press.current.fired) {
+            press.current.fired = false;
             return;
         }
-        if (g && st.enabled && st.phase === "needsAuth")
+        const g = getGoogleSync();
+        if (!g || !st.enabled) {
+            ui.open();
+            return;
+        }
+        if (st.phase === "needsAuth") {
+            if (st.ready) {
+                g.loginNow();
+                return;
+            }
             g.preload();
-        ui.open();
+            ui.open();
+            return;
+        }
+        if (busy)
+            return;
+        g.syncManual();
     };
-    return (react_1.default.createElement("button", { type: "button", onClick: onTap, "aria-label": look.label + (n > 0 ? `・${n}件` : ""), "data-mt-sync-btn": "", className: "relative flex items-center justify-center rounded-xl ft-tap ft-tap-icon shrink-0 " + (onPhoto ? "text-white" : "gs-tone-" + look.tone), style: { minWidth: 48, minHeight: 48, filter: onPhoto ? "drop-shadow(0 1px 3px rgba(0,0,0,.45))" : undefined, ...(style || {}) } },
-        react_1.default.createElement("span", { className: "relative inline-flex" },
+    const pressProps = {
+        onPointerDown: (e) => { if (e.pointerType === "mouse" && e.button !== 0)
+            return; press.current.fired = false; clearTimeout(press.current.t); press.current.t = setTimeout(() => { press.current.fired = true; try {
+            if (navigator.vibrate)
+                navigator.vibrate(8);
+        }
+        catch (err) { /* noop */ } ui.open(); }, 520); },
+        onPointerUp: () => clearTimeout(press.current.t),
+        onPointerLeave: () => clearTimeout(press.current.t),
+        onPointerCancel: () => clearTimeout(press.current.t),
+        onContextMenu: (e) => e.preventDefault(),
+    };
+    return (react_1.default.createElement("button", { type: "button", onClick: onTap, ...pressProps, "aria-busy": showBusy ? "true" : undefined, "aria-label": (showBusy ? "同期しています" : st.enabled && st.phase !== "needsAuth" ? "押すと同期・長押しでくわしく" : look.label) + (n > 0 ? `・${n}件` : ""), "data-mt-sync-btn": "", className: "relative flex items-center justify-center rounded-xl ft-tap ft-tap-icon shrink-0 " + (onPhoto ? "text-white" : "gs-tone-" + look.tone), style: { minWidth: 48, minHeight: 48, filter: onPhoto ? "drop-shadow(0 1px 3px rgba(0,0,0,.45))" : undefined, ...(style || {}) } },
+        /* 点滅は、svg の中ではなく、この span（ふつうの箱）ごと（10.16.0〜）。iPhone の WebKit で、svg の中の動きが描き直されないことがあった。
+           うしろに丸い光（::before）も広がって消える */
+        react_1.default.createElement("span", { className: "relative inline-flex" + (look.anim ? " gs-pulse" : "") },
             react_1.default.createElement(CloudGlyph, { mark: look.mark, anim: look.anim, size: 27 }),
             n > 0 ? (react_1.default.createElement("span", { "aria-hidden": "true", className: "gs-badge fs-caption font-bold tabular-nums" }, n > 99 ? "99+" : n)) : look.dot ? (react_1.default.createElement("span", { "aria-hidden": "true", className: "gs-dot gs-dot-" + look.dot })) : null)));
 }
@@ -29328,13 +29360,13 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
    止めるのは動きだけ。読み込み中のくるくる（.spin）と、同期中の雲の点滅（.gs-cloud-blink / .gs-cloud-glow。10.12.0〜）は残す。
    どちらも「いま動いている」という知らせで、飾りの動きではない（点滅は濃さが変わるだけで、場所も大きさも動かない）
    ============================================================ */
-.ft-still *:not(.spin):not(.gs-cloud-blink):not(.gs-cloud-glow), .ft-still *:not(.spin)::before, .ft-still *:not(.spin)::after {
+.ft-still *:not(.spin):not(.gs-cloud-blink):not(.gs-cloud-glow):not(.gs-pulse), .ft-still *:not(.spin)::before, .ft-still *:not(.spin)::after {
   animation-duration: 0.01ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
 }
 @media (prefers-reduced-motion: reduce) {
-  .ft-root *:not(.spin):not(.gs-cloud-blink):not(.gs-cloud-glow), .ft-root *:not(.spin)::before, .ft-root *:not(.spin)::after {
+  .ft-root *:not(.spin):not(.gs-cloud-blink):not(.gs-cloud-glow):not(.gs-pulse), .ft-root *:not(.spin)::before, .ft-root *:not(.spin)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
@@ -29534,6 +29566,13 @@ html[data-ft-kbfix][data-ft-kbctx="overlay"] [data-ft-overlay] > div:last-child 
 /* やりとり中の雲（10.9.0〜）。矢印だけでなく、雲ごと点滅させて「いま動いている」と分かるようにする。
    **keyframes の 0% と 100% はふだんの姿にすること。** 動きを止める設定（.ft-still / prefers-reduced-motion）は
    1回だけ一瞬で回すので、終わりの姿が残る */
+.gs-pulse { animation: gs-pulse 1.1s ease-in-out infinite; will-change: opacity; }
+@keyframes gs-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.gs-pulse::before { content: ""; position: absolute; left: 50%; top: 50%; width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 9999px; background: currentColor; opacity: 0; pointer-events: none; animation: gs-halo 1.1s ease-out infinite; }
+@keyframes gs-halo { 0% { opacity: 0.22; transform: scale(0.55); } 100% { opacity: 0; transform: scale(1.15); } }
+/* svg の中の点滅は、紙の見出しなど小さなところ用に残す（ヘッダーでは gs-pulse と重ねない） */
+.gs-pulse .gs-cloud-blink, .gs-pulse .gs-cloud-glow { animation: none; opacity: 1; }
+.gs-pulse .gs-cloud-glow { opacity: 0.18; }
 .gs-cloud-blink { animation: gs-cloud-blink 1.1s ease-in-out infinite; }
 @keyframes gs-cloud-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.22; } }
 .gs-cloud-glow { opacity: 0; animation: gs-cloud-glow 1.1s ease-in-out infinite; }
