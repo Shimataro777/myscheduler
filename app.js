@@ -20260,17 +20260,6 @@ function useLockBackground() {
             kbMem = o;
     }
     catch (e) { }
-    /* 10.20.0 の「キーボードが出なかったことを覚えて、すぐ本物へフォーカスする」はやめた（10.21.0）。
-       キーボードの知らせが一度遅れただけで覚えてしまい、以後どの欄も iOS にじかに入れて、欄が上がって下がる・カーソルが出ない、になった。
-       そのとき覚えた印（"p-none" / "l-none"）は、ここで読み捨てる。**同じ近道を戻さないこと** */
-    if (kbMem["p-none"] || kbMem["l-none"]) {
-        delete kbMem["p-none"];
-        delete kbMem["l-none"];
-        try {
-            window.localStorage.setItem(KB_KEY, JSON.stringify(kbMem));
-        }
-        catch (e) { }
-    }
     const rememberKb = (raw) => {
         const k = orient();
         if (Math.abs(raw - (kbMem[k] || 0)) < 4)
@@ -20315,7 +20304,7 @@ function useLockBackground() {
     const KB_WAIT_MS = 90;   /* タップからこれより前には持ち上げはじめない（キーボードを先に見せる） */
     const KB_FALLBACK_MS = 420; /* キーボードの出た知らせを、ここまで待つ */
     const KB_FALLBACK2_MS = 480; /* それでも来なければ、さらにここまで待つ。来なければ画面のキーボードは無いとみなす */
-    const KB_UP_MS = 260;     /* 持ち上げる時間（8.1.1 で 300 → 260。10.20.0 で 200 にしたが、10.21.0 で戻した） */
+    const KB_UP_MS = 260;     /* 持ち上げる時間（8.1.1 で 300 → 260） */
     /* 8.1.1〜：覚えている高さのキーボードより、さらにこれだけ上にある欄は、見えない入力欄を通さず、
        touchend の中でじかに本物へフォーカスする（カーソルがすぐ出る）。日本語の変換候補の帯が伸びるぶんを多めに見る */
     const KB_DIRECT_PAD = 44;
@@ -21244,8 +21233,6 @@ function useLockBackground() {
             scrollPageBy(need, KB_UP_MS);
     };
     let baseH = 0;
-    /* この欄に入ってから、画面のキーボードが一度でも出たか（10.21.0〜。見張りが「出てくる前」を「引っ込んだ」と見まちがえないため） */
-    let kbSeenUp = false;
     /* 最後に合わせたキーボードの高さ。**高さが変わったときだけ**合わせ直す（2.16.7〜）。
        見える窓が指で動いただけ（visualViewport の scroll）で合わせ直すと、紙が指について動いて崩れた */
     let lastRaw = -1;
@@ -21255,7 +21242,6 @@ function useLockBackground() {
         const t = e.target;
         if (isProxy(t) || !isTyping(t) || !coarse())
             return;
-        kbSeenUp = false;
         if (pending && t === pending.el)
             return;
         if (pending)
@@ -21291,7 +21277,6 @@ function useLockBackground() {
                 return;
             }
             if (typing && raw >= 60) {
-                kbSeenUp = true;
                 rememberKb(raw);
                 if (ctx !== "sheet")
                     setReserve(raw);
@@ -21641,52 +21626,6 @@ function useLockBackground() {
         scheduleHeal([300, 900]); });
     vv.addEventListener("scroll", () => { if (stuckNow())
         scheduleHeal([300, 900]); });
-    /* ---- 見張り（10.20.0〜）：キーボードが無いのに、キーボードぶんの場所を空けたままになっていたら外す ----
-       起きていたこと（iPhone・iPad 実機、くり返し）：書く画面の下半分が真っ白のまま（送り場がキーボードの上端で切れたまま）。
-       欄にフォーカスが残ったままキーボードだけ引っ込む（iPad の「キーボードを隠す」など）、見えない入力欄にフォーカスが
-       残る、といったときは、これまでの「外す」きっかけ（focusout・pollDown・次のタッチ）がどれも来なかった。
-       そこで、場所を空けているあいだだけ 300ms ごとに見て、**画面のキーボードが 0.9 秒続けて無ければ**外す（出てくる途中＝0.3〜0.4 秒を見まちがえない長さ）。
-       ・欄にフォーカスが残っていれば、フォーカスと ctx はそのまま（またキーボードが出たら measure が空け直す）
-       ・見えない入力欄にフォーカスが残っていたら、捨てる（次にタップしたとき、すぐ本物へ入れるように）
-       ・こちらでフォーカスを入れている途中（pending）は見ない */
-    let wdDown = 0;
-    setInterval(() => {
-        const holding = shown > 0 || root.hasAttribute("data-ft-kbfix");
-        if (!holding || pending) {
-            wdDown = 0;
-            return;
-        }
-        if (rawKb() >= 60 || layoutShrunk()) {
-            wdDown = 0;
-            return;
-        }
-        wdDown += 300;
-        if (wdDown < 900)
-            return;
-        wdDown = 0;
-        const a = document.activeElement;
-        if (isProxy(a)) {
-            try {
-                a.blur();
-            }
-            catch (e) { }
-            if (a.parentNode)
-                a.parentNode.removeChild(a);
-        }
-        if (isTyping(document.activeElement)) {
-            /* 欄にフォーカスがあるときは、**キーボードが一度出て、そのあと引っ込んだ**ときだけ（iPad の「キーボードを隠す」など）。
-               まだ出ていない（出てくる途中・知らせが遅れている）ときは触らない（10.21.0〜） */
-            if (!kbSeenUp)
-                return;
-            kbSeenUp = false;
-            lastRaw = -1;
-            lowerSheets();
-            setFix(false);
-            setReserve(0);
-            return;
-        }
-        releaseKb();
-    }, 300);
     measure();
 })();
 /* hook を直接呼べない場所（open && (...) の中など）で、うしろを留めるための部品。
