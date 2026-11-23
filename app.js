@@ -26940,7 +26940,7 @@ function PlanMenus({ menu, setMenu, edit, setEdit, del, setDel, onChangePlan, on
     const ce = react_1.default.createElement;
     const isList = (m) => planKindOf(m.plan) === "list";
     return ce(react_1.default.Fragment, null,
-        menu && ce(TypePickSheet, { title: menu.plan.name || "計画", types: isList(menu) ? ["__rename", "__delete"] : menu.plan.doneAt ? ["__rename", "__undone", "__delete"] : ["__rename", "__done", "__delete"], danger: ["__delete"], labels: { __done: "達成済みにする", __undone: "達成を取り消す", __rename: "名前とアイコン", __delete: isList(menu) ? "このコレクションを削除" : "この計画を削除" },
+        menu && ce(TypePickSheet, { title: menu.plan.name || "計画", types: ["__rename", "__delete"], danger: ["__delete"], labels: { __done: "達成済みにする", __undone: "達成を取り消す", __rename: "名前とアイコン", __delete: isList(menu) ? "このコレクションを削除" : "この計画を削除" },
             icons: { __done: ce(lucide_react_1.Check, { size: 22 }), __undone: ce(lucide_react_1.RotateCcw, { size: 22 }), __rename: ce(lucide_react_1.Pencil, { size: 22 }), __delete: ce(lucide_react_1.Trash2, { size: 22 }) }, onCancel: () => setMenu(null), onPick: (k) => {
                 const m = menu;
                 setMenu(null);
@@ -27204,6 +27204,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
     const { stripRef, screenRef } = useEdgeSwipeBack(closeInstant);
     const [delOpen, setDelOpen] = (0, react_1.useState)(false);
     const [settingsOpen, setSettingsOpen] = (0, react_1.useState)(false);
+    const [menuOpen, setMenuOpen] = (0, react_1.useState)(false);
     const [celebrate, setCelebrate] = (0, react_1.useState)(false);
     /* お祝いも、その場で薄れて消える（2.17.2〜） */
     const [celebrateOut, closeCelebrate] = useClosing(() => setCelebrate(false), FT_EXIT_FADE_MS);
@@ -27299,9 +27300,10 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
            札の境目は、札そのものの細いふち（card-soft）で足りる。**この画面だけ灰に戻さないこと** */
         react_1.default.createElement("div", { ref: screenRef, className: "absolute inset-0 bg-app flex flex-col" },
             react_1.default.createElement("div", { ref: stripRef, "data-ft-edge": "", className: "absolute left-0 bottom-0 w-9 z-10", style: { touchAction: "none", top: "calc(env(safe-area-inset-top) + 71px)" } }),
-            /* 右上の「…」・歯車は置かない（10.12.0〜）。名前とアイコン＝名前を押す、達成＝名前の右、達成の取り消し＝「達成しました」の札、
-               切り替え・削除＝いちばん下。**ぜんぶ画面に出ているので、同じものを隠したメニューに重ねないこと** */
-            react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close }),
+            /* 右上の「…」（10.17.0〜）：名前とアイコン・削除だけ。達成は名前の右のボタン、取り消しは「達成しました」の札（ここに重ねない）。
+               計画⇄コレクションの切り替えは、やめた */
+            react_1.default.createElement(OverlayHeader, { title: plan.name || "（名前なし）", onBack: close, right: react_1.default.createElement("button", { type: "button", onClick: () => setMenuOpen(true), "aria-label": plan.kind === "list" ? "このコレクションの操作" : "この計画の操作", "aria-haspopup": "dialog", className: "w-11 h-11 flex items-center justify-center rounded-full text-neutral-600 ft-tap ft-tap-icon" },
+                    react_1.default.createElement(lucide_react_1.Ellipsis, { size: 22 })) }),
             react_1.default.createElement("div", { ref: stepSwipeRef, className: "flex-1 overflow-y-auto px-4 py-4 ft-col ft-colwide pad-fab ft-planpage" },
                 /* 計画の中身は 2.33.0 で組み直した（PlanBody）。イベント（段階）はやめて、
                    ふつうの記録（予定・リスト・メモ）を付けて進める。**イベントの欄を戻さないこと** */
@@ -27313,7 +27315,7 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                             react_1.default.createElement("span", { className: "block fs-subhead font-bold", style: { color: color.deep } }, "達成しました"),
                             react_1.default.createElement("span", { className: "block fs-body-sm text-neutral-500" }, fmtDate(plan.doneAt))),
                         react_1.default.createElement("button", { type: "button", onClick: () => onChange({ ...plan, doneAt: "", updatedAt: new Date().toISOString() }), className: "ft-pundo ft-tap", style: { color: color.deep } }, react_1.default.createElement(lucide_react_1.RotateCcw, { size: 15 }), "取り消す")))),
-                react_1.default.createElement(PlanBody, { onIcon: () => setSettingsOpen(true), onKind: () => onChange(plan.id, (pl) => ({ ...pl, kind: pl.kind === "list" ? "goal" : "list", updatedAt: new Date().toISOString() })), onDelete: () => setDelOpen(true), plan: plan, records: records, color: color, onChange: onChange, onEditRecord: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, onAdd: (k) => onAddRecord(plan, k), onDone: () => setDoneAsk(true) })),
+                react_1.default.createElement(PlanBody, { plan: plan, records: records, color: color, onChange: onChange, onEditRecord: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, onAdd: (k) => onAddRecord(plan, k), onDone: () => setDoneAsk(true) })),
             react_1.default.createElement(SelectBar, { sel: sel, list: planRecords }),
             false && !sel.on && react_1.default.createElement("button", { type: "button", onClick: () => setAddOpen(true), "aria-label": "\u8FFD\u52A0", className: "fixed right-5 w-14 h-14 rounded-2xl bg-fab text-white flex items-center justify-center card-soft ft-tap ft-fab", style: { zIndex: 40, bottom: "calc(env(safe-area-inset-bottom) + 24px)" } },
                 react_1.default.createElement(lucide_react_1.Plus, { size: 26 })),
@@ -27326,6 +27328,13 @@ function PlanDashboard({ plan, records, plans, onClose, onChange, onDelete, onAd
                     }
                     onAddRecord(plan, k);
                 } })),
+            menuOpen && (react_1.default.createElement(TypePickSheet, { title: plan.name || (plan.kind === "list" ? "コレクション" : "計画"), types: ["__edit", "__delete"], danger: ["__delete"],
+                labels: { __edit: "名前とアイコン", __delete: plan.kind === "list" ? "このコレクションを削除" : "この計画を削除" },
+                icons: { __edit: react_1.default.createElement(lucide_react_1.Pencil, { size: 22 }), __delete: react_1.default.createElement(lucide_react_1.Trash2, { size: 22 }) },
+                colorKeys: { __edit: PLAN_TYPE }, onCancel: () => setMenuOpen(false), onPick: (k) => { setMenuOpen(false); if (k === "__edit")
+                    setSettingsOpen(true);
+                else
+                    setDelOpen(true); } })),
             celebrate && (react_1.default.createElement("div", { className: "ft-sheet-wrap flex items-center justify-center " + (celebrateOut ? "anim-fade-out" : "anim-fade"), style: { zIndex: 2147483400 }, onClick: () => closeCelebrate() },
                 react_1.default.createElement(BackgroundLock, null),
                 react_1.default.createElement("div", { className: "absolute inset-0", style: { background: "rgba(255,255,255,.92)" } }),
@@ -29641,7 +29650,9 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-coll .ft-pcheck svg { width: 12px; height: 12px; }
 .ft-coll .ft-ccard2-top > .ft-pcheck { margin-top: 11px; }
 .ft-phero-npen { display: inline-flex; vertical-align: middle; margin-left: 8px; color: var(--tx-5); position: relative; top: -2px; }
-/* 計画の中のいちばん下：切り替え・削除 */
+/* 重なる画面の縦の送り場は、横に動かさない（10.17.0〜）。中身が数 px でもはみ出すと、iPhone で縦に送るたびに横へ大きく振れた */
+[data-ft-overlay] .overflow-y-auto { overflow-x: hidden; }
+/* 計画の中のいちばん下：切り替え・削除（10.17.0 でやめた） */
 .ft-pdanger { margin: 40px 0 8px; padding-top: 6px; border-top: 1px solid #EEF1F4; display: flex; flex-direction: column; }
 .ft-pdanger > button { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 4px; text-align: left; font-weight: 700; color: var(--tx-2); font-size: calc(var(--fs-body) * var(--ft-scale)); }
 .ft-pdanger > button svg { color: var(--tx-4); }
@@ -32145,7 +32156,7 @@ function PlanEvents({ plan, color, patch }) {
    ・関連する記録 ＝ 記録の入力画面の「計画を選択」で結びつけた記録。計画の中の「予定」「メモ」の欄はやめた
      （5.0.0〜7.0.0 で入れた予定 plan.events は、残っていれば下に出す。足す入口は無い）
    ・コレクション ＝ 表（CollTable） */
-function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, onPin, onDone, onIcon, onKind, onDelete }) {
+function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, onPin, onDone }) {
     const S = planSummary(plan, records);
     const wide = useWideLand();
     const ce = react_1.default.createElement;
@@ -32168,21 +32179,13 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
     const [askItemDel, askItemNode] = useAskDel();
     const linked = S.recs.length ? ce("div", { className: "ft-pblock" }, ce("div", { className: "ft-plbl" }, ce("span", null, "関連する記録"), ce("i", null)), ce("div", { className: "ft-precs" }, S.recs.map((r) => ce(RecordRow, { key: r.id, r: r, onEdit: onEditRecord, onToggleItem: onToggleItem, onPin: onPin, showDate: true })))) : null;
     const art = plan.icon && ICON_ART[plan.icon];
-    /* 名前とアイコン（10.11.0〜）：アイコンと名前をひとつのボタンにして、アイコンの角と名前の右に鉛筆を出す。
-       **鉛筆を消さないこと。** 押せると分からず、名前を変える場所が見つからなかった */
+    /* 名前とアイコン（10.17.0〜）：見せるだけ。変えるのは右上の「…」から（下から紙が出るので、押せる鉛筆を名前に付けない） */
     const hero = ce("div", { className: "ft-phero" },
-        /* **ft-tap を付けないこと（10.12.0〜）。** 横に長いボタンが押した瞬間に縮んで、横にブルッと震えて見えた。押した手ごたえは地の色だけ */
-        ce("button", { type: "button", onClick: onIcon, "aria-label": `名前とアイコンを変える（${plan.name || "名前なし"}）`, className: "ft-phero-btn" },
-            ce("span", { className: "ft-phero-ic", style: { background: art ? iconBgOf(color) : color.soft, color: color.deep, borderColor: color.line } },
-                ce(ItemIcon, { icon: plan.icon, size: 28, fallback: ce(isList ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), color: color }),
-                ce("span", { className: "ft-phero-pen", "aria-hidden": "true" }, ce(lucide_react_1.Pencil, { size: 11, strokeWidth: 2.4 }))),
-            ce("span", { className: "min-w-0 flex-1" }, ce("span", { className: "ft-phero-name font-display" }, plan.name || "（名前なし）", ce("span", { className: "ft-phero-npen", "aria-hidden": "true" }, ce(lucide_react_1.Pencil, { size: 15 }))))));
-    /* いちばん下（10.11.0〜）：切り替えと削除。iPhone の連絡先と同じく、送りきった所に置く（右上の「…」にも同じものがある） */
-    const tail = onDelete ? ce("div", { className: "ft-pdanger" },
-        onKind ? ce("button", { type: "button", onClick: onKind, className: "ft-tap" }, ce(isList ? lucide_react_1.Target : lucide_react_1.ListTodo, { size: 19 }), isList ? "「計画」に切り替える" : "「コレクション」に切り替える") : null,
-        ce("button", { type: "button", onClick: onDelete, className: "ft-tap del" }, ce(lucide_react_1.Trash2, { size: 19 }), isList ? "このコレクションを削除" : "この計画を削除")) : null;
+        ce("span", { className: "ft-phero-ic", style: { background: art ? iconBgOf(color) : color.soft, color: color.deep, borderColor: color.line } },
+            ce(ItemIcon, { icon: plan.icon, size: 28, fallback: ce(isList ? lucide_react_1.ListTodo : lucide_react_1.Target, { size: 28 }), color: color })),
+        ce("span", { className: "min-w-0 flex-1" }, ce("span", { className: "ft-phero-name font-display" }, plan.name || "（名前なし）")));
     if (isList)
-        return ce("div", null, hero, ce(CollTable, { plan, color, patch }), linked, tail);
+        return ce("div", null, hero, ce(CollTable, { plan, color, patch }), linked);
     const flat = planOrdered(plan);
     const P = planPeriod(plan, S);
     const goal = ce("div", { className: "ft-goal", style: { borderColor: color.line } },
@@ -32215,8 +32218,8 @@ function PlanBody({ plan, records, color, onChange, onEditRecord, onToggleItem, 
     /* 横長（8.1.0〜）：上に名前（と達成）、その下を Today と同じ割り方（左＝ゴール → リスト、右＝関連する記録）。
        左右はそれぞれで送れる。**左の枠（ゴール）と右の見出しの線の上を、同じ高さから始めること** */
     if (wide)
-        return ce("div", { className: "ft-psplit" }, heroF, ce("div", { className: "ft-wsplit" }, ce("div", { className: "ft-wmain list" }, goal, todo, ev, tail), ce("div", { className: "ft-wside" }, recs)));
-    return ce("div", null, heroF, goal, todo, ev, recs, tail);
+        return ce("div", { className: "ft-psplit" }, heroF, ce("div", { className: "ft-wsplit" }, ce("div", { className: "ft-wmain list" }, goal, todo, ev), ce("div", { className: "ft-wside" }, recs)));
+    return ce("div", null, heroF, goal, todo, ev, recs);
 }
 /* その日にやると決めた計画のやること・手順（Today の「やること」に、計画ごとの札で出る）。
    その日が「いつまでに」の計画も、ここに出す（3.0.0〜。週・月のマスにも同じものが出る） */
