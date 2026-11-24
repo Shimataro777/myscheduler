@@ -22,7 +22,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 
-    <link rel="stylesheet" href="./app.css?v=10.49.0" />
+    <link rel="stylesheet" href="./app.css?v=10.50.0" />
     <link rel="icon" type="image/png" href="./favicon.png" />
     <link rel="apple-touch-icon" href="./apple-touch-icon-v6.png" />
     <link rel="manifest" href="./manifest-v6.json" />
@@ -172,7 +172,7 @@
       /* X＝見た目や操作性の大きな変更・画面の追加
          Y＝細かな機能向上・部分的な追加・画面の手直し
          Z＝不具合や誤字の直し */
-      window.__MT_VERSION = "10.49.0";
+      window.__MT_VERSION = "10.50.0";
       document.getElementById("app-splash-ver").textContent = "v" + window.__MT_VERSION;
 
       /* **起動画面の中身を、画面の高さのまん中へ留める（2.11.24〜）。**
@@ -271,7 +271,7 @@
     <!-- Google連携のクライアントID（手順は SETUP-GOOGLE.md）。空のあいだは、Google連携の画面は出ない。公開されて困る値ではない -->
     <script>window.__MT_GOOGLE_CLIENT_ID = "1082953760920-mrhnkl0va5dhbte76nt39sjhpe3g57ua.apps.googleusercontent.com";</script>
     <!-- 同期エンジン（2.29.0〜）。**app.js より先に読むこと**（defer は書いた順に動く）。?v= も同じ版数にそろえる -->
-    <!-- 動きの記録（10.49.0〜。10.23.0 の「入力欄の調べ」を、メニューから入り切りできる形にした）。
+    <!-- 動きの記録（10.50.0〜。10.23.0 の「入力欄の調べ」を、メニューから入り切りできる形にした）。
          メニュー「動きの記録」でオンにすると、タッチ・フォーカス・キーボード・下のボタンの帯の位置などを時刻つきで記録し、画面の上に小さく出す。
          「コピー」で全部（最大800行）を写せる。オンは端末に覚える（localStorage "mt-diag" = "1"）ので、開き直しても続く。
          オフのときは何も記録しない（受け口は付くが、すぐ戻る）。アプリの動きには手を入れない（受け口はぜんぶ passive・capture、読むだけ）。
@@ -396,7 +396,7 @@
       if (active) { if (document.body) setOn(true); else document.addEventListener("DOMContentLoaded", function () { setOn(true); }); }
     })();
     </script>
-    <!-- 見える窓の直し（10.49.0〜）。iPhone（iOS 18.7・ホーム画面から開く）で、裏から戻ったあとなどに visualViewport の高さが 0 のままになり、
+    <!-- 見える窓の直し（10.50.0〜）。iPhone（iOS 18.7・ホーム画面から開く）で、裏から戻ったあとなどに visualViewport の高さが 0 のままになり、
          その間、下タブなど fixed の部品が、ページを送ったぶんだけ上へずれて、画面のまん中に出た（動きの記録で確かめた）。
          高さが 0 に気づいたら、viewport の meta を一度書きかえて戻し、iPhone に画面の大きさを測り直させる。
          ・やるのは、表に戻ったとき・画面に触れはじめたとき・送ったとき（2 秒に1回まで）。高さがふつうなら何もしない
@@ -429,8 +429,8 @@
       setTimeout(function () { fix("起動"); }, 1500);
     })();
     </script>
-    <script src="./gsync.js?v=10.49.0" defer></script>
-    <script src="./app.js?v=10.49.0" defer></script>
+    <script src="./gsync.js?v=10.50.0" defer></script>
+    <script src="./app.js?v=10.50.0" defer></script>
     <!-- 電波がなくても開けるようにする（2.24.0〜）。中身は sw.js と 引継書.md 6-⑯。
          **版数を "./sw.js?v=" に付けて登録すること。** 版数が変わると新しい本体を端末に置き直す。
          版数をここに書き込まないこと（window.__MT_VERSION から読む） -->

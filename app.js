@@ -25630,7 +25630,7 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
     (0, react_1.useEffect)(() => { setSel(inThisMonth ? today : null); }, [year, month]); // eslint-disable-line
     /* 「表示する期間」ピッカーで日まで選んだときは、その日にフォーカスを合わせる */
     (0, react_1.useEffect)(() => { if (focusDate)
-        setSel(focusDate); }, [focusDate]); // eslint-disable-line
+        setSel(String(focusDate).slice(0, 10)); }, [focusDate]); // eslint-disable-line
     /* 押している日を外（TodayScreen）へ伝える。右下の＋が、その日の記録を作れるようにするため（2.20.8〜） */
     (0, react_1.useEffect)(() => { if (onSelChange)
         onSelChange(sel); }, [sel]); // eslint-disable-line
@@ -25696,8 +25696,8 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
                 const dow = (firstDow + d - 1) % 7;
                 const rest = dayRecordsOf(records, ds).filter((r) => !(r.type === "schedule" || spansDays(r) || dueOf(r)));
                 const nList = rest.filter((r) => r.type === "checklist").length, nMemo = rest.length - nList, nPlan = planDayItems(planCtx.plans, ds).length;
-                /* 1件のときは数を書かない（しるしだけ）。2件から数を添える。縦の細いマスでも日付の右に収めるため */
-                const cnt = (t, n) => n > 0 ? react_1.default.createElement("span", { key: t, className: "c" }, typeIcon(t, fill ? 11 : 9), n > 1 ? n : null) : null;
+                /* 件数は書かない（10.50.0〜。しるしだけ。あれば出る） */
+                const cnt = (t, n) => n > 0 ? react_1.default.createElement("span", { key: t, className: "c" }, typeIcon(t, fill ? 11 : 9), null) : null;
                 return (react_1.default.createElement("button", { key: ds, type: "button", onClick: () => setSel(ds), "aria-label": fmtDate(ds), className: "min-h-[40px] border-b border-r border-neutral-100 px-0.5 pt-1 pb-1 flex flex-col items-stretch text-left ft-tap "
                         + (isSel ? "bg-th-50" : "hover:bg-neutral-50") },
                     react_1.default.createElement("span", { className: "flex h-6 mb-0.5 items-center justify-start gap-1 min-w-0" },
@@ -26074,7 +26074,10 @@ function TodayScreen({ records, onEdit, onToggleItem, onOpenDay, plans, onOpenPl
     const selDay = span === "week" ? (weekSel || todayInWeek) : span === "month" ? monthSel : date;
     const openDay = (d) => { setDir(0); setDate(d); setSpan("day"); };
     const act = { records: records, onEdit: onEdit, onToggleItem: onToggleItem, onPin: onPin };
-    const nav = (cls) => ce(MonthNavHeader, { className: cls, label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); setDate(todayStr()); } });
+    const nav = (cls) => ce(MonthNavHeader, { className: cls, label: label, sub: span === "day" ? `${date.slice(0, 4)}年` : null, onPrev: () => { setDir(-1); step(-1); }, onNext: () => { setDir(1); step(1); }, onJump: () => setJumpOpen(true), onToday: () => { setDir(0); const t = todayStr(); setDate(t);
+            /* 10.50.0〜 週・月でも、今日の日をえらぶ（前は今日のある週・月へ戻るだけで、えらんだ日はそのままだった）。
+               月は、同じ今日を続けて押しても効くよう、押すたびに印（#時刻）を付けて渡す */
+            setWeekSel(t); setMonthFocusDate(t + "#" + Date.now()); } });
     const filterBtn = ce("button", { type: "button", onClick: () => setFilterOpen(true), "aria-label": "種類で絞り込む", className: "w-11 h-11 flex items-center justify-center rounded-full ft-tap ft-tap-icon relative " + (hidden.length ? "text-th-800" : "text-neutral-500") + " -ml-3" }, ce(lucide_react_1.Filter, { size: 20 }), hidden.length > 0 && ce("span", { className: "absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-th-800" }));
     const textBtn = (text, onClick) => ce("button", { type: "button", onClick: onClick, className: "h-9 px-2 rounded-lg fs-body font-bold text-th-900 ft-tap" }, text);
     const dayTools = sel.on
@@ -29854,6 +29857,15 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-wv.fill .ft-wv-row { min-height: 60px; }
 /* 横長の面の子に付く決まり（高さいっぱい・内側の余白）を打ち消す。箱は中身なりの高さ、段は箱のふちいっぱい */
 .ft-wmain > .ft-wv.fill { height: auto; min-height: 0; padding: 0; }
+/* iPhone 横の上の帯（10.50.0〜）：まん中の欄が 290px ほどしかなく、「今日」ボタンが右の「次へ」の下にもぐっていた。
+   年月の字を小さくし、矢印の的を少しつめて、欄に収める */
+@media (max-height: 520px) {
+  .ft-wbar-nav .fs-display-lg { font-size: 20px; }
+  .ft-wbar-nav > div > button:first-child > .fs-body-sm { display: none; }
+  .ft-wbar-nav > button { min-width: 34px; }
+  .ft-wbar-nav > div > button:first-child { padding: 0 4px; gap: 2px; }
+  .ft-wbar-nav > div > button:last-child { padding: 0 10px; }
+}
 /* 月のマス（10.46.0〜 週の一覧にそろえる。10.47.0〜 字を小さく・飾りを減らして、名前を多く見せる） */
 .ft-mv-lanes, .ft-mv-its { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ft-mv-its:not(:empty) { margin-top: 2px; }
