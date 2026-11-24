@@ -29814,7 +29814,29 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-wt-sk > .tx { position: absolute; left: 9px; right: 1px; top: -2px; bottom: 0; overflow: hidden; display: flex; flex-direction: column; }
 .ft-wt-sk > .tx > small { font-size: calc(9px * var(--ft-scale)); line-height: 11px; font-weight: 700; }
 .ft-wt-sk > .tx > .t { font-size: calc(10px * var(--ft-scale)); line-height: 12px; font-weight: 600; word-break: break-all; color: var(--tx-1); }
-/* iPhone の週の一覧（10.34.0〜。WeekBoard の rows && !fill） */
+/* 横長の週の時間（10.44.0〜）：1時間を 26px より詰めない（前は面の高さに押しこみ、iPhone の横向きでは1時間 10px ほどで字が読めなかった）。
+   入りきらないときは、左の面の中で縦に送る。時刻の目盛りの欄は iPhone と同じ 18px */
+.ft-wt.fill { height: auto; min-height: 100%; grid-template-columns: 18px repeat(7, minmax(0, 1fr)); }
+.ft-wt.fill .ft-wt-hrs { font-size: calc(9px * var(--ft-scale)); }
+.ft-wt.fill .ft-wt-hrs span { right: 2px; }
+.ft-wmain:has(> .ft-wt.fill) { overflow-y: auto; padding-bottom: 16px; }
+/* iPhone の横向き（高さが低い横長）：右の面を細くして、左の週に幅を回す */
+@media (min-width: 820px) and (orientation: landscape) and (max-height: 520px) {
+  .ft-wsplit { grid-template-columns: minmax(0, 1fr) minmax(240px, 30%); }
+  /* 右の面が細いぶん、えらんだ日の見出しは1行に収める（10.45.0〜） */
+  .ft-wside .ft-dayhd b { font-size: calc(var(--fs-subhead) * var(--ft-scale)); white-space: nowrap; }
+}
+/* 横長（10.44.0〜）：列が広いぶん、字をひとまわり大きく、線との間も少し広く。1行に入る字が増える */
+.ft-wt.fill .ft-wt-sk > .ln, .ft-wt.fill .ft-wt-sk > .nd { left: 6px; }
+.ft-wt.fill .ft-wt-sk > .tx { left: 13px; right: 2px; }
+.ft-wt.fill .ft-wt-sk > .tx > small { font-size: calc(10px * var(--ft-scale)); line-height: 13px; }
+.ft-wt.fill .ft-wt-sk > .tx > .t { font-size: calc(var(--fs-caption) * var(--ft-scale)); line-height: 15px; word-break: normal; overflow-wrap: anywhere; }
+/* 横長の週の一覧（10.45.0〜）：縦と同じ部品。左の面の中で縦に送る */
+.ft-wmain:has(> .ft-wv) { overflow-y: auto; padding-bottom: 16px; }
+.ft-wv.fill .ft-wv-row { min-height: 60px; }
+/* 横長の面の子に付く決まり（高さいっぱい・内側の余白）を打ち消す。箱は中身なりの高さ、段は箱のふちいっぱい */
+.ft-wmain > .ft-wv.fill { height: auto; min-height: 0; padding: 0; }
+/* iPhone の週の一覧（10.34.0〜。WeekBoard の rows && !fill。10.45.0 から横長も） */
 .ft-wv { display: flex; flex-direction: column; background: #fff; border: 1px solid #E6E6E9; border-radius: 16px; overflow: hidden; }
 .ft-wv-row { position: relative; display: flex; align-items: stretch; width: 100%; min-height: 56px; text-align: left; border-top: 1px solid #EEF1F3; background: #fff; border-radius: 0; }
 .ft-wv-row:first-child { border-top: 0; }
@@ -31097,7 +31119,8 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
        ・1行の頭に種類のしるし（予定＝時計つきの暦、リスト＝チェックの並び、メモ、計画＝的）。予定は時刻を頭に、リストは右に「済み/全部」
        ・**予定とそれ以外を見出しで分けないこと。** 段が倍に伸びる。並びの順（予定 → リスト・メモ → 計画のやること）としるしで分かる
        ・字は 13.5px（fs-body-sm）・1行。はみ出す分は「…」 */
-    if (rows && !fill) {
+    /* 10.45.0〜 横長（fill）も同じ部品。前は横長だけ、その日のことを横に並べる古い札（.ft-wr）のままで、縦向きと見た目がそろっていなかった */
+    if (rows) {
         const laneW = 12;
         const laneBox = bars.length ? 8 + count * laneW : 0;
         const vic = (t, color) => ce("span", { className: "ft-wv-ic", style: color ? { color } : undefined, "aria-hidden": true }, typeIcon(t, 14));
@@ -31128,7 +31151,7 @@ function WeekBoard({ start, records, selected, onSelect, fill }) {
             planDayItems(planCtx.plans, d).forEach((x) => { const c = planColorOf(x.p, planCol); out.push(ce("span", { key: "t" + x.t.id, className: "ft-wv-it" + (x.t.done ? " done" : "") }, vic("plan", c.deep), ce("span", { className: "t" }, x.label || x.t.text || ""))); });
             return out;
         };
-        return ce("div", { className: "ft-wv" }, days.map((d, i) => {
+        return ce("div", { className: "ft-wv" + (fill ? " fill" : "") }, days.map((d, i) => {
             const w = dowOf(d);
             const items = itemsOf(d, i);
             /* 串（10.36.0〜）：かかる日の段をまたぐ細い線。丸は始まりと終わりの日だけ（あいだの日には付けない）。
@@ -31211,7 +31234,7 @@ function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
         marks.push(h);
     const lines = `repeating-linear-gradient(180deg, #E3E8EC 0, #E3E8EC 1px, transparent 1px, transparent calc(100% / ${n}))`;
     const ce = react_1.default.createElement;
-    return ce("div", { className: "ft-wt" + (fill ? " fill" : ""), style: { gridTemplateRows: `auto${count ? ` repeat(${count}, 21px)` : ""} auto ${fill ? "minmax(0, 1fr)" : Math.max(360, n * 30) + "px"}` } },
+    return ce("div", { className: "ft-wt" + (fill ? " fill" : ""), style: { gridTemplateRows: `auto${count ? ` repeat(${count}, 21px)` : ""} auto ${fill ? `minmax(${n * 26}px, 1fr)` : Math.max(360, n * 30) + "px"}` } },
         days.map((d, i) => {
             const w = dowOf(d);
             return ce("button", { key: "h" + d, type: "button", onClick: () => onSelect(d), "aria-pressed": d === selected, className: "ft-wb-h btn ft-tap" + (fill ? "" : " nw") + (w === 0 ? " sun" : w === 6 ? " sat" : "") + (d === today ? " t" : "") + (d === selected ? " sel" : ""), style: { gridColumn: i + 2, gridRow: 1 } },
@@ -31235,12 +31258,11 @@ function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
                 timedR.map((r) => {
                     const a = pos(hm(r.time)), b = pos(r.endTime && hm(r.endTime) > hm(r.time) ? hm(r.endTime) : hm(r.time) + 1);
                     const c = calColor(r);
-                    /* 10.42.0〜 iPhone は、一覧の串と同じ形：始まりと終わりに丸、そのあいだを細い線でつなぎ、線の右に時刻と名前。色の塊は置かない */
-                    if (!fill)
-                        return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wt-sk ft-tap", style: { top: a + "%", height: `${Math.max(b - a, 100 / n / 2)}%`, color: c.mid } },
+                    /* 10.42.0〜 一覧の串と同じ形：始まりと終わりに丸、そのあいだを細い線でつなぎ、線の右に時刻と名前。色の塊は置かない。
+                       10.44.0〜 横長（iPhone・iPad の横向き＝fill）も同じ形（前は横長だけ色の塊だった） */
+                    return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wt-sk ft-tap", style: { top: a + "%", height: `${Math.max(b - a, 100 / n / 2)}%`, color: c.mid } },
                             ce("i", { className: "ln" }), ce("b", { className: "nd" }), ce("b", { className: "nd e" }),
                             ce("span", { className: "tx", style: { color: c.deep } }, ce("small", { className: "tabular-nums" }, r.time.replace(/^0/, "")), ce("span", { className: "t" }, recordTitle(r))));
-                    return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wt-ev ft-tap", style: { top: a + "%", height: `calc(${Math.max(b - a, 100 / n / 2)}% - 2px)`, background: c.soft, color: c.deep, borderColor: c.mid } }, ce("small", { className: "tabular-nums" }, r.time + (r.endTime ? "–" + r.endTime : "")), ce("b", null, recordTitle(r)));
                 }),
                 d === today && nowH >= from && nowH <= to ? ce("span", { className: "ft-wt-now", style: { top: pos(nowH) + "%" } }) : null);
         }));
