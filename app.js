@@ -29841,6 +29841,15 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-wt-sk > .tx { position: absolute; left: 9px; right: 1px; top: -2px; bottom: 0; overflow: hidden; display: flex; flex-direction: column; }
 .ft-wt-sk > .tx > small { font-size: calc(9px * var(--ft-scale)); line-height: 11px; font-weight: 700; }
 .ft-wt-sk > .tx > .t { font-size: calc(10px * var(--ft-scale)); line-height: 12px; font-weight: 600; word-break: break-all; color: var(--tx-1); }
+/* 今の時刻（10.55.0〜）。予定の串（丸＋縦線＋丸）と見分けるため、丸は使わない。
+   ・今日の列：赤の細い実線（1.5px・不透明度 .75）。10.55.1〜 さりげなく（太線とにじみはやめた）
+   ・ほかの日：同じ高さに、ごく薄い赤の点線（不透明度 .28）。週を横に貫く線にして「時刻の線」と読ませる
+   ・目盛りの欄：右はしに内側を指す赤い三角
+   ❌ 丸（::before の円）を戻さないこと。予定の始まりの丸と同じ形になり、見分けがつかなくなる（持ち主の指摘） */
+.ft-wt-now { position: absolute; left: 0; right: 0; height: 0; border-top: 1.5px solid rgba(229,56,59,.75); margin-top: -0.75px; z-index: 3; pointer-events: none; }
+.ft-wt-now::before { content: none; display: none; }
+.ft-wt-now.o { border-top: 1px dashed rgba(229,56,59,.28); margin-top: -0.5px; z-index: 2; }
+.ft-wt-hrs > .ft-wt-nowmk { position: absolute; right: -1px; width: 0; height: 0; margin-top: -3.5px; border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent; border-left: 4.5px solid rgba(229,56,59,.75); pointer-events: none; z-index: 3; }
 /* 横長の週の時間（10.44.0〜）：1時間を 26px より詰めない（前は面の高さに押しこみ、iPhone の横向きでは1時間 10px ほどで字が読めなかった）。
    入りきらないときは、左の面の中で縦に送る。時刻の目盛りの欄は iPhone と同じ 18px */
 .ft-wt.fill { height: auto; min-height: 100%; grid-template-columns: 18px repeat(7, minmax(0, 1fr)); }
@@ -31310,6 +31319,7 @@ function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
     const pos = (v) => Math.max(0, Math.min(100, ((v - from) / n) * 100));
     const now = new Date();
     const nowH = now.getHours() + now.getMinutes() / 60;
+    const showNow = days.includes(today) && nowH >= from && nowH <= to;
     const stepH = n <= 10 ? 1 : n <= 16 ? 2 : 3;
     const marks = [];
     for (let h = from; h <= to; h += stepH)
@@ -31332,7 +31342,9 @@ function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
             const out = list.filter((r) => (r.type === "schedule" && !dueOf(r) && (!r.time || hm(r.time) >= to || (r.endTime ? hm(r.endTime) <= from : hm(r.time) + 1 <= from))) || (dueOf(r) && !listAllDone(r) && calShows(r, days[i]))).sort(compareTimeline);
             return ce("div", { key: "a" + i, className: "ft-wt-ad", style: { gridColumn: i + 2, gridRow: count + 2 } }, out.map((r) => { const c = calColor(r); return ce("button", { key: r.id + (r.__repeat ? "r" : ""), type: "button", onClick: () => onEdit(r), className: "ft-wb-chip ft-wt-adc ft-tap" + (dueOf(r) ? " list due" : ""), style: dueOf(r) ? { color: c.deep, borderColor: c.mid } : { background: c.soft, color: c.deep } }, !dueOf(r) && r.time ? ce("b", { className: "tabular-nums" }, r.time.replace(/^0/, "")) : null, recordTitle(r), dueOf(r) ? "〆" : null); }));
         }),
-        ce("div", { className: "ft-wt-hrs", style: { gridColumn: 1, gridRow: count + 3 } }, marks.map((h) => ce("span", { key: h, style: { top: pos(h) + "%" } }, h))),
+        ce("div", { className: "ft-wt-hrs", style: { gridColumn: 1, gridRow: count + 3 } }, marks.map((h) => ce("span", { key: h, style: { top: pos(h) + "%" } }, h)),
+            /* 10.55.0〜 今の時刻のしるし：目盛りの欄の右はしに、内側を指す三角 */
+            showNow ? ce("i", { className: "ft-wt-nowmk", "aria-hidden": true, style: { top: pos(nowH) + "%" } }) : null),
         per.map((list, i) => {
             const d = days[i], w = dowOf(d);
             const timedR = list.filter((r) => r.type === "schedule" && !dueOf(r) && r.time && hm(r.time) < to && (r.endTime ? hm(r.endTime) : hm(r.time) + 1) > from).sort(compareTimeline);
@@ -31346,7 +31358,8 @@ function WeekTime({ start, records, selected, onSelect, onEdit, fill }) {
                             ce("i", { className: "ln" }), ce("b", { className: "nd" }), ce("b", { className: "nd e" }),
                             ce("span", { className: "tx", style: { color: c.deep } }, ce("small", { className: "tabular-nums" }, r.time.replace(/^0/, "")), ce("span", { className: "t" }, recordTitle(r))));
                 }),
-                d === today && nowH >= from && nowH <= to ? ce("span", { className: "ft-wt-now", style: { top: pos(nowH) + "%" } }) : null);
+                /* 10.55.0〜 今日の列は赤い太線、ほかの日は同じ高さに薄い点線（週をまたぐ横線にして、縦の串＝予定と見分ける） */
+                showNow ? ce("span", { className: "ft-wt-now" + (d === today ? "" : " o"), "aria-hidden": true, style: { top: pos(nowH) + "%" } }) : null);
         }));
 }
 /* 週の「一覧／時間」の切り替え */
