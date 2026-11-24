@@ -25646,12 +25646,16 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
         m.forEach((v) => v.sort(compareTimeline));
         return m;
     }, [records]);
+    const calColor = useCalColor();
+    /* 週の段ごとの、何日かにわたるものの帯（週の一覧と同じ並べ方。マスが空の所も本当の日付で数える） */
+    const weekRows = (0, react_1.useMemo)(() => Array.from({ length: cells.length / 7 }, (_, R) => weekSpanLanes(records, Array.from({ length: 7 }, (_, j) => addDays(key(1), R * 7 + j - firstDow)))), [records, year, month]); // eslint-disable-line
     /* えらんだ日の中身は、ここでは出さない（3.0.0〜）。TodayScreen が DayBox で出す（週と同じ部品） */
     /* **マスの数を切り上げないこと。** 「あと2件」では、何があるのか分からない。
        予定のない日は低いまま、ある日はそのぶん伸びる */
     return (react_1.default.createElement("div", { className: "ft-mv" + (fill ? " fill" : "") },
         react_1.default.createElement("div", { className: "rounded-2xl bg-white card-soft overflow-hidden ft-mv-card" },
-            react_1.default.createElement("div", { className: "grid grid-cols-7 text-center fs-caption font-bold py-1.5 border-b border-neutral-100" }, WEEK_LABELS.map((d, i) => react_1.default.createElement("div", { key: d, className: weekColor(i) }, d))),
+            /* 10.48.0〜 マスの中は、曜日・日付・帯の名前・予定・件数を、すべてマスの左から 4px の線にそろえる（前は日付と曜日がまん中、ほかは左で、ばらばらだった） */
+            react_1.default.createElement("div", { className: "grid grid-cols-7 text-left fs-caption font-bold py-1.5 border-b border-neutral-100" }, WEEK_LABELS.map((d, i) => react_1.default.createElement("div", { key: d, className: weekColor(i), style: { paddingLeft: 4 } }, d))),
             react_1.default.createElement("div", { className: "grid grid-cols-7 ft-mv-grid", style: fill ? { gridTemplateRows: `repeat(${cells.length / 7}, minmax(0, 1fr))` } : undefined }, cells.map((d, i) => {
                 if (d === null)
                     return react_1.default.createElement("div", { key: "e" + i, className: "min-h-[40px] border-b border-r border-neutral-100" });
@@ -25659,48 +25663,62 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
                 const madeHere = new Set((byDate.get(ds) || []).filter((r) => r.fromRepeat).map((r) => r.fromRepeat));
                 /* **始まりの日にだけ出さないこと。** 旅行や出張が、途中の日から消える */
                 /* 日をまたぐリストも帯で出す（3.0.0〜）。予定だけだと「3日かけてやること」が月から見えない */
-                const sched = [
-                    ...records.filter((r) => isDayRec(r) && (dueOf(r) ? (!listAllDone(r) && calShows(r, ds)) : (r.type === "schedule" || spansDays(r))) && coversDay(r, ds)),
-                    ...records.filter((r) => isDayRec(r) && r.type === "schedule" && repeatsOn(r, ds) && !madeHere.has(r.id)),
-                ].sort(compareTimeline).sort((a, b) => {
-                    const sa = spansDays(a) ? 0 : 1, sb = spansDays(b) ? 0 : 1;
-                    if (sa !== sb)
-                        return sa - sb;
-                    return sa === 0 ? (a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.id).localeCompare(String(b.id))) : 0;
+                /* 10.46.0〜 週の一覧にそろえた。
+                   ・何日かにわたるものは、週の段ごとに「段（レーン）」をそろえて1本の帯でつなぐ（週の串と同じ並べ方 weekSpanLanes）。
+                     前は日ごとに上から積んでいたので、同じ帯が日によって高さがずれることがあった。帯の地は薄い色・字は濃い色（週の札と同じ）
+                   ・その日だけの予定は、色の丸＋名前（地は塗らない。帯と見分けるため）。締め切りは名前のうしろに〆
+                   ・名前は字数で切らず、マスに入るだけ出して「…」（前は 3〜4字で「..」）
+                   ・ほかの件数は灰の丸ではなく、種類のしるし（リスト・メモ・計画）ごとの数 */
+                const col = i % 7;
+                const wk = weekRows[Math.floor(i / 7)];
+                /* 10.49.0〜 空けておく段は、そのマスにかかる帯のうち一番下の段まで。帯のない日は空けない
+                   （前は週の段ぜんぶで空けていたので、帯のない日も予定や件数が1段ぶん下がり、日によって高さがちがって見えた）。
+                   帯の高さは、かかる日どうしで同じ段数ぶん上を空けるので、そろったまま */
+                const laneN = wk.bars.filter((y) => y.a <= col && y.b >= col).reduce((m, y) => Math.max(m, y.lane + 1), 0);
+                const lanes = Array.from({ length: laneN }, (_, L) => {
+                    const x = wk.bars.find((y) => y.lane === L && y.a <= col && y.b >= col);
+                    if (!x)
+                        return react_1.default.createElement("span", { key: "L" + L, className: "ft-mv-ln" });
+                    const c = calColor(x.r);
+                    const openL = col > x.a || (col === x.a && x.openL);
+                    const openR = col < x.b || (col === x.b && x.openR);
+                    const showTitle = col === x.a;
+                    return react_1.default.createElement("span", { key: "L" + L, className: "ft-mv-ln bar" + (openL ? " ol" : "") + (openR ? " or" : ""), style: { background: c.soft, color: c.deep } },
+                        /* 名前は帯の長さいっぱいまで出す（週の段の中で、続く日のマスへはみ出して書く） */
+                        showTitle ? react_1.default.createElement("span", { className: "t", style: { width: `calc(${(x.b - col + 1) * 100}% + ${(x.b - col) * 5}px - 6px)` } }, (recordTitle(x.r) || "予定") + (dueOf(x.r) ? "〆" : "")) : null);
                 });
+                const singles = [
+                    ...records.filter((r) => isDayRec(r) && !spansDays(r) && (dueOf(r) ? (!listAllDone(r) && calShows(r, ds)) : r.type === "schedule") && coversDay(r, ds)),
+                    ...records.filter((r) => isDayRec(r) && r.type === "schedule" && !spansDays(r) && repeatsOn(r, ds) && !madeHere.has(r.id)),
+                ].sort(compareTimeline);
                 const isToday = ds === today;
                 const isSel = ds === sel;
                 const dow = (firstDow + d - 1) % 7;
-                return (react_1.default.createElement("button", { key: ds, type: "button", onClick: () => setSel(ds), className: "min-h-[40px] border-b border-r border-neutral-100 px-0.5 pt-1 pb-1 flex flex-col items-stretch text-left ft-tap "
+                const rest = dayRecordsOf(records, ds).filter((r) => !(r.type === "schedule" || spansDays(r) || dueOf(r)));
+                const nList = rest.filter((r) => r.type === "checklist").length, nMemo = rest.length - nList, nPlan = planDayItems(planCtx.plans, ds).length;
+                /* 1件のときは数を書かない（しるしだけ）。2件から数を添える。縦の細いマスでも日付の右に収めるため */
+                const cnt = (t, n) => n > 0 ? react_1.default.createElement("span", { key: t, className: "c" }, typeIcon(t, fill ? 11 : 9), n > 1 ? n : null) : null;
+                return (react_1.default.createElement("button", { key: ds, type: "button", onClick: () => setSel(ds), "aria-label": fmtDate(ds), className: "min-h-[40px] border-b border-r border-neutral-100 px-0.5 pt-1 pb-1 flex flex-col items-stretch text-left ft-tap "
                         + (isSel ? "bg-th-50" : "hover:bg-neutral-50") },
-                    react_1.default.createElement("span", { className: "flex justify-center mb-0.5" },
-                        react_1.default.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center fs-caption tabular-nums "
-                                + (isToday ? "bg-th-800 text-white font-bold" : (isSel ? "font-bold " : "") + weekColor(dow)) }, d)),
-                    react_1.default.createElement("span", { className: "space-y-[2px]" }, sched.map((r) => {
-                        /* **予定だけ別あつかいにしないこと。** 札で見た色と、
-                           カレンダーで見る色が食い違うと、どれがどれだか分からない */
-                        const c = (r.type === "schedule" && slotColor(r.color)) || colorOf(colorMap[r.type]);
-                        const part = spanPart(r, ds);
-                        /* 日をまたぐ予定は、**1本の帯につなげて見せる。**
-                           マスの境目の線は、左右へはみ出して覆い隠す。
-                           週をまたいで段が変わったら、その段のはじめに題をもう一度出す */
-                        const headOfRow = new Date(ds + "T00:00:00").getDay() === 0;
-                        const showTitle = !part || part === "start" || headOfRow;
-                        const openL = part === "mid" || part === "end";
-                        const openR = part === "mid" || part === "start";
-                        return (react_1.default.createElement("span", { key: r.id + part, className: "block fs-micro leading-[13px] whitespace-nowrap overflow-hidden", style: {
-                                background: part ? c.mid : c.soft,
-                                color: part ? "#FFFFFF" : c.deep,
-                                borderRadius: `${openL ? 0 : 3}px ${openR ? 0 : 3}px ${openR ? 0 : 3}px ${openL ? 0 : 3}px`,
-                                paddingLeft: openL ? 1 : 3,
-                                paddingRight: openR ? 1 : 3,
-                                marginLeft: openL ? -2 : 0,
-                                marginRight: openR ? -2 : 0,
-                                letterSpacing: "-0.02em",
-                                ...(dueOf(r) ? { background: "#fff", boxShadow: `inset 0 0 0 1px ${c.mid}` } : {}),
-                            } }, showTitle ? shortTitle(recordTitle(r) || "予定", fill ? 9 : (dueOf(r) ? 3 : 4)) + (dueOf(r) ? "〆" : "") : "\u00A0"));
-                    }), planGoalsOn(planCtx.plans, ds).map((pl) => { const c = planColorOf(pl, planCol); return react_1.default.createElement("span", { key: "g" + pl.id, className: "block fs-micro leading-[13px] whitespace-nowrap overflow-hidden ft-goalchip", style: { color: c.deep, borderColor: c.mid } }, shortTitle(pl.name || "計画", fill ? 8 : 3)); })),
-                    (() => { const n = dayRecordsOf(records, ds).filter((r) => !(r.type === "schedule" || spansDays(r) || dueOf(r))).length + planDayItems(planCtx.plans, ds).length; return n > 0 ? react_1.default.createElement("span", { className: "ft-mv-more tabular-nums", "aria-label": `ほか${n}件` }, react_1.default.createElement("i", null), n) : null; })()));
+                    react_1.default.createElement("span", { className: "flex h-6 mb-0.5 items-center justify-start gap-1 min-w-0" },
+                        /* 件数のしるしは、縦でも横でも日付の右（10.49.0〜。前は縦だけ帯の下で、日によって高さがちがった） */
+                        /* 今日は丸（数字の長さに合わせた丸み）。数字の左はほかと同じ線にくるよう、丸を左へ出す */
+                        react_1.default.createElement("span", { className: "h-5 rounded-full flex items-center fs-caption tabular-nums shrink-0 "
+                                + (isToday ? "bg-th-800 text-white font-bold" : (isSel ? "font-bold " : "") + weekColor(dow)), style: isToday ? { padding: "0 6px", marginLeft: -4 } : { paddingLeft: 2 } }, d),
+                        /* 横長はマスが低いので、件数は日付の右に（下に置くと、予定の多い週で切れて見えなくなる） */
+                        nList + nMemo + nPlan > 0 ? react_1.default.createElement("span", { className: "ft-mv-more top tabular-nums", "aria-label": `ほか${nList + nMemo + nPlan}件` }, cnt("checklist", nList), cnt("memo", nMemo), cnt("plan", nPlan)) : null),
+                    lanes.length ? react_1.default.createElement("span", { className: "ft-mv-lanes" }, lanes) : null,
+                    react_1.default.createElement("span", { className: "ft-mv-its" },
+                        singles.map((r) => {
+                            const c = calColor(r);
+                            const due = dueOf(r);
+                            return react_1.default.createElement("span", { key: r.id + (r.__repeat ? "r" : ""), className: "ft-mv-it", style: { color: c.deep } },
+                                /* 〆だけが次の行へ落ちないよう、最後の1字とくっつける */
+                                due ? [...(recordTitle(r) || "予定")].slice(0, -1).join("") : (recordTitle(r) || "予定"),
+                                due ? react_1.default.createElement("span", { className: "nw" }, [...(recordTitle(r) || "予定")].slice(-1).join(""), react_1.default.createElement("b", { className: "dl" }, "〆")) : null);
+                        }),
+                        planGoalsOn(planCtx.plans, ds).map((pl) => { const c = planColorOf(pl, planCol); return react_1.default.createElement("span", { key: "g" + pl.id, className: "ft-mv-it", style: { color: c.deep } }, "◎", pl.name || "計画"); })),
+                    null));
             })))));
 }
 /* ============================================================
@@ -29836,13 +29854,50 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .ft-wv.fill .ft-wv-row { min-height: 60px; }
 /* 横長の面の子に付く決まり（高さいっぱい・内側の余白）を打ち消す。箱は中身なりの高さ、段は箱のふちいっぱい */
 .ft-wmain > .ft-wv.fill { height: auto; min-height: 0; padding: 0; }
+/* 月のマス（10.46.0〜 週の一覧にそろえる。10.47.0〜 字を小さく・飾りを減らして、名前を多く見せる） */
+.ft-mv-lanes, .ft-mv-its { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ft-mv-its:not(:empty) { margin-top: 2px; }
+.ft-mv-ln { position: relative; display: flex; align-items: center; height: 13px; min-width: 0; border-radius: 3px; padding: 0 2px; font-size: 9px; line-height: 13px; font-weight: 700; letter-spacing: -0.04em; }
+.ft-mv-ln.ol { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -3px; }
+.ft-mv-ln.or { border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: -3px; }
+.ft-mv-ln > .t { position: absolute; left: 2px; top: 0; z-index: 1; overflow: hidden; text-overflow: clip; white-space: nowrap; pointer-events: none; }
+.ft-mv-ln.ol > .t { left: 5px; }
+/* iPad 縦（マスが広い）は、横長と同じ字の大きさ */
+@media (min-width: 700px) {
+  .ft-mv-ln { height: 15px; line-height: 15px; font-size: 10.5px; }
+  .ft-mv-it { font-size: 10.5px; line-height: 13px; }
+  .ft-mv-more { font-size: 10px; }
+}
+/* その日だけのもの：地も枠も丸も付けない。色の字だけで、2行まで折り返す（字で切って「…」にしない） */
+.ft-mv-it { display: block; min-width: 0; padding: 0 1px 0 2px; font-size: 9px; line-height: 11px; letter-spacing: -0.04em; word-break: break-all; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.ft-mv-it > .dl { font-weight: 700; }
+.ft-mv-more { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0 4px; margin-top: 3px; padding-left: 2px; font-size: 9px; line-height: 1; color: #A9B1B7; }
+.ft-mv-more > .c { display: inline-flex; align-items: center; gap: 1px; }
+.ft-mv-more > .c > svg { flex: none; }
+.ft-mv-grid > button { overflow-x: visible; }
+.ft-mv.fill .ft-mv-grid > button { overflow: visible; overflow-y: clip; }
+.ft-mv.fill .ft-mv-ln { height: 15px; line-height: 15px; font-size: 10.5px; }
+.ft-mv.fill .ft-mv-it { font-size: 10.5px; line-height: 13px; }
+/* iPhone 横（高さが低い）：6段を高さに押し込むと、予定が途中で切れて読めない。段は中身の高さにして、面ごと縦に送る */
+@media (max-height: 520px) {
+  .ft-wmain:has(> .ft-mv.fill) { overflow-y: auto; padding-bottom: 16px; }
+  .ft-mv.fill { height: auto; }
+  .ft-mv.fill .ft-mv-card, .ft-mv.fill .ft-mv-grid { flex: none; }
+  .ft-mv.fill .ft-mv-grid { grid-template-rows: none !important; }
+  .ft-mv.fill .ft-mv-grid > * { min-height: 56px; overflow: visible; }
+}
+.ft-mv-it > .nw { white-space: nowrap; }
+.ft-mv-more.top { flex-wrap: nowrap; overflow: hidden; margin: 0; padding: 0; gap: 0 3px; min-width: 0; }
+.ft-mv-more.top > .c { gap: 0; }
+.ft-mv.fill .ft-mv-more.top { gap: 0 4px; font-size: 10px; }
+.ft-mv.fill .ft-mv-more.top > .c { gap: 1px; }
 /* iPhone の週の一覧（10.34.0〜。WeekBoard の rows && !fill。10.45.0 から横長も） */
 .ft-wv { display: flex; flex-direction: column; background: #fff; border: 1px solid #E6E6E9; border-radius: 16px; overflow: hidden; }
 .ft-wv-row { position: relative; display: flex; align-items: stretch; width: 100%; min-height: 56px; text-align: left; border-top: 1px solid #EEF1F3; background: #fff; border-radius: 0; }
 .ft-wv-row:first-child { border-top: 0; }
 .ft-wv-row.we { background: #FAFBFC; }
 .ft-wv-row.sel { background: var(--th-50, #EEF6FB); }
-.ft-wv-row .ft-wr-d { width: 50px; padding: 8px 0; gap: 3px; justify-content: flex-start; }
+.ft-wv-row .ft-wr-d { width: 50px; padding: 8px 0; gap: 3px; justify-content: center; }
 .ft-wv-row .ft-wr-d .n { width: 30px; height: 30px; font-size: calc(var(--fs-subhead) * var(--ft-scale)); }
 .ft-wv-row.t .ft-wr-d .n { background: var(--th-800, #3E7EA6); color: #fff; }
 .ft-wv-row.sel:not(.t) .ft-wr-d .n { box-shadow: 0 0 0 2px var(--th-300, #9FCBE3); background: #fff; }
