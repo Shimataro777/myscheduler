@@ -25702,9 +25702,10 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
                         + (isSel ? "bg-th-50" : "hover:bg-neutral-50") },
                     react_1.default.createElement("span", { className: "flex h-6 mb-0.5 items-center justify-start gap-1 min-w-0" },
                         /* 件数のしるしは、縦でも横でも日付の右（10.49.0〜。前は縦だけ帯の下で、日によって高さがちがった） */
-                        /* 今日は丸（数字の長さに合わせた丸み）。数字の左はほかと同じ線にくるよう、丸を左へ出す */
-                        react_1.default.createElement("span", { className: "h-5 rounded-full flex items-center fs-caption tabular-nums shrink-0 "
-                                + (isToday ? "bg-th-800 text-white font-bold" : (isSel ? "font-bold " : "") + weekColor(dow)), style: isToday ? { padding: "0 6px", marginLeft: -4 } : { paddingLeft: 2 } }, d),
+                        /* 10.51.0〜 日付は、どの日も 24px の正方形の箱のまん中（今日はその箱がまるい丸になる。1桁でも2桁でも同じ丸）。
+                           箱はマスの内側に置く（前は今日の丸を数字の長さに合わせた横長にし、左へ出していたので、楕円になり枠からはみ出た） */
+                        react_1.default.createElement("span", { className: "w-6 h-6 rounded-full flex items-center justify-center fs-caption tabular-nums shrink-0 "
+                                + (isToday ? "bg-th-800 text-white font-bold" : (isSel ? "font-bold " : "") + weekColor(dow)), style: { letterSpacing: "-0.03em", width: "max(24px, 2em)", height: "max(24px, 2em)" } }, d),
                         /* 横長はマスが低いので、件数は日付の右に（下に置くと、予定の多い週で切れて見えなくなる） */
                         nList + nMemo + nPlan > 0 ? react_1.default.createElement("span", { className: "ft-mv-more top tabular-nums", "aria-label": `ほか${nList + nMemo + nPlan}件` }, cnt("checklist", nList), cnt("memo", nMemo), cnt("plan", nPlan)) : null),
                     lanes.length ? react_1.default.createElement("span", { className: "ft-mv-lanes" }, lanes) : null,
