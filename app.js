@@ -28594,11 +28594,8 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
     const [confirmRestore, setConfirmRestore] = (0, react_1.useState)(null);
     const fileRef = (0, react_1.useRef)(null);
     const [busy, setBusy] = (0, react_1.useState)(false);
-    /* 書き出しの決めごと */
-    const [withPhotos, setWithPhotos] = (0, react_1.useState)(true);
-    const [lock, setLock] = (0, react_1.useState)(false);
-    const [pass, setPass] = (0, react_1.useState)("");
-    const [pass2, setPass2] = (0, react_1.useState)("");
+    /* 10.56.0〜 書き出しの決めごと（写真をふくめる・合言葉でロック）はやめた。いつも写真ごと、ロックなしで書き出す。
+       ロックした古いファイルは、読み込むときに今までどおり合言葉を聞いて開ける */
     const [askPass, setAskPass] = (0, react_1.useState)(null); // 読み込むときに合言葉を聞く
     const [room, setRoom] = (0, react_1.useState)(null); // 端末の空き具合
     /* 写真もふくめて書き出したときのファイルの大きさ（2.20.4〜）。
@@ -28635,31 +28632,12 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
        .json は iPhone でも Android でも扱える */
     /* **日付を名前に入れないこと。** 出すたびに別の控えが増えて、
        写真のぶんだけ端末が重くなる。いつも同じ名前で、置き換えていく */
-    const baseName = `${APP_NAME}-backup${lock ? "-locked" : ""}`;
+    const baseName = `${APP_NAME}-backup`;
     const canPickFolder = typeof window !== "undefined" && !!window.showSaveFilePicker;
-    const makeText = async () => {
-        const text = await buildBackup(data, withPhotos);
-        if (!lock)
-            return text;
-        return lockText(text, pass);
-    };
+    const makeText = () => buildBackup(data, true);
     /* 出し方は3つ。**ひとつしか道を用意しないこと。**
        端末によって使えるものが違う（iPhoneは共有、Androidは保存先えらび） */
     const doExport = async (how) => {
-        if (lock) {
-            if (!cryptoOk()) {
-                tell("この端末ではロックが使えません");
-                return;
-            }
-            if (pass.length < 4) {
-                tell("合言葉は4文字以上にしてください");
-                return;
-            }
-            if (pass !== pass2) {
-                tell("合言葉が一致しません");
-                return;
-            }
-        }
         setBusy(true);
         try {
             const text = await makeText();
@@ -28783,49 +28761,28 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                         fmtDate(backupAt.slice(0, 10))))),
                 needBackup && (react_1.default.createElement("div", { className: "rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 mb-5" },
                     react_1.default.createElement("p", { className: "fs-body-sm font-bold text-amber-800" }, backupAt ? `前回の書き出しのあとに、${unsavedCount || 0}件書きかえがあります` : "まだ一度も書き出していません"))),
-                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
-                    react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "\u66F8\u304D\u51FA\u3059"),
-                    react_1.default.createElement(HelpTip, { label: "\u66F8\u304D\u51FA\u3059", text: "\u300C\u5199\u771F\u3082\u3075\u304F\u3081\u308B\u300D\u3092\u5207\u308B\u3068\u8EFD\u304F\u306A\u308A\u307E\u3059\u304C\u3001\u623B\u3057\u3066\u3082\u5199\u771F\u306F\u51FA\u307E\u305B\u3093\u3002" })),
-                react_1.default.createElement(RowCard, { className: "mb-3" },
-                    react_1.default.createElement(SheetRow, { label: "\u5199\u771F\u3082\u3075\u304F\u3081\u308B" },
-                        react_1.default.createElement(Switch, { on: withPhotos, onChange: setWithPhotos, label: "\u5199\u771F\u3082\u3075\u304F\u3081\u308B" })),
-                    react_1.default.createElement(SheetRow, { label: "\u5408\u8A00\u8449\u3067\u30ED\u30C3\u30AF\u3059\u308B", last: !lock, help: "\u30D5\u30A1\u30A4\u30EB\u306E\u4E2D\u8EAB\u304C\u8AAD\u3081\u306A\u304F\u306A\u308A\u307E\u3059\u3002\u5408\u8A00\u8449\u3092\u5FD8\u308C\u308B\u3068\u3001\u4E8C\u5EA6\u3068\u958B\u3051\u307E\u305B\u3093\u3002" },
-                        react_1.default.createElement(Switch, { on: lock, onChange: (v) => { setLock(v); if (!v) {
-                                setPass("");
-                                setPass2("");
-                            } }, label: "\u5408\u8A00\u8449\u3067\u30ED\u30C3\u30AF\u3059\u308B" })),
-                    lock && (react_1.default.createElement("div", { className: "px-4 pt-1 pb-4 space-y-2.5 ft-open" },
-                        react_1.default.createElement(TextInput, { value: pass, onChange: (e) => setPass(e.target.value), type: "password", placeholder: "\u5408\u8A00\u8449\uFF084\u6587\u5B57\u4EE5\u4E0A\uFF09" }),
-                        react_1.default.createElement(TextInput, { value: pass2, onChange: (e) => setPass2(e.target.value), type: "password", placeholder: "\u3082\u3046\u4E00\u5EA6" })))),
-                react_1.default.createElement("div", { className: "space-y-3 mb-5" },
-                    canPickFolder && (react_1.default.createElement("button", { type: "button", onClick: () => doExport("pick"), disabled: busy, ...pressProps("pick"), className: BTN_PRIMARY + " w-full btn-h-lg fs-subhead" + pressCls("pick") },
-                        busy ? react_1.default.createElement(Spinner, { size: 16 }) : react_1.default.createElement(lucide_react_1.Download, { size: 18 }),
-                        " \u4FDD\u5B58\u5148\u3092\u9078\u3093\u3067\u66F8\u304D\u51FA\u3059")),
-                    react_1.default.createElement("button", { type: "button", onClick: () => doExport("share"), disabled: busy, ...pressProps("share"), className: (canPickFolder ? BTN_SECONDARY : BTN_PRIMARY) + " w-full btn-h-lg fs-subhead" + pressCls("share") },
-                        busy ? react_1.default.createElement(Spinner, { size: 16 }) : react_1.default.createElement(lucide_react_1.Upload, { size: 17, className: "rotate-180" }),
-                        " \u9001\u308B\u30FB\u4FDD\u5B58\u3059\u308B"),
-                    react_1.default.createElement("button", { type: "button", onClick: async () => {
-                            if (lock) {
-                                tell("ロックしたものは、文字ではコピーできません");
-                                return;
-                            }
-                            const ok = await copyToClipboard(await buildBackup(data, false));
-                            tell(ok ? "コピーしました" : "コピーできませんでした");
-                        }, ...pressProps("copy"), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" + pressCls("copy") },
-                        react_1.default.createElement(lucide_react_1.Copy, { size: 17 }),
-                        " \u6587\u5B57\u3067\u30B3\u30D4\u30FC\u3059\u308B")),
-                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-2" },
-                    react_1.default.createElement("h3", { className: "head-bar font-display fs-subhead text-neutral-900" }, "\u8AAD\u307F\u8FBC\u3080"),
-                    react_1.default.createElement(HelpTip, { label: "\u8AAD\u307F\u8FBC\u3080", text: "\u3044\u307E\u306E\u8A18\u9332\u306F\u3059\u3079\u3066\u7F6E\u304D\u63DB\u308F\u308A\u307E\u3059\u3002" })),
+                /* 10.56.0〜 ボタンは4つだけ：送る・保存する／ファイルから読み込む／文字でコピーする・文字から読み込む（半分ずつ）。
+                   「書き出す」「読み込む」の見出しと、写真・ロックの切り替えはやめた。
+                   **ボタンを足さないこと（持ち主の指示）。** 保存先を選べる端末（パソコンの Chrome など）は、同じボタンで保存先えらびになる */
                 react_1.default.createElement("input", { ref: fileRef, type: "file", className: "hidden", onChange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f)
                         readFile(f); } }),
                 react_1.default.createElement("div", { className: "space-y-3" },
+                    react_1.default.createElement("button", { type: "button", onClick: () => doExport(canPickFolder ? "pick" : "share"), disabled: busy, ...pressProps("share"), className: BTN_PRIMARY + " w-full btn-h-lg fs-subhead" + pressCls("share") },
+                        busy ? react_1.default.createElement(Spinner, { size: 16 }) : react_1.default.createElement(lucide_react_1.Download, { size: 18 }),
+                        " \u9001\u308B\u30FB\u4FDD\u5B58\u3059\u308B"),
                     react_1.default.createElement("button", { type: "button", onClick: () => fileRef.current && fileRef.current.click(), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" },
                         react_1.default.createElement(lucide_react_1.Upload, { size: 17 }),
                         " \u30D5\u30A1\u30A4\u30EB\u304B\u3089\u8AAD\u307F\u8FBC\u3080"),
-                    react_1.default.createElement("button", { type: "button", onClick: () => setPasteOpen(true), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" },
-                        react_1.default.createElement(lucide_react_1.ClipboardPaste, { size: 17 }),
-                        " \u6587\u5B57\u304B\u3089\u8AAD\u307F\u8FBC\u3080"))),
+                    react_1.default.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                        react_1.default.createElement("button", { type: "button", onClick: async () => {
+                                const ok = await copyToClipboard(await buildBackup(data, false));
+                                tell(ok ? "コピーしました" : "コピーできませんでした");
+                            }, ...pressProps("copy"), className: BTN_SECONDARY + " w-full btn-h-lg fs-body px-2 whitespace-nowrap" + pressCls("copy") },
+                            react_1.default.createElement(lucide_react_1.Copy, { size: 16 }),
+                            " \u6587\u5B57\u3067\u30B3\u30D4\u30FC\u3059\u308B"),
+                        react_1.default.createElement("button", { type: "button", onClick: () => setPasteOpen(true), className: BTN_SECONDARY + " w-full btn-h-lg fs-body px-2 whitespace-nowrap" },
+                            react_1.default.createElement(lucide_react_1.ClipboardPaste, { size: 16 }),
+                            " \u6587\u5B57\u304B\u3089\u8AAD\u307F\u8FBC\u3080")))),
             askPass && (react_1.default.createElement(SheetDialog, { title: "\u5408\u8A00\u8449\u3092\u5165\u308C\u3066\u304F\u3060\u3055\u3044", confirmLabel: "\u3072\u3089\u304F", onCancel: () => setAskPass(null), onConfirm: () => openLocked(askPass.obj, askPass.pass) },
                 react_1.default.createElement("p", { className: "fs-body-sm text-neutral-600 leading-relaxed mb-3" }, "\u3053\u306E\u30D5\u30A1\u30A4\u30EB\u306F\u30ED\u30C3\u30AF\u3055\u308C\u3066\u3044\u307E\u3059\u3002\u66F8\u304D\u51FA\u3057\u305F\u3068\u304D\u306E\u5408\u8A00\u8449\u3092\u5165\u308C\u3066\u304F\u3060\u3055\u3044\u3002"),
                 react_1.default.createElement(TextInput, { value: askPass.pass, type: "password", autoFocus: true, placeholder: "\u5408\u8A00\u8449", onChange: (e) => setAskPass({ ...askPass, pass: e.target.value }), onKeyDown: (e) => { if (e.key === "Enter")
