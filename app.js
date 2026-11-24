@@ -24891,7 +24891,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
             /* 時刻のある記録は、左のふちを色で塗って、上下の札とつなげる */
             style: !selectMode && (lineUp || lineDown || r.pinned)
                 ? { boxShadow: `inset 3px 0 0 ${color.mid}` } : undefined },
-            react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-0.5" },
+            react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-0.5 ft-rec-hd" },
                 react_1.default.createElement("span", { className: "shrink-0 flex", style: { color: color.deep } }, typeIcon(r.type, 15)),
                 showDate && r.date && r.scope !== "stock" && (react_1.default.createElement("span", { className: "fs-label font-bold tabular-nums", style: { color: color.deep } }, shortDate(r.date))),
                 dueOf(r) ? react_1.default.createElement(DueBadge, { r: r, color: color, onToggle: onToggleItem && !selectMode ? () => onToggleItem(r, "__due") : null }) : t && (isAllDay(r)
@@ -24907,7 +24907,7 @@ function RecordRow({ r, onEdit, onToggleItem, repeated, selectMode, selectable =
                     Number(r.endDate.slice(8, 10)))),
                 repeated && react_1.default.createElement(lucide_react_1.Repeat, { size: 12, className: "text-neutral-300 shrink-0" }),
                 react_1.default.createElement("span", { className: "flex-1" }),
-                !selectMode && (react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-1.5 -mt-1.5 shrink-0" },
+                !selectMode && (react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-1.5 -mt-1.5 shrink-0 ft-rec-btns" },
                     onPin && !r.__repeat && (react_1.default.createElement(TapOnceButton, { onTap: () => onPin(r), "aria-label": r.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!r.pinned, 
                         /* まるい皿にのせて、押せるものだと分かるようにする */
                         className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: r.pinned
@@ -25697,7 +25697,7 @@ function MonthView({ year, month, records, onOpenDay, onToggleItem, onEdit, onPi
                 const rest = dayRecordsOf(records, ds).filter((r) => !(r.type === "schedule" || spansDays(r) || dueOf(r)));
                 const nList = rest.filter((r) => r.type === "checklist").length, nMemo = rest.length - nList, nPlan = planDayItems(planCtx.plans, ds).length;
                 /* 件数は書かない（10.50.0〜。しるしだけ。あれば出る） */
-                const cnt = (t, n) => n > 0 ? react_1.default.createElement("span", { key: t, className: "c" }, typeIcon(t, fill ? 11 : 9), null) : null;
+                const cnt = (t, n) => n > 0 ? react_1.default.createElement("span", { key: t, className: "c" }, typeIcon(t, fill ? 11 : 8), null) : null;
                 return (react_1.default.createElement("button", { key: ds, type: "button", onClick: () => setSel(ds), "aria-label": fmtDate(ds), className: "min-h-[40px] border-b border-r border-neutral-100 px-0.5 pt-1 pb-1 flex flex-col items-stretch text-left ft-tap "
                         + (isSel ? "bg-th-50" : "hover:bg-neutral-50") },
                     react_1.default.createElement("span", { className: "flex h-6 mb-0.5 items-center justify-start gap-1 min-w-0" },
@@ -27164,13 +27164,13 @@ function StepCard({ step, onChange, onUpdate, onEdit, onPin, inset }) {
             react_1.default.createElement("div", null,
                 /* 見出しの段：しるし・期限の札 …… 固定・編集。
                    **リスト記録カード（RecordRow）の上段と同じ並びにそろえる。** */
-                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-0.5" },
+                react_1.default.createElement("div", { className: "flex items-center gap-1.5 mb-0.5 ft-rec-hd" },
                     react_1.default.createElement("span", { className: "shrink-0 flex", style: { color: color.deep } }, typeIcon(STEP_TYPE, 15)),
                     step.dueDate && !allDone && (react_1.default.createElement("span", { className: "fs-body-sm font-bold tabular-nums rounded-lg px-2 py-[3px] leading-tight", style: leftStyle }, stepLeftLabel(left))),
                     step.dueDate && (react_1.default.createElement("span", { className: "fs-label tabular-nums text-neutral-400" }, shortDate(step.dueDate))),
                     !step.dueDate && react_1.default.createElement("span", { className: "fs-label text-neutral-400" }, "期限なし"),
                     react_1.default.createElement("span", { className: "flex-1" }),
-                    react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-1.5 -mt-1.5 shrink-0" },
+                    react_1.default.createElement("span", { className: "flex items-center gap-0.5 -mr-1.5 -mt-1.5 shrink-0 ft-rec-btns" },
                         onPin && (react_1.default.createElement(TapOnceButton, { onTap: () => onPin(step), "aria-label": step.pinned ? "固定を解除" : "上に固定", "aria-pressed": !!step.pinned, className: "w-8 h-8 flex items-center justify-center rounded-full ft-tap ft-tap-icon", style: step.pinned ? { background: color.soft, color: color.deep } : { background: "#F3F3F5", color: "#9A9AA0" } },
                             react_1.default.createElement("span", { key: step.pinned ? "on" : "off", className: "flex " + (step.pinned ? "ft-mark" : "") },
                                 react_1.default.createElement(lucide_react_1.Pin, { size: 16, fill: step.pinned ? "currentColor" : "none" })))),
@@ -29867,6 +29867,15 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
   .ft-wbar-nav > div > button:first-child { padding: 0 4px; gap: 2px; }
   .ft-wbar-nav > div > button:last-child { padding: 0 10px; }
 }
+/* 記録の札の見出しの段（10.52.0〜）。
+   固定・編集（メモは引用も）のボタンは、札の右上に置いたまま動かさない。左の札（済み・期限・日付）は、その手前で折り返す。
+   前は1行に並べて縮めなかったので、細い札（iPhone 横の右の面など）では、鉛筆が札の外へはみ出た */
+.ft-rec-hd { flex-wrap: wrap; row-gap: 2px; min-height: 26px; padding-right: 62px; }
+.ft-rec-hd:has(> .ft-rec-btns > :nth-child(3)) { padding-right: 96px; }
+.ft-rec-hd:has(> .ft-rec-btns > :only-child) { padding-right: 28px; }
+.ft-rec-hd:not(:has(> .ft-rec-btns)) { padding-right: 0; }
+.ft-rec-hd > .ft-rec-btns { position: absolute; top: 8px; right: 10px; margin: 0; }
+.ft-rec-hd > .flex-1 { display: none; }
 /* 月のマス（10.46.0〜 週の一覧にそろえる。10.47.0〜 字を小さく・飾りを減らして、名前を多く見せる） */
 .ft-mv-lanes, .ft-mv-its { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .ft-mv-its:not(:empty) { margin-top: 2px; }
@@ -29900,7 +29909,7 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
   .ft-mv.fill .ft-mv-grid > * { min-height: 56px; overflow: visible; }
 }
 .ft-mv-it > .nw { white-space: nowrap; }
-.ft-mv-more.top { flex-wrap: nowrap; overflow: hidden; margin: 0; padding: 0; gap: 0 3px; min-width: 0; }
+.ft-mv-more.top { flex-wrap: nowrap; overflow: hidden; margin: 0 0 0 -2px; padding: 0; gap: 0 2px; min-width: 0; }
 .ft-mv-more.top > .c { gap: 0; }
 .ft-mv.fill .ft-mv-more.top { gap: 0 4px; font-size: 10px; }
 .ft-mv.fill .ft-mv-more.top > .c { gap: 1px; }
