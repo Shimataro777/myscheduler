@@ -28763,24 +28763,26 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                     react_1.default.createElement("p", { className: "fs-body-sm font-bold text-amber-800" }, backupAt ? `前回の書き出しのあとに、${unsavedCount || 0}件書きかえがあります` : "まだ一度も書き出していません"))),
                 /* 10.56.0〜 ボタンは4つだけ：送る・保存する／ファイルから読み込む／文字でコピーする・文字から読み込む（半分ずつ）。
                    「書き出す」「読み込む」の見出しと、写真・ロックの切り替えはやめた。
-                   **ボタンを足さないこと（持ち主の指示）。** 保存先を選べる端末（パソコンの Chrome など）は、同じボタンで保存先えらびになる */
+                   **ボタンを足さないこと（持ち主の指示）。**
+                   10.56.1〜 大きさはボタンのマスターにそろえる：主ボタンだけ btn-h-lg＋fs-subhead（Google連携の主ボタンと同じ）、
+                   ほかは BTN_H＋fs-body。2つ並びは flex gap-2＋flex-1（Google連携の「ログインして同期／連携を解除」と同じ） 保存先を選べる端末（パソコンの Chrome など）は、同じボタンで保存先えらびになる */
                 react_1.default.createElement("input", { ref: fileRef, type: "file", className: "hidden", onChange: (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f)
                         readFile(f); } }),
                 react_1.default.createElement("div", { className: "space-y-3" },
                     react_1.default.createElement("button", { type: "button", onClick: () => doExport(canPickFolder ? "pick" : "share"), disabled: busy, ...pressProps("share"), className: BTN_PRIMARY + " w-full btn-h-lg fs-subhead" + pressCls("share") },
                         busy ? react_1.default.createElement(Spinner, { size: 16 }) : react_1.default.createElement(lucide_react_1.Download, { size: 18 }),
                         " \u9001\u308B\u30FB\u4FDD\u5B58\u3059\u308B"),
-                    react_1.default.createElement("button", { type: "button", onClick: () => fileRef.current && fileRef.current.click(), className: BTN_SECONDARY + " w-full btn-h-lg fs-subhead" },
-                        react_1.default.createElement(lucide_react_1.Upload, { size: 17 }),
+                    react_1.default.createElement("button", { type: "button", onClick: () => fileRef.current && fileRef.current.click(), className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body" },
+                        react_1.default.createElement(lucide_react_1.Upload, { size: 16 }),
                         " \u30D5\u30A1\u30A4\u30EB\u304B\u3089\u8AAD\u307F\u8FBC\u3080"),
-                    react_1.default.createElement("div", { className: "grid grid-cols-2 gap-3" },
+                    react_1.default.createElement("div", { className: "flex gap-2" },
                         react_1.default.createElement("button", { type: "button", onClick: async () => {
                                 const ok = await copyToClipboard(await buildBackup(data, false));
                                 tell(ok ? "コピーしました" : "コピーできませんでした");
-                            }, ...pressProps("copy"), className: BTN_SECONDARY + " w-full btn-h-lg fs-body px-2 whitespace-nowrap" + pressCls("copy") },
+                            }, ...pressProps("copy"), className: BTN_SECONDARY + " flex-1 min-w-0 " + BTN_H + " fs-body" + pressCls("copy") },
                             react_1.default.createElement(lucide_react_1.Copy, { size: 16 }),
                             " \u6587\u5B57\u3067\u30B3\u30D4\u30FC\u3059\u308B"),
-                        react_1.default.createElement("button", { type: "button", onClick: () => setPasteOpen(true), className: BTN_SECONDARY + " w-full btn-h-lg fs-body px-2 whitespace-nowrap" },
+                        react_1.default.createElement("button", { type: "button", onClick: () => setPasteOpen(true), className: BTN_SECONDARY + " flex-1 min-w-0 " + BTN_H + " fs-body" },
                             react_1.default.createElement(lucide_react_1.ClipboardPaste, { size: 16 }),
                             " \u6587\u5B57\u304B\u3089\u8AAD\u307F\u8FBC\u3080")))),
             askPass && (react_1.default.createElement(SheetDialog, { title: "\u5408\u8A00\u8449\u3092\u5165\u308C\u3066\u304F\u3060\u3055\u3044", confirmLabel: "\u3072\u3089\u304F", onCancel: () => setAskPass(null), onConfirm: () => openLocked(askPass.obj, askPass.pass) },
