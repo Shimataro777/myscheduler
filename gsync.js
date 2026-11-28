@@ -20,11 +20,13 @@ var GSync = (() => {
   // gsync.src.mjs
   var gsync_src_exports = {};
   __export(gsync_src_exports, {
+    BACKUP_FOLDER: () => BACKUP_FOLDER,
     BACKUP_KEEP: () => BACKUP_KEEP,
     BACKUP_PREFIX: () => BACKUP_PREFIX,
     DATA_FILE: () => DATA_FILE,
     FOOTPRINTS_SCHEMA: () => FOOTPRINTS_SCHEMA,
     MYTECHO_SCHEMA: () => MYTECHO_SCHEMA,
+    PHOTO_PACK_PREFIX: () => PHOTO_PACK_PREFIX,
     PHOTO_PREFIX: () => PHOTO_PREFIX,
     SCOPE: () => SCOPE,
     SYNC_FOLDER: () => SYNC_FOLDER,
@@ -46,8 +48,12 @@ var GSync = (() => {
   var SYNC_FOLDER = "Footprints-Sync";
   var DATA_FILE = "footprints-sync.json";
   var PHOTO_PREFIX = "photo_";
+  var PHOTO_PACK_PREFIX = "photos-";
+  var BACKUP_FOLDER = "バックアップ";
+  var PACK_MAX = 4 * 1024 * 1024;
+  var PACK_KEY = "packs";
   var BACKUP_PREFIX = "Footprints-backup-";
-  var BACKUP_KEEP = 10;
+  var BACKUP_KEEP = 7;
   var SCOPE = "https://www.googleapis.com/auth/drive.file";
   var FORMAT = 1;
   var TOMB_KEEP_MS = 180 * 24 * 3600 * 1e3;
@@ -319,16 +325,24 @@ var GSync = (() => {
         const j = await json(API + "/about?fields=user(emailAddress,displayName)");
         return j && j.user || {};
       },
-      async findFolder(name) {
-        const q = "mimeType='application/vnd.google-apps.folder' and name='" + qs(name) + "' and trashed=false";
+      async findFolder(name, parentId) {
+        const q = "mimeType='application/vnd.google-apps.folder' and name='" + qs(name) + "'" + (parentId ? " and '" + qs(parentId) + "' in parents" : "") + " and trashed=false";
         const j = await json(API + "/files?q=" + encodeURIComponent(q) + "&orderBy=createdTime&pageSize=10&fields=files(id,name)");
         return j.files && j.files[0] || null;
       },
-      async createFolder(name) {
+      async createFolder(name, parentId) {
         return json(API + "/files?fields=id,name", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder" })
+          body: JSON.stringify(parentId ? { name, mimeType: "application/vnd.google-apps.folder", parents: [parentId] } : { name, mimeType: "application/vnd.google-apps.folder" })
+        });
+      },
+      /* ファイルを別のフォルダへ移す（中身はそのまま） */
+      async move(id, toId, fromId) {
+        await call(API + "/files/" + encodeURIComponent(id) + "?addParents=" + encodeURIComponent(toId) + "&removeParents=" + encodeURIComponent(fromId) + "&fields=id", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
         });
       },
       async folderAlive(id) {
@@ -521,7 +535,13 @@ var GSync = (() => {
       }
     };
     const schema = opts.schema || FOOTPRINTS_SCHEMA;
-    const NAMES = { folder: SYNC_FOLDER, data: DATA_FILE, backup: BACKUP_PREFIX, ...opts.names || {} };
+    const NAMES = { folder: SYNC_FOLDER, data: DATA_FILE, backup: BACKUP_PREFIX, photos: PHOTO_PACK_PREFIX, backupFolder: BACKUP_FOLDER, ...opts.names || {} };
+    if (!cfg.devTag) {
+      cfg.devTag = Math.random().toString(36).slice(2, 8) || "dev";
+      saveCfg();
+    }
+    const escRe = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const packRe = new RegExp("^" + escRe(NAMES.photos) + "([a-z0-9]+)-(\\d+)\\.json$");
     const clientId = () => cfg.clientId || opts.defaultClientId || "";
     const auth = opts.auth || createGisAuth({ getClientId: clientId, ls, doc: opts.doc, win: opts.win, tokenKey: PREFIX + "-token" });
     let status = { phase: cfg.enabled ? "idle" : "off", message: "", pending: 0, askLogin: false };
@@ -557,6 +577,7 @@ var GSync = (() => {
     let periodic = null;
     let lastAuto = 0;
     let folderVerified = false;
+    let backupFolderVerified = false;
     let started = false;
     let memBase = void 0;
     let hiddenAt = 0;
@@ -627,6 +648,14 @@ var GSync = (() => {
       const localHash = contentHash(local0, schema);
       const hasBase = !!st.base;
       if (dataFile && hasBase && st.lastRemoteModified === dataFile.modifiedTime && st.lastLocalHash === localHash) {
+        if (files.some((f) => photoIdOfName(f.name)) || cfg.lastTidyDay !== dayStr(now())) {
+          const ps2 = await photoStore(drive, files);
+          const refs0 = Array.from(new Set(opts.listPhotoRefs(local0)));
+          await packNewPhotos(drive, folderId, ps2, refs0, () => {
+          });
+          await tidyPhotos(drive, ps2, refs0, local0);
+          await savePackCache(ps2);
+        }
         await maybeBackup(drive, folderId, files, local0);
         lastMoved = { sent: 0, received: 0 };
         return true;
@@ -639,13 +668,8 @@ var GSync = (() => {
       const received = res.localChanged ? diffCount(mergedIdx, localIdx, schema) : 0;
       const sent = res.remoteChanged ? diffCount(mergedIdx, remote ? indexOf(remote, schema) : {}, schema) : 0;
       const refs = Array.from(new Set(opts.listPhotoRefs(res.merged)));
-      const onDrive = /* @__PURE__ */ new Map();
-      for (const f of files) {
-        const id = photoIdOfName(f.name);
-        if (id) onDrive.set(id, f);
-      }
-      const __need = refs.filter((id) => !onDrive.has(id));
-      const __tot = 4 + refs.length + __need.length;
+      const ps = await photoStore(drive, files);
+      const __tot = 4 + refs.length * 2;
       let __n = 2, __at = 0;
       const __p = (label, force) => {
         const t = Date.now();
@@ -658,9 +682,7 @@ var GSync = (() => {
         __n++;
         __p("受け取っています");
         if (await opts.photoHas(id)) continue;
-        const f = onDrive.get(id);
-        if (!f) continue;
-        const data = await drive.download(f.id);
+        const data = await ps.read(id);
         if (data) await opts.photoPut(id, data);
       }
       if (res.localChanged) {
@@ -668,16 +690,10 @@ var GSync = (() => {
         if (contentHash(again, schema) !== localHash) return false;
         await opts.applySnapshot(res.merged);
       }
-      for (const id of refs) {
-        if (onDrive.has(id)) continue;
+      await packNewPhotos(drive, folderId, ps, refs, () => {
         __n++;
         __p("送っています");
-        const data = await opts.photoGet(id);
-        if (typeof data === "string" && data) {
-          const up = await drive.upload(PHOTO_PREFIX + id + ".txt", data, "text/plain", folderId);
-          onDrive.set(id, { id: up.id, name: PHOTO_PREFIX + id + ".txt", modifiedTime: up.modifiedTime });
-        }
-      }
+      });
       __n = __tot - 2;
       __p("送っています", true);
       let modified = dataFile ? dataFile.modifiedTime : "";
@@ -696,20 +712,189 @@ var GSync = (() => {
       __p("仕上げています", true);
       await saveState({ base: res.base, tombs: res.tombs, lastRemoteModified: modified, lastLocalHash: contentHash(res.merged, schema), baseAt: now() });
       lastMoved = { sent, received };
-      await cleanOrphans(drive, files, refs, res.merged);
+      await tidyPhotos(drive, ps, refs, res.merged);
+      await savePackCache(ps);
       await maybeBackup(drive, folderId, files, res.merged);
       return true;
     }
-    async function cleanOrphans(drive, files, refs, merged) {
+    async function photoStore(drive, files) {
+      let cache = {};
       try {
-        if (!merged.records.length) return;
-        const used = new Set(refs);
-        const photoFiles = files.filter((f) => photoIdOfName(f.name));
-        const stale = photoFiles.filter((f) => !used.has(photoIdOfName(f.name)) && now() - Date.parse(f.modifiedTime || f.createdTime || 0) > ORPHAN_GRACE_MS);
-        if (!stale.length || stale.length * 2 > photoFiles.length) return;
-        for (const f of stale.slice(0, 50)) await drive.remove(f.id);
+        cache = await opts.kv.get(PACK_KEY) || {};
+      } catch (e) {
+        cache = {};
+      }
+      const packs = files.filter((f) => packRe.test(f.name));
+      const legacy = /* @__PURE__ */ new Map();
+      for (const f of files) {
+        const id = photoIdOfName(f.name);
+        if (id) legacy.set(id, f);
+      }
+      const content = /* @__PURE__ */ new Map();
+      const index = {};
+      const where = /* @__PURE__ */ new Map();
+      async function load(f) {
+        if (content.has(f.id)) return content.get(f.id);
+        let obj = {};
+        try {
+          const j = JSON.parse(await drive.download(f.id));
+          obj = j && j.photos && typeof j.photos === "object" ? j.photos : {};
+        } catch (e) {
+          if (e instanceof SyncError && (e.kind === "auth" || e.kind === "network")) throw e;
+          obj = {};
+        }
+        content.set(f.id, obj);
+        index[f.id] = { mt: f.modifiedTime, ids: Object.keys(obj) };
+        return obj;
+      }
+      for (const f of packs) {
+        if (!cache[f.id] || cache[f.id].mt !== f.modifiedTime) await load(f);
+        else index[f.id] = cache[f.id];
+        for (const id of index[f.id].ids) if (!where.has(id)) where.set(id, f);
+      }
+      return {
+        packs,
+        legacy,
+        where,
+        index,
+        load,
+        content,
+        async read(id) {
+          const f = where.get(id);
+          if (f) {
+            const e = (await load(f))[id];
+            const d = typeof e === "string" ? e : e && e.d;
+            if (d) return d;
+          }
+          const lf = legacy.get(id);
+          if (lf) return await drive.download(lf.id);
+          return null;
+        }
+      };
+    }
+    async function savePackCache(ps) {
+      try {
+        await opts.kv.set(PACK_KEY, ps.index);
       } catch (e) {
       }
+    }
+    const packNum = (f) => {
+      const m = packRe.exec(f.name);
+      return m ? Number(m[2]) : 0;
+    };
+    const packBody = (obj) => JSON.stringify({ app: "photo-pack", format: 1, photos: obj });
+    async function packNewPhotos(drive, folderId, ps, refs, tick) {
+      const todo = [];
+      for (const id of refs) {
+        if (!ps.where.has(id) && await opts.photoHas(id)) todo.push(id);
+      }
+      if (!todo.length) return;
+      const mine = ps.packs.filter((f) => {
+        const m = packRe.exec(f.name);
+        return m && m[1] === cfg.devTag;
+      }).sort((a, b) => packNum(a) - packNum(b));
+      let cur = mine.length ? mine[mine.length - 1] : null;
+      let n = cur ? packNum(cur) : 1;
+      let obj = cur ? { ...await ps.load(cur) } : {};
+      let size = packBody(obj).length;
+      let dirty = false;
+      const flush = async () => {
+        if (!dirty) return;
+        const name = NAMES.photos + cfg.devTag + "-" + n + ".json";
+        const up = await drive.upload(name, packBody(obj), "application/json", folderId, cur ? cur.id : void 0);
+        const f = { id: up.id, name, modifiedTime: up.modifiedTime };
+        if (!cur) ps.packs.push(f);
+        ps.content.set(f.id, obj);
+        ps.index[f.id] = { mt: up.modifiedTime, ids: Object.keys(obj) };
+        for (const id of Object.keys(obj)) ps.where.set(id, f);
+        cur = f;
+        dirty = false;
+      };
+      for (const id of todo) {
+        tick();
+        const d = await opts.photoGet(id);
+        if (typeof d !== "string" || !d) continue;
+        if (size + d.length > PACK_MAX && Object.keys(obj).length) {
+          await flush();
+          cur = null;
+          n += 1;
+          obj = {};
+          size = packBody(obj).length;
+        }
+        obj = { ...obj, [id]: { d, t: now() } };
+        size += d.length + 64;
+        dirty = true;
+      }
+      await flush();
+    }
+    async function tidyPhotos(drive, ps, refs, merged) {
+      try {
+        if (!merged || !merged.records || !merged.records.length) return;
+        const used = new Set(refs);
+        const old = (ms) => now() - ms > ORPHAN_GRACE_MS;
+        let ops = 0;
+        for (const [id, f] of ps.legacy) {
+          if (ops >= 100) break;
+          const packed = ps.where.has(id);
+          const unusedOld = refs.length > 0 && !used.has(id) && old(Date.parse(f.modifiedTime || f.createdTime || 0) || now());
+          if (packed || unusedOld) {
+            await drive.remove(f.id);
+            ops++;
+          }
+        }
+        if (!refs.length) {
+          cfg.lastTidyDay = dayStr(now());
+          saveCfg();
+          return;
+        }
+        for (const f of ps.packs.slice()) {
+          const m = packRe.exec(f.name);
+          const ids = ps.index[f.id] && ps.index[f.id].ids || [];
+          if (!m || !ids.some((id) => !used.has(id))) continue;
+          if (m[1] === cfg.devTag) {
+            const obj = await ps.load(f);
+            const keep = {};
+            let drop = 0;
+            for (const id of Object.keys(obj)) {
+              const e = obj[id];
+              if (!used.has(id) && old(e && e.t || 0)) drop++;
+              else keep[id] = e;
+            }
+            if (!drop) continue;
+            if (!Object.keys(keep).length) {
+              await drive.remove(f.id);
+              delete ps.index[f.id];
+            } else {
+              const up = await drive.upload(f.name, packBody(keep), "application/json", null, f.id);
+              ps.index[f.id] = { mt: up.modifiedTime, ids: Object.keys(keep) };
+              ps.content.set(f.id, keep);
+            }
+          } else if (ids.every((id) => !used.has(id)) && old(Date.parse(f.modifiedTime || 0) || now())) {
+            await drive.remove(f.id);
+            delete ps.index[f.id];
+          }
+        }
+        cfg.lastTidyDay = dayStr(now());
+        saveCfg();
+      } catch (e) {
+        if (e instanceof SyncError && e.kind === "auth") throw e;
+      }
+    }
+    async function ensureBackupFolder(drive, rootId) {
+      if (cfg.backupFolderId && backupFolderVerified) return cfg.backupFolderId;
+      if (cfg.backupFolderId) {
+        if (await drive.folderAlive(cfg.backupFolderId)) {
+          backupFolderVerified = true;
+          return cfg.backupFolderId;
+        }
+        cfg.backupFolderId = "";
+      }
+      const found = await drive.findFolder(NAMES.backupFolder, rootId);
+      const f = found || await drive.createFolder(NAMES.backupFolder, rootId);
+      cfg.backupFolderId = f.id;
+      backupFolderVerified = true;
+      saveCfg();
+      return f.id;
     }
     async function pruneBackups(drive, files, justMade) {
       try {
@@ -742,20 +927,27 @@ var GSync = (() => {
     }
     async function maybeBackup(drive, folderId, files, merged) {
       const today = dayStr(now());
-      if (!cfg.autoBackup || !opts.buildBackupText || cfg.lastBackupDay === today) {
-        await pruneBackups(drive, files, null);
-        return;
-      }
+      const rootBackups = files.filter((f) => f.name && f.name.startsWith(NAMES.backup));
+      const make = !!(cfg.autoBackup && opts.buildBackupText && cfg.lastBackupDay !== today);
+      if (!make && !rootBackups.length && cfg.lastPruneDay === today) return;
       try {
-        const text = await opts.buildBackupText();
-        if (!text) return;
-        const name = NAMES.backup + today + (NAMES.backupExt || ".txt");
-        const same = files.find((f) => f.name === name);
-        const up = await drive.upload(name, text, "text/plain", folderId, same ? same.id : void 0);
-        await pruneBackups(drive, files.filter((f) => !(same && f.id === same.id)), { id: up.id, name, modifiedTime: "9999" });
-        cfg.lastBackupDay = today;
+        const bf = await ensureBackupFolder(drive, folderId);
+        for (const f of rootBackups.slice(0, 40)) await drive.move(f.id, bf, folderId);
+        let list = (await drive.list(bf)).filter((f) => f.name && f.name.startsWith(NAMES.backup));
+        if (make) {
+          const text = await opts.buildBackupText();
+          if (text) {
+            const name = NAMES.backup + today + (NAMES.backupExt || ".txt");
+            const same = list.find((f) => f.name === name);
+            const up = await drive.upload(name, text, "text/plain", bf, same ? same.id : void 0);
+            list = list.filter((f) => !(same && f.id === same.id)).concat([{ id: up.id, name, modifiedTime: "9999" }]);
+            cfg.lastBackupDay = today;
+            if (opts.onBackedUp) opts.onBackedUp();
+          }
+        }
+        await pruneBackups(drive, list, null);
+        cfg.lastPruneDay = today;
         saveCfg();
-        if (opts.onBackedUp) opts.onBackedUp();
       } catch (e) {
         if (e instanceof SyncError && (e.kind === "auth" || e.kind === "network")) throw e;
       }
@@ -945,8 +1137,17 @@ var GSync = (() => {
         cfg.recvAt = 0;
         saveCfg();
         folderVerified = false;
+        backupFolderVerified = false;
+        cfg.backupFolderId = "";
+        cfg.lastPruneDay = "";
+        cfg.lastTidyDay = "";
+        saveCfg();
         clearTimeout(timer);
         timer = null;
+        try {
+          await opts.kv.del(PACK_KEY);
+        } catch (e) {
+        }
         const t = auth.getStored();
         if (t) auth.revoke(t);
         auth.clear();

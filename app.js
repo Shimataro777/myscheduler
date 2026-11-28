@@ -28591,8 +28591,8 @@ function GoogleSyncCard() {
                     : ce("button", { type: "button", onClick: act.syncNow, disabled: busy, className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body", style: busy ? { opacity: 0.6 } : undefined }, ce(UpDownGlyph, { size: 16 }), " 今すぐ同期"),
             note && ce("p", { className: "fs-label gs-tone-warn mt-2 text-center" }, note)),
         st.enabled && ce("div", { className: "gs-opts" },
-            ce(GsOptRow, { icon: ce(lucide_react_1.Layers, { size: 18 }), label: "毎日の控え", sub: "ドライブに10日分を残す",
-                help: "1日1回、バックアップファイルをドライブに残します（10日分。古い日のものは自動で消えます）。ドライブから保存して「ファイルから読み込む」で戻せます。",
+            ce(GsOptRow, { icon: ce(lucide_react_1.Layers, { size: 18 }), label: "毎日の控え", sub: "ドライブに7日分を残す",
+                help: "1日1回、ドライブの「MyTecho-Sync」→「バックアップ」フォルダに控えを残します（7日分。古いものは自動で消えます）。そこから保存して「ファイルから読み込む」で戻せます。",
                 right: ce(Switch, { on: st.autoBackup, onChange: (v) => sync.setAutoBackup(v), label: "毎日の控えもドライブに" }) })),
         st.enabled && ce("div", { className: "gs-foot" },
             ce("button", { type: "button", onClick: () => { if (!askOff) {

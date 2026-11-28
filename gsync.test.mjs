@@ -1,7 +1,7 @@
 /* gsync.js の試験。  node gsync.test.mjs
    本物のGoogleドライブの代わりに、同じ形で答える偽のドライブを使い、2〜3台の端末のふるまいを再現する */
 import assert from "node:assert/strict";
-import { createGoogleSync, mergeKeyed, mergeValue, DATA_FILE, BACKUP_PREFIX, SYNC_FOLDER, MYTECHO_SCHEMA } from "./gsync.src.mjs";
+import { createGoogleSync, mergeKeyed, mergeValue, DATA_FILE, BACKUP_PREFIX, SYNC_FOLDER, MYTECHO_SCHEMA, BACKUP_FOLDER } from "./gsync.src.mjs";
 
 /* ---------- 偽のGoogleドライブ ---------- */
 function fakeDrive() {
@@ -38,13 +38,13 @@ function fakeDrive() {
     if (path === "/drive/v3/files" && method === "POST") {
       const meta = JSON.parse(init.body);
       const id = "d" + ++n;
-      files.set(id, { id, name: meta.name, mime: meta.mimeType, folder: true, createdTime: stamp(), modifiedTime: stamp() });
+      files.set(id, { id, name: meta.name, mime: meta.mimeType, folder: true, parents: meta.parents, createdTime: stamp(), modifiedTime: stamp() });
       return j({ id, name: meta.name });
     }
     if (path === "/drive/v3/files" && method === "GET") {
       const q = u.searchParams.get("q");
-      let m = /^mimeType='application\/vnd\.google-apps\.folder' and name='(.+)' and trashed=false$/.exec(q);
-      if (m) return j({ files: [...files.values()].filter((f) => f.folder && f.name === m[1] && !f.trashed) });
+      let m = /^mimeType='application\/vnd\.google-apps\.folder' and name='([^']+)'(?: and '([^']+)' in parents)? and trashed=false$/.exec(q);
+      if (m) return j({ files: [...files.values()].filter((f) => f.folder && f.name === m[1] && !f.trashed && (!m[2] || (f.parents && f.parents[0] === m[2]))) });
       m = /^'(.+)' in parents and trashed=false$/.exec(q);
       if (m) return j({ files: [...files.values()].filter((f) => !f.folder && f.parents && f.parents[0] === m[1]).map(({ content, ...r }) => r) });
       return j({}, 400);
@@ -53,6 +53,7 @@ function fakeDrive() {
     if (m) {
       const f = files.get(m[1]);
       if (method === "DELETE") { if (!f) return j({}, 404); files.delete(m[1]); return new Response(null, { status: 204 }); }
+      if (method === "PATCH") { if (!f) return j({}, 404); const add = u.searchParams.get("addParents"); if (add) f.parents = [add]; return j({ id: f.id }); }
       if (!f) return j({}, 404);
       if (u.searchParams.get("alt") === "media") return new Response(f.content, { status: 200 });
       return j({ id: f.id, trashed: !!f.trashed });
@@ -131,8 +132,12 @@ await test("初回：A→ドライブ→B。記録・設定・写真が届く", 
   assert.equal(A.sync.getStatus().email, "me@example.com");
   const folder = [...drive.files.values()].find((f) => f.folder && f.name === SYNC_FOLDER);
   assert.ok(folder);
-  const names = [...drive.files.values()].filter((f) => !f.folder).map((f) => f.name).sort();
-  assert.deepEqual(names, [BACKUP_PREFIX + "2026-11-09.txt", DATA_FILE, "photo_p1.txt"].sort());
+  /* 10.63.0〜 同期フォルダの直下は「データ1つ＋写真のまとめ」だけ。控えは「バックアップ」フォルダの中 */
+  const inRoot = [...drive.files.values()].filter((f) => f.parents && f.parents[0] === folder.id);
+  assert.deepEqual(inRoot.filter((f) => !f.folder).map((f) => f.name.replace(/^photos-[a-z0-9]+-/, "photos-X-")).sort(), [DATA_FILE, "photos-X-1.json"].sort());
+  const bfolder = inRoot.find((f) => f.folder);
+  assert.equal(bfolder.name, BACKUP_FOLDER);
+  assert.deepEqual([...drive.files.values()].filter((f) => f.parents && f.parents[0] === bfolder.id).map((f) => f.name), [BACKUP_PREFIX + "2026-11-09.txt"]);
   const B = device("B", drive);
   await B.sync.connect();
   assert.equal(ids(B), "r1,r2");
@@ -220,18 +225,18 @@ await test("変化が無ければ書き込まない（無限ループになら�
   assert.equal(A.applied, 0);
 });
 
-await test("1日1回の控え。日が変われば新しい控え、11日目に最古を消す（10日分）", async () => {
+await test("1日1回の控え。日が変われば新しい控え、8日目に最古を消す（7日分）", async () => {
   const drive = fakeDrive();
   const A = device("A", drive);
   A.st.records = [rec("r1", "one")];
   await A.sync.connect();
-  for (let i = 0; i < 11; i++) { CLOCK += 24 * 3600 * 1000; A.st.records.push(rec("x" + i, "t")); await A.run(); }
+  for (let i = 0; i < 8; i++) { CLOCK += 24 * 3600 * 1000; A.st.records.push(rec("x" + i, "t")); await A.run(); }
   const backups = [...drive.files.values()].filter((f) => f.name && f.name.startsWith(BACKUP_PREFIX));
-  assert.equal(backups.length, 10);
-  assert.equal(A.backedUp, 12);
+  assert.equal(backups.length, 7);
+  assert.equal(A.backedUp, 9);
 });
 
-await test("10.60.0 溜まった控え（同じ日の重複・消しそびれ）も、次の同期で10日分にそろえる。控えを切っていても", async () => {
+await test("10.60.0 溜まった控え（同じ日の重複・消しそびれ）も、次の同期で7日分にそろえる。控えを切っていても", async () => {
   const drive = fakeDrive();
   const A = device("A", drive);
   A.st.records = [rec("r1", "one")];
@@ -247,9 +252,89 @@ await test("10.60.0 溜まった控え（同じ日の重複・消しそびれ）
   A.sync.setAutoBackup(false);
   await A.run(); await A.run();
   const left = [...drive.files.values()].filter((f) => f.name && f.name.startsWith(BACKUP_PREFIX));
-  assert.equal(left.length, 10, "10日分だけ残る");
-  assert.equal(new Set(left.map((f) => f.name)).size, 10, "同じ日の重複は1つに");
+  assert.equal(left.length, 7, "7日分だけ残る");
+  const bf = [...drive.files.values()].find((f) => f.folder && f.name === BACKUP_FOLDER);
+  assert.ok(left.every((f) => f.parents[0] === bf.id), "直下にあった控えは「バックアップ」フォルダへ移る");
+  assert.equal(new Set(left.map((f) => f.name)).size, 7, "同じ日の重複は1つに");
   A.sync.setAutoBackup(true);
+});
+
+
+/* ---------- 写真のまとめ（10.63.0〜） ---------- */
+const filesIn = (drive, parentId) => [...drive.files.values()].filter((f) => f.parents && f.parents[0] === parentId);
+await test("10.63.0 古い持ち方（photo_〜.txt）から移る：まとめに入れてから古いファイルを消す。別の端末も受け取れる", async () => {
+  const drive = fakeDrive();
+  const A = device("A", drive);
+  A.st.records = [rec("r1", "one", { images: ["photo:p1", "photo:p2"] })];
+  A.photos.set("p1", "data:p1"); A.photos.set("p2", "data:p2");
+  await A.sync.connect();
+  const root = [...drive.files.values()].find((f) => f.folder && f.name === SYNC_FOLDER).id;
+  // 前の版の形を作る：まとめを消し、1枚1ファイルと、直下の控えを置く
+  for (const f of filesIn(drive, root)) if (/^photos-/.test(f.name)) drive.files.delete(f.id);
+  A.sync.disconnect && null;
+  drive.files.set("L1", { id: "L1", name: "photo_p1.txt", parents: [root], content: "data:p1", modifiedTime: "2026-11-01T00:00:00Z" });
+  drive.files.set("L2", { id: "L2", name: "photo_p2.txt", parents: [root], content: "data:p2", modifiedTime: "2026-11-01T00:00:00Z" });
+  drive.files.set("L3", { id: "L3", name: "photo_gone.txt", parents: [root], content: "data:x", modifiedTime: "2026-09-01T00:00:00Z" });
+  drive.files.set("B0", { id: "B0", name: BACKUP_PREFIX + "2026-11-01.txt", parents: [root], content: "old", modifiedTime: "2026-11-01T00:00:00Z" });
+  // 古い版の端末Bで作った写真（この端末には無い）
+  drive.files.set("L4", { id: "L4", name: "photo_p3.txt", parents: [root], content: "data:p3", modifiedTime: "2026-11-01T00:00:00Z" });
+  A.st.records.push(rec("r2", "two", { images: ["photo:p3"] }));
+  const C = device("C", drive);
+  C.st.records = JSON.parse(JSON.stringify(A.st.records));
+  await C.sync.connect(); // まとめファイルを知らない新しい端末：古いファイルから受け取り、自分のまとめに入れる
+  await C.run();
+  await A.run(); await A.run();
+  const names = filesIn(drive, root).filter((f) => !f.folder).map((f) => f.name);
+  assert.ok(!names.some((n) => n.startsWith("photo_")), "古い1枚1ファイルは無くなる: " + names.join(","));
+  assert.ok(names.includes(DATA_FILE));
+  assert.ok(names.filter((n) => /^photos-/.test(n)).length <= 2, "まとめは端末ごとに1つ");
+  const B = device("B", drive);
+  await B.sync.connect();
+  assert.equal(B.photos.get("p1"), "data:p1"); assert.equal(B.photos.get("p3"), "data:p3");
+  const bf = [...drive.files.values()].find((f) => f.folder && f.name === BACKUP_FOLDER);
+  assert.ok(filesIn(drive, bf.id).some((f) => f.id === "B0"), "直下の控えは消さずに移す");
+});
+
+await test("10.63.0 2台がそれぞれ自分のまとめに書く。使わなくなった写真は30日後にまとめから外れる", async () => {
+  const drive = fakeDrive();
+  const A = device("A", drive), B = device("B", drive);
+  A.st.records = [rec("r1", "one", { images: ["photo:a1"] })];
+  A.photos.set("a1", "data:a1");
+  await A.sync.connect(); await B.sync.connect();
+  B.st.records.push(rec("r2", "two", { images: ["photo:b1"] })); B.photos.set("b1", "data:b1");
+  await B.run(); await A.run();
+  assert.equal(A.photos.get("b1"), "data:b1");
+  const root = [...drive.files.values()].find((f) => f.folder && f.name === SYNC_FOLDER).id;
+  const packs = () => filesIn(drive, root).filter((f) => /^photos-/.test(f.name));
+  assert.equal(packs().length, 2, "端末ごとに1つ");
+  // B の写真を記録から外す → 30日たつまでは残る → たったら B のまとめから外れる（まとめが空ならファイルごと消える）
+  B.st.records = B.st.records.map((r) => (r.id === "r2" ? { ...r, images: [], updatedAt: new Date(CLOCK + 1000).toISOString() } : r));
+  await B.run(); await A.run();
+  assert.equal(packs().length, 2);
+  CLOCK += 31 * 24 * 3600 * 1000;
+  await B.run();
+  assert.equal(packs().length, 1, "使わなくなった写真だけのまとめは消える");
+  const C = device("C", drive); await C.sync.connect();
+  assert.equal(C.photos.get("a1"), "data:a1", "使っている写真は残る");
+});
+
+await test("10.63.0 まとめは4MBくらいで次の番号へ。記録が空のときは整頓しない", async () => {
+  const drive = fakeDrive();
+  const A = device("A", drive);
+  const big = "data:" + "x".repeat(1500000);
+  A.st.records = [rec("r1", "one", { images: ["photo:g1", "photo:g2", "photo:g3", "photo:g4"] })];
+  for (const k of ["g1", "g2", "g3", "g4"]) A.photos.set(k, big + k);
+  await A.sync.connect();
+  const root = [...drive.files.values()].find((f) => f.folder && f.name === SYNC_FOLDER).id;
+  const packs = filesIn(drive, root).filter((f) => /^photos-/.test(f.name)).map((f) => f.name).sort();
+  assert.equal(packs.length, 2, packs.join(","));
+  const B = device("B", drive); await B.sync.connect();
+  assert.equal(B.photos.get("g4"), big + "g4");
+  // 記録が空の端末は、何も消さない
+  const E = device("E", drive, {}); E.st.records = [];
+  CLOCK += 40 * 24 * 3600 * 1000;
+  await E.sync.connect();
+  assert.equal(filesIn(drive, root).filter((f) => /^photos-/.test(f.name)).length >= 2, true);
 });
 
 await test("ログインが切れたら『再ログインが必要』。ログインし直せば再開", async () => {
