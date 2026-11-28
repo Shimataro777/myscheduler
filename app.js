@@ -28159,39 +28159,6 @@ async function buildDriveBackupText() {
     const s = syncBridge.getState && syncBridge.getState();
     return s ? await buildBackup(s, true) : "";
 }
-/* ============================================================
-   Googleカレンダーへ写す予定（10.57.0〜）。通知は Googleカレンダーが出す。
-   ・写すのは「時刻のある予定（スケジュール）」だけ。終日の予定・リスト・メモ・期限つきは写さない
-     （終日は通知の時刻が決まらない。リストやメモは「予定が近づいたら知らせる」の対象ではない）
-   ・繰り返しは1回ずつに分けて写す（Today の一覧と同じ dayRecordsOf を使う。**別の数え方を書かないこと**）
-   ・key は「記録のid|日付」。gsync がここから予定のIDを決めるので、**形を変えないこと**（変えると全部作り直しになる）
-   ・日をまたぐ予定は、始まりの日にだけ1件
-   ============================================================ */
-function buildCalendarEventsFrom(records, from, days) {
-    const out = [];
-    const all = (records || []).filter((r) => r && r.type === "schedule");
-    for (let i = 0; i <= days; i++) {
-        const d = addDays(from, i);
-        for (const r of dayRecordsOf(all, d)) {
-            if (r.type !== "schedule" || !isDayRec(r) || !r.time || r.byDue)
-                continue;
-            if (!r.__repeat && r.date !== d)
-                continue; // 日をまたぐ予定の2日目以降
-            const start = d + "T" + r.time;
-            const endDay = r.endDate && r.endDate > d ? r.endDate : d;
-            let end = r.endTime ? endDay + "T" + r.endTime : "";
-            if (!end || end <= start) {
-                const t = new Date(d + "T" + r.time + ":00");
-                t.setHours(t.getHours() + 1);
-                const p2 = (n) => String(n).padStart(2, "0");
-                end = `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())}T${p2(t.getHours())}:${p2(t.getMinutes())}`;
-            }
-            const note = [String(r.body || "").trim(), String(r.placeUrl || "").trim()].filter(Boolean).join("\n");
-            out.push({ key: r.id + "|" + d, start, end, summary: recordTitle(r), location: String(r.place || "").trim(), description: note });
-        }
-    }
-    return out;
-}
 let googleSyncInst = null;
 function getGoogleSync() {
     if (googleSyncInst)
@@ -28209,7 +28176,7 @@ function getGoogleSync() {
     const G = window.GSync;
     googleSyncInst = G.createGoogleSync({
         schema: G.MYTECHO_SCHEMA,
-        names: { folder: "MyTecho-Sync", data: "mytecho-sync.json", backup: "hibi-backup-", backupExt: ".json", calendar: "mytecho-calendar.json" },
+        names: { folder: "MyTecho-Sync", data: "mytecho-sync.json", backup: "hibi-backup-", backupExt: ".json" },
         storagePrefix: "mt-gsync",
         fetch: (u, i) => fetch(u, i), ls, kv: G.createKV(ls, "mytecho-sync-meta", "mt-gsync-kv-"), doc: document, win: window,
         defaultClientId: window.__MT_GOOGLE_CLIENT_ID || "",
@@ -28221,7 +28188,6 @@ function getGoogleSync() {
         buildBackupText: buildDriveBackupText,
         onBackedUp: () => { if (syncBridge.onBackedUp)
             syncBridge.onBackedUp(); },
-        buildCalendarEvents: async ({ from, days }) => { const st = syncBridge.getState && syncBridge.getState(); return st ? buildCalendarEventsFrom(st.records, from, days) : []; },
     });
     return googleSyncInst;
 }
@@ -28494,7 +28460,6 @@ function useSyncActions(setNote) {
         return false;
     };
     return {
-        needReady,
         connect: () => { setNote(""); if (!needReady())
             return; sync.connect(); },
         login: () => { setNote(""); if (!needReady())
@@ -28600,34 +28565,6 @@ function GsOptRow({ icon, label, sub, subTone, help, right, extra }) {
             extra || null),
         right);
 }
-/* Googleカレンダーへ写す（10.57.0〜）の行。
-   ・入れたとき：Googleの許可の画面を開く。**押した操作の中で、await を挟まずに sync.setCalendar(true) を呼ぶこと**
-   ・何分前：行の下の小さな札（中は select。iPhone ではドラムが出る）。端末どうしでそろう（ドライブの設定ファイル）
-   ・切ったとき：このアプリが作ったカレンダー（My手帳）ごと消す。先の通知が鳴り続けないように */
-const CAL_MIN_LABEL = (m) => (m === 60 ? "1時間前" : m + "分前");
-function CalendarRows({ sync, st, needReady, setNote }) {
-    const ce = react_1.default.createElement;
-    const help = "時刻のある予定を、Googleカレンダーの「My手帳」に写します（60日先まで）。通知は Googleカレンダーのアプリから届きます。向こうで直した内容は戻りません。切ると、写した予定も消えます。";
-    const on = !!st.calendar;
-    const toggle = (v) => {
-        setNote("");
-        if (v && !needReady())
-            return;
-        sync.setCalendar(v);
-    };
-    const warn = st.calMessage || (st.calNeedsAuth ? "書き込みの許可が必要です" : "");
-    const sub = warn || (!on ? "予定の前に、Googleカレンダーで通知" : st.calAt ? `${st.calCount}件・${agoText(st.calAt)}` : "次の同期で写します");
-    const extra = on ? ce("div", { className: "flex items-center gap-2 mt-2" },
-        ce("label", { className: "gs-pill ft-tap" },
-            ce(lucide_react_1.Clock, { size: 13 }),
-            ce("span", null, CAL_MIN_LABEL(st.calMinutes) + "に通知"),
-            ce(lucide_react_1.ChevronDown, { size: 13 }),
-            ce("select", { value: String(st.calMinutes), "aria-label": "何分前に通知するか", onChange: (e) => sync.setCalendarMinutes(Number(e.target.value)) }, [5, 10, 30, 60].map((m) => ce("option", { key: m, value: String(m) }, CAL_MIN_LABEL(m))))),
-        st.calNeedsAuth ? ce("button", { type: "button", className: "gs-pill on ft-tap", onClick: () => { setNote(""); if (!needReady())
-                return; sync.allowCalendar(); } }, "許可する") : null) : null;
-    return ce(GsOptRow, { icon: ce(lucide_react_1.CalendarClock, { size: 18 }), label: "カレンダーに写す", help, sub, subTone: warn ? "warn" : "", extra,
-        right: ce(Switch, { on, onChange: toggle, label: "予定をGoogleカレンダーに写す" }) });
-}
 function GoogleSyncCard() {
     const ce = react_1.default.createElement;
     const sync = getGoogleSync();
@@ -28654,10 +28591,9 @@ function GoogleSyncCard() {
                     : ce("button", { type: "button", onClick: act.syncNow, disabled: busy, className: BTN_SECONDARY + " w-full " + BTN_H + " fs-body", style: busy ? { opacity: 0.6 } : undefined }, ce(UpDownGlyph, { size: 16 }), " 今すぐ同期"),
             note && ce("p", { className: "fs-label gs-tone-warn mt-2 text-center" }, note)),
         st.enabled && ce("div", { className: "gs-opts" },
-            ce(GsOptRow, { icon: ce(lucide_react_1.Layers, { size: 18 }), label: "毎日の控え", sub: "ドライブに7日分を残す",
-                help: "1日1回、バックアップファイルをドライブに残します（7日分）。ドライブから保存して「ファイルから読み込む」で戻せます。",
-                right: ce(Switch, { on: st.autoBackup, onChange: (v) => sync.setAutoBackup(v), label: "毎日の控えもドライブに" }) }),
-            ce(CalendarRows, { sync, st, needReady: act.needReady, setNote })),
+            ce(GsOptRow, { icon: ce(lucide_react_1.Layers, { size: 18 }), label: "毎日の控え", sub: "ドライブに10日分を残す",
+                help: "1日1回、バックアップファイルをドライブに残します（10日分。古い日のものは自動で消えます）。ドライブから保存して「ファイルから読み込む」で戻せます。",
+                right: ce(Switch, { on: st.autoBackup, onChange: (v) => sync.setAutoBackup(v), label: "毎日の控えもドライブに" }) })),
         st.enabled && ce("div", { className: "gs-foot" },
             ce("button", { type: "button", onClick: () => { if (!askOff) {
                     setAskOff(true);
@@ -28906,7 +28842,7 @@ const HELP_SECTIONS = [
     },
     {
         title: "Google連携",
-        body: "メニューの「バックアップ」からGoogleアカウントとつなぐと、記録がGoogleドライブに同期されます。同じアカウントでつないだ端末どうしで、同じ記録を使えます。\n「カレンダーに写す」を入れると、時刻のある予定がGoogleカレンダーに写り、予定の前に通知が届きます。",
+        body: "メニューの「バックアップ」からGoogleアカウントとつなぐと、記録がGoogleドライブに同期されます。同じアカウントでつないだ端末どうしで、同じ記録を使えます。",
     },
 ];
 function HelpScreen({ onClose, zIndex }) {
@@ -29890,10 +29826,6 @@ span.ft-ccol-t2 { background: transparent; color: var(--tx-4); }
 .gs-opt > .Switch, .gs-opt > button[role="switch"] { align-self: center; }
 .gs-opt-ic { flex: none; width: 34px; height: 34px; margin-top: 1px; border-radius: 10px; display: flex; align-items: center; justify-content: center; background: var(--th-50); color: var(--th-800); }
 .gs-opt-sub { margin-top: 1px; line-height: 1.4; }
-.gs-pill { position: relative; display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 0 10px; border-radius: 999px; background: #F1F4F6; color: var(--tx-2); font-size: calc(var(--fs-label) * var(--ft-scale)); font-weight: 700; white-space: nowrap; }
-.gs-pill.on { background: var(--th-950); color: #fff; }
-/* 札ぜんたいに select を透明で重ねる。字は 16px（iPhone が勝手に拡大しないように） */
-.gs-pill > select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; appearance: none; -webkit-appearance: none; cursor: pointer; }
 .gs-stat { display: inline-flex; align-items: baseline; gap: 1px; min-height: 26px; padding: 4px 10px; border-radius: 999px; background: #F3F5F7; color: var(--tx-3); font-size: calc(var(--fs-label) * var(--ft-scale)); }
 .gs-stat > b { color: var(--tx-1); font-weight: 700; margin: 0 1px; }
 .gs-foot { border-top: 1px solid #EEF1F4; display: flex; justify-content: center; padding: 4px 0; }

@@ -22,10 +22,6 @@ var GSync = (() => {
   __export(gsync_src_exports, {
     BACKUP_KEEP: () => BACKUP_KEEP,
     BACKUP_PREFIX: () => BACKUP_PREFIX,
-    CAL_DAYS: () => CAL_DAYS,
-    CAL_MINUTES: () => CAL_MINUTES,
-    CAL_NAME: () => CAL_NAME,
-    CAL_SCOPE: () => CAL_SCOPE,
     DATA_FILE: () => DATA_FILE,
     FOOTPRINTS_SCHEMA: () => FOOTPRINTS_SCHEMA,
     MYTECHO_SCHEMA: () => MYTECHO_SCHEMA,
@@ -33,10 +29,7 @@ var GSync = (() => {
     SCOPE: () => SCOPE,
     SYNC_FOLDER: () => SYNC_FOLDER,
     SyncError: () => SyncError,
-    calEventBody: () => calEventBody,
-    calEventId: () => calEventId,
     contentHash: () => contentHash,
-    createCalendarApi: () => createCalendarApi,
     createDrive: () => createDrive,
     createGisAuth: () => createGisAuth,
     createGoogleSync: () => createGoogleSync,
@@ -47,7 +40,6 @@ var GSync = (() => {
     mergeKeyed: () => mergeKeyed,
     mergeSnapshots: () => mergeSnapshots,
     mergeValue: () => mergeValue,
-    planCalendar: () => planCalendar,
     setHash: () => setHash,
     stable: () => stable
   });
@@ -55,7 +47,7 @@ var GSync = (() => {
   var DATA_FILE = "footprints-sync.json";
   var PHOTO_PREFIX = "photo_";
   var BACKUP_PREFIX = "Footprints-backup-";
-  var BACKUP_KEEP = 7;
+  var BACKUP_KEEP = 10;
   var SCOPE = "https://www.googleapis.com/auth/drive.file";
   var FORMAT = 1;
   var TOMB_KEEP_MS = 180 * 24 * 3600 * 1e3;
@@ -374,7 +366,7 @@ var GSync = (() => {
       }
     };
   }
-  function createGisAuth({ getClientId, ls, doc, win, tokenKey, wantCal }) {
+  function createGisAuth({ getClientId, ls, doc, win, tokenKey }) {
     const TOKEN_KEY = tokenKey || "ft-gsync-token";
     let client = null;
     let clientFor = "";
@@ -398,11 +390,6 @@ var GSync = (() => {
           ls.removeItem(TOKEN_KEY);
         } catch (e) {
         }
-      },
-      /* 今のトークンで、カレンダーにも書けるか（10.57.0〜） */
-      hasCal() {
-        const t = readTok();
-        return !!(t && t.cal && t.exp - 6e4 > Date.now());
       },
       isReady: () => !!gis(),
       /* 読み込んでおく。**ログインの操作より前に済ませること**
@@ -434,13 +421,11 @@ var GSync = (() => {
         const clientId = getClientId();
         if (!g || !clientId) return Promise.resolve({ token: null, why: !clientId ? "noclient" : "notready" });
         if (pending) return pending.promise;
-        const scope = SCOPE + (wantCal && wantCal() ? " " + CAL_SCOPE : "");
-        if (!client || clientFor !== clientId + "|" + scope) {
-          clientFor = clientId + "|" + scope;
+        if (!client || clientFor !== clientId) {
+          clientFor = clientId;
           client = g.initTokenClient({
             client_id: clientId,
-            scope,
-            include_granted_scopes: true,
+            scope: SCOPE,
             callback: (resp) => {
               const p = pending;
               if (!p) return;
@@ -453,12 +438,11 @@ var GSync = (() => {
                 return;
               }
               const exp = Date.now() + (Number(resp.expires_in) || 3600) * 1e3;
-              const cal = !!(g.hasGrantedAllScopes ? g.hasGrantedAllScopes(resp, CAL_SCOPE) : String(resp.scope || "").indexOf(CAL_SCOPE) >= 0);
               try {
-                ls.setItem(TOKEN_KEY, JSON.stringify({ t: resp.access_token, exp, cal }));
+                ls.setItem(TOKEN_KEY, JSON.stringify({ t: resp.access_token, exp }));
               } catch (e) {
               }
-              p.done({ token: resp.access_token, why: "", cal });
+              p.done({ token: resp.access_token, why: "" });
             },
             error_callback: (err) => {
               const p = pending;
@@ -497,120 +481,6 @@ var GSync = (() => {
       }
     };
   }
-  var CAL_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
-  var CAL_DAYS = 60;
-  var CAL_NAME = "My手帳";
-  var CAL_MINUTES = [5, 10, 30, 60];
-  var CAL_API = "https://www.googleapis.com/calendar/v3";
-  var CAL_MAX_OPS = 400;
-  function calEventId(key) {
-    const a = cyrb53(String(key)), b = cyrb53("mt:" + key);
-    const to32 = (s36) => parseInt(s36, 36).toString(32);
-    return "mt" + to32(a) + to32(b);
-  }
-  function calEventBody(ev, minutes, tz) {
-    const body = {
-      summary: ev.summary || "",
-      location: ev.location || void 0,
-      description: ev.description || void 0,
-      start: { dateTime: ev.start + ":00", timeZone: tz },
-      end: { dateTime: ev.end + ":00", timeZone: tz },
-      reminders: { useDefault: false, overrides: minutes > 0 ? [{ method: "popup", minutes }] : [] },
-      transparency: "opaque"
-    };
-    const h = hashOf(body);
-    body.extendedProperties = { private: { mt: "1", h } };
-    return { id: calEventId(ev.key), h, body };
-  }
-  function planCalendar(existing, desired) {
-    const want = new Map(desired.map((d) => [d.id, d]));
-    const inserts = [], updates = [], deletes = [];
-    for (const d of desired) {
-      if (!existing.has(d.id)) inserts.push(d);
-      else if (existing.get(d.id) !== d.h) updates.push(d);
-    }
-    for (const id of existing.keys()) if (!want.has(id)) deletes.push(id);
-    return { inserts, updates, deletes };
-  }
-  function createCalendarApi(fetchFn, getToken) {
-    async function call(url, init) {
-      let res;
-      try {
-        res = await fetchFn(url, { ...init || {}, headers: { ...init && init.headers || {}, Authorization: "Bearer " + getToken() } });
-      } catch (e) {
-        throw new SyncError("network", "通信できませんでした");
-      }
-      if (res.ok) return res;
-      let reason = "";
-      try {
-        const j = await res.clone().json();
-        reason = j && j.error && (j.error.errors && j.error.errors[0] && j.error.errors[0].reason || j.error.status) || "";
-      } catch (e) {
-      }
-      if (res.status === 401) throw new SyncError("auth", "ログインの期限が切れました");
-      if (res.status === 404 || res.status === 410) throw new SyncError("notfound", "見つかりませんでした");
-      if (res.status === 409) throw new SyncError("conflict", "すでにあります");
-      if (res.status === 403) {
-        if (/rate|quota/i.test(reason)) throw new SyncError("rate", "混雑中です。しばらく待ってください");
-        if (/accessNotConfigured|SERVICE_DISABLED/i.test(reason)) throw new SyncError("config", "Google Calendar API が有効になっていません");
-        throw new SyncError("calauth", "カレンダーへの書き込みが許可されていません");
-      }
-      if (res.status === 429) throw new SyncError("rate", "混雑中です。しばらく待ってください");
-      throw new SyncError("drive", "Googleカレンダーでエラーが起きました（" + res.status + "）");
-    }
-    const json = async (url, init) => (await call(url, init)).json();
-    const enc = encodeURIComponent;
-    const send = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    return {
-      async alive(calId) {
-        try {
-          await json(CAL_API + "/calendars/" + enc(calId) + "?fields=id");
-          return true;
-        } catch (e) {
-          if (e instanceof SyncError && e.kind === "notfound") return false;
-          throw e;
-        }
-      },
-      async create(summary, tz) {
-        return json(CAL_API + "/calendars?fields=id", send("POST", { summary, timeZone: tz, description: "My手帳 の予定の写し。ここで直しても My手帳 には戻りません。" }));
-      },
-      async removeCal(calId) {
-        try {
-          await call(CAL_API + "/calendars/" + enc(calId), { method: "DELETE" });
-        } catch (e) {
-          if (!(e instanceof SyncError && e.kind === "notfound")) throw e;
-        }
-      },
-      /* timeMin 以降に始まる（終わる）予定。id と h だけ */
-      async list(calId, timeMin) {
-        const out = /* @__PURE__ */ new Map();
-        let pageToken = "";
-        do {
-          const j = await json(CAL_API + "/calendars/" + enc(calId) + "/events?maxResults=2500&showDeleted=false&timeMin=" + enc(timeMin) + "&fields=nextPageToken,items(id,status,extendedProperties)" + (pageToken ? "&pageToken=" + enc(pageToken) : ""));
-          for (const it of j.items || []) {
-            if (it.status === "cancelled") continue;
-            const pv = it.extendedProperties && it.extendedProperties.private || {};
-            out.set(it.id, pv.h || "");
-          }
-          pageToken = j.nextPageToken || "";
-        } while (pageToken);
-        return out;
-      },
-      async insert(calId, id, body) {
-        await json(CAL_API + "/calendars/" + enc(calId) + "/events?fields=id", send("POST", { ...body, id }));
-      },
-      async update(calId, id, body) {
-        await json(CAL_API + "/calendars/" + enc(calId) + "/events/" + enc(id) + "?fields=id", send("PUT", { ...body, status: "confirmed" }));
-      },
-      async remove(calId, id) {
-        try {
-          await call(CAL_API + "/calendars/" + enc(calId) + "/events/" + enc(id), { method: "DELETE" });
-        } catch (e) {
-          if (!(e instanceof SyncError && e.kind === "notfound")) throw e;
-        }
-      }
-    };
-  }
   var STATE_KEY = "state";
   var AUTO_MIN_GAP_MS = 2e4;
   var DEBOUNCE_MS = 6e3;
@@ -638,19 +508,7 @@ var GSync = (() => {
       sentN: 0,
       sentAt: 0,
       recvN: 0,
-      recvAt: 0,
-      /* カレンダーへ写す（10.57.0〜）。calendar＝この端末で写す、calMinutes＝何分前（ドライブの設定ファイルとそろえる）、
-         calMinutesDirty＝この端末で変えて、まだ設定ファイルに書いていない、calRemove＝やめたのでカレンダーを消しに行く */
-      calendar: false,
-      calMinutes: 10,
-      calMinutesDirty: false,
-      calRemove: false,
-      calId: "",
-      calHash: "",
-      calDay: "",
-      calCount: 0,
-      calAt: 0,
-      calMessage: ""
+      recvAt: 0
     };
     try {
       Object.assign(cfg, JSON.parse(ls.getItem(CFG_KEY) || "{}"));
@@ -665,10 +523,7 @@ var GSync = (() => {
     const schema = opts.schema || FOOTPRINTS_SCHEMA;
     const NAMES = { folder: SYNC_FOLDER, data: DATA_FILE, backup: BACKUP_PREFIX, ...opts.names || {} };
     const clientId = () => cfg.clientId || opts.defaultClientId || "";
-    const auth = opts.auth || createGisAuth({ getClientId: clientId, ls, doc: opts.doc, win: opts.win, tokenKey: PREFIX + "-token", wantCal: () => cfg.calendar || cfg.calRemove });
-    const canCalendar = !!opts.buildCalendarEvents;
-    const authHasCal = () => auth.hasCal ? auth.hasCal() : true;
-    const wantsCal = () => canCalendar && (cfg.calendar || cfg.calRemove);
+    const auth = opts.auth || createGisAuth({ getClientId: clientId, ls, doc: opts.doc, win: opts.win, tokenKey: PREFIX + "-token" });
     let status = { phase: cfg.enabled ? "idle" : "off", message: "", pending: 0, askLogin: false };
     const setStatus = (patch) => {
       status = { ...status, ...patch };
@@ -693,14 +548,7 @@ var GSync = (() => {
       recvAt: cfg.recvAt,
       hasClientId: !!clientId(),
       clientIdFixed: !!opts.defaultClientId && !cfg.clientId,
-      ready: auth.isReady ? auth.isReady() : true,
-      calendar: canCalendar && cfg.calendar,
-      calMinutes: cfg.calMinutes,
-      calCount: cfg.calCount,
-      calAt: cfg.calAt,
-      calMessage: cfg.calMessage,
-      /* 写す設定なのに、今のログインではカレンダーに書けない（「カレンダーを許可」のボタンを出す） */
-      calNeedsAuth: canCalendar && cfg.calendar && !!auth.getStored() && !authHasCal()
+      ready: auth.isReady ? auth.isReady() : true
     });
     let statusCache = null;
     let running = null;
@@ -863,156 +711,53 @@ var GSync = (() => {
       } catch (e) {
       }
     }
+    async function pruneBackups(drive, files, justMade) {
+      try {
+        const pre = NAMES.backup;
+        const dateOf = (n) => {
+          const m = /^(\d{4}-\d{2}-\d{2})/.exec(n.slice(pre.length));
+          return m ? m[1] : "";
+        };
+        const list = files.filter((f) => f.name && f.name.startsWith(pre) && dateOf(f.name));
+        if (justMade) list.push(justMade);
+        const byDay = /* @__PURE__ */ new Map();
+        for (const f of list) {
+          const d = dateOf(f.name);
+          const cur = byDay.get(d);
+          if (!cur || String(f.modifiedTime || "") > String(cur.modifiedTime || "")) byDay.set(d, f);
+        }
+        const keepDays = new Set([...byDay.keys()].sort().reverse().slice(0, BACKUP_KEEP));
+        const keepIds = new Set([...keepDays].map((d) => byDay.get(d).id));
+        const drop = list.filter((f) => !keepIds.has(f.id));
+        for (const f of drop.slice(0, 40)) {
+          try {
+            await drive.remove(f.id);
+          } catch (e) {
+            if (e instanceof SyncError && (e.kind === "auth" || e.kind === "network")) throw e;
+          }
+        }
+      } catch (e) {
+        if (e instanceof SyncError && (e.kind === "auth" || e.kind === "network")) throw e;
+      }
+    }
     async function maybeBackup(drive, folderId, files, merged) {
-      if (!cfg.autoBackup || !opts.buildBackupText) return;
       const today = dayStr(now());
-      if (cfg.lastBackupDay === today) return;
+      if (!cfg.autoBackup || !opts.buildBackupText || cfg.lastBackupDay === today) {
+        await pruneBackups(drive, files, null);
+        return;
+      }
       try {
         const text = await opts.buildBackupText();
         if (!text) return;
         const name = NAMES.backup + today + (NAMES.backupExt || ".txt");
         const same = files.find((f) => f.name === name);
-        await drive.upload(name, text, "text/plain", folderId, same ? same.id : void 0);
-        const names = files.filter((f) => f.name.startsWith(NAMES.backup) && f.name !== name).sort((a, b) => b.name.localeCompare(a.name));
-        for (const old of names.slice(BACKUP_KEEP - 1)) {
-          try {
-            await drive.remove(old.id);
-          } catch (e) {
-          }
-        }
+        const up = await drive.upload(name, text, "text/plain", folderId, same ? same.id : void 0);
+        await pruneBackups(drive, files.filter((f) => !(same && f.id === same.id)), { id: up.id, name, modifiedTime: "9999" });
         cfg.lastBackupDay = today;
         saveCfg();
         if (opts.onBackedUp) opts.onBackedUp();
       } catch (e) {
         if (e instanceof SyncError && (e.kind === "auth" || e.kind === "network")) throw e;
-      }
-    }
-    let calVerified = "";
-    const tzOf = () => {
-      try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tokyo";
-      } catch (e) {
-        return "Asia/Tokyo";
-      }
-    };
-    const calFileName = () => NAMES.calendar || "calendar.json";
-    let calConfCache = null;
-    async function readCalConf(drive, folderId) {
-      if (calConfCache && now() - calConfCache.at < 10 * 60 * 1e3) return { f: calConfCache.f, conf: { ...calConfCache.conf } };
-      const files = await drive.list(folderId);
-      const f = files.find((x) => x.name === calFileName()) || null;
-      let conf = {};
-      if (f) {
-        try {
-          conf = JSON.parse(await drive.download(f.id)) || {};
-        } catch (e) {
-          conf = {};
-        }
-      }
-      calConfCache = { at: now(), f, conf: { ...conf } };
-      return { f, conf };
-    }
-    async function writeCalConf(drive, folderId, f, conf) {
-      const up = await drive.upload(calFileName(), JSON.stringify(conf), "application/json", folderId, f ? f.id : void 0);
-      calConfCache = { at: now(), f: f || { id: up.id, name: calFileName() }, conf: { ...conf } };
-    }
-    async function pushCalendar(drive, token) {
-      if (!canCalendar || !(cfg.calendar || cfg.calRemove)) return;
-      if (!authHasCal()) return;
-      const capi = createCalendarApi(fetchFn, () => auth.getStored() || token);
-      const folderId = await ensureFolder(drive);
-      let { f, conf } = await readCalConf(drive, folderId);
-      if (cfg.calRemove && !cfg.calendar) {
-        const id = conf.calendarId || cfg.calId;
-        if (id) await capi.removeCal(id);
-        if (conf.calendarId) {
-          conf = { ...conf, calendarId: "" };
-          await writeCalConf(drive, folderId, f, conf);
-        }
-        cfg.calRemove = false;
-        cfg.calId = "";
-        cfg.calHash = "";
-        cfg.calDay = "";
-        cfg.calCount = 0;
-        cfg.calMessage = "";
-        saveCfg();
-        return;
-      }
-      cfg.calRemove = false;
-      let confDirty = false;
-      if (cfg.calMinutesDirty) {
-        conf.minutes = cfg.calMinutes;
-        confDirty = true;
-        cfg.calMinutesDirty = false;
-      } else if (CAL_MINUTES.includes(Number(conf.minutes))) cfg.calMinutes = Number(conf.minutes);
-      let calId = conf.calendarId || "";
-      if (calId && calVerified !== calId) {
-        if (await capi.alive(calId)) calVerified = calId;
-        else calId = "";
-      }
-      if (!calId) {
-        const c = await capi.create(CAL_NAME, tzOf());
-        calId = c.id;
-        calVerified = calId;
-        conf.calendarId = calId;
-        confDirty = true;
-        cfg.calHash = "";
-      }
-      if (confDirty) await writeCalConf(drive, folderId, f, conf);
-      cfg.calId = calId;
-      const today = dayStr(now());
-      const tz = tzOf();
-      const evs = await opts.buildCalendarEvents({ from: today, days: CAL_DAYS }) || [];
-      const desired = evs.map((e) => calEventBody(e, cfg.calMinutes, tz));
-      const allHash = setHash(desired.map((d) => d.id + ":" + d.h)) + "|" + calId;
-      if (cfg.calHash === allHash && cfg.calDay === today) {
-        saveCfg();
-        return;
-      }
-      const start = new Date(now());
-      start.setHours(0, 0, 0, 0);
-      const existing = await capi.list(calId, start.toISOString());
-      const plan = planCalendar(existing, desired);
-      let ops = 0;
-      for (const d of plan.inserts) {
-        if (ops++ >= CAL_MAX_OPS) break;
-        try {
-          await capi.insert(calId, d.id, d.body);
-        } catch (e) {
-          if (e instanceof SyncError && e.kind === "conflict") await capi.update(calId, d.id, d.body);
-          else throw e;
-        }
-      }
-      for (const d of plan.updates) {
-        if (ops++ >= CAL_MAX_OPS) break;
-        await capi.update(calId, d.id, d.body);
-      }
-      for (const id of plan.deletes) {
-        if (ops++ >= CAL_MAX_OPS) break;
-        await capi.remove(calId, id);
-      }
-      const done = ops <= CAL_MAX_OPS;
-      cfg.calHash = done ? allHash : "";
-      cfg.calDay = today;
-      cfg.calCount = desired.length;
-      cfg.calAt = now();
-      cfg.calMessage = "";
-      saveCfg();
-    }
-    async function runCalendar(drive, token) {
-      try {
-        await pushCalendar(drive, token);
-      } catch (e) {
-        const err = classify(e);
-        if (err.kind === "auth") throw err;
-        if (err.kind === "calauth") {
-          try {
-            auth.clear();
-          } catch (e2) {
-          }
-        }
-        cfg.calMessage = err.kind === "network" ? "" : err.message;
-        saveCfg();
       }
     }
     function classify(e) {
@@ -1021,7 +766,6 @@ var GSync = (() => {
     }
     async function runOnce(reason, interactive) {
       let token = auth.getStored();
-      if (token && interactive && wantsCal() && !authHasCal()) token = null;
       if (!token && !interactive) {
         setStatus({ phase: "needsAuth", message: "ログインが必要です" });
         return;
@@ -1030,11 +774,6 @@ var GSync = (() => {
         if (auth.preload && auth.isReady && !auth.isReady()) await auth.preload();
         const r = await auth.request({ interactive, hint: cfg.email });
         token = r && r.token;
-        if (token && cfg.calendar && canCalendar && !authHasCal()) {
-          cfg.calendar = false;
-          cfg.calMessage = "カレンダーへの書き込みが許可されませんでした";
-          saveCfg();
-        }
         if (!token) {
           const why = r && r.why || "";
           if (why === "noclient") {
@@ -1070,10 +809,6 @@ var GSync = (() => {
         }
         let ok = false;
         for (let i = 0; i < 3 && !ok; i++) ok = await cycle(drive, token);
-        if (wantsCal()) {
-          setStatus({ progress: 0.98, step: "カレンダーに写しています" });
-          await runCalendar(drive, token);
-        }
         cfg.lastSyncAt = now();
         if (lastMoved.sent > 0) {
           cfg.sentN = lastMoved.sent;
@@ -1176,41 +911,6 @@ var GSync = (() => {
         saveCfg();
         setStatus({});
       },
-      /* カレンダーへ写す（10.57.0〜）。入れるのは指の操作の中から、await を挟まずに呼ぶこと（許可の画面を開くため） */
-      setCalendar(on) {
-        if (!canCalendar) return Promise.resolve();
-        if (on) {
-          cfg.calendar = true;
-          cfg.calRemove = false;
-          cfg.calMessage = "";
-          cfg.calHash = "";
-        } else {
-          cfg.calendar = false;
-          cfg.calRemove = true;
-          cfg.calHash = "";
-          cfg.calMessage = "";
-        }
-        saveCfg();
-        setStatus({});
-        return syncNow({ reason: "manual", interactive: !!on && !authHasCal() });
-      },
-      /* 「カレンダーを許可」のボタン。指の操作の中から呼ぶ */
-      allowCalendar() {
-        cfg.calMessage = "";
-        saveCfg();
-        setStatus({});
-        return syncNow({ reason: "manual", interactive: true });
-      },
-      setCalendarMinutes(m) {
-        const v = Number(m);
-        if (!CAL_MINUTES.includes(v)) return Promise.resolve();
-        cfg.calMinutes = v;
-        cfg.calMinutesDirty = true;
-        cfg.calHash = "";
-        saveCfg();
-        setStatus({});
-        return syncNow({ reason: "manual" });
-      },
       /* 「接続」ボタンの中から呼ぶ。**awaitを挟まずに呼ぶこと**（ポップアップは指の操作の流れの中でしか開かない） */
       connect() {
         cfg.enabled = true;
@@ -1233,14 +933,6 @@ var GSync = (() => {
       },
       /* 解除はログインなしでできること（Googleへは何も問い合わせない） */
       async disconnect() {
-        if (canCalendar && cfg.calendar && cfg.calId && auth.getStored() && authHasCal()) {
-          try {
-            await createCalendarApi(fetchFn, () => auth.getStored()).removeCal(cfg.calId);
-          } catch (e) {
-          }
-        }
-        calConfCache = null;
-        calVerified = "";
         memBase = void 0;
         cfg.enabled = false;
         cfg.email = "";
@@ -1251,12 +943,6 @@ var GSync = (() => {
         cfg.sentAt = 0;
         cfg.recvN = 0;
         cfg.recvAt = 0;
-        cfg.calendar = false;
-        cfg.calRemove = false;
-        cfg.calHash = "";
-        cfg.calId = "";
-        cfg.calCount = 0;
-        cfg.calMessage = "";
         saveCfg();
         folderVerified = false;
         clearTimeout(timer);

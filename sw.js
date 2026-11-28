@@ -110,3 +110,4 @@ async function fontFile(req) {
   if (res && (res.ok || res.type === "opaque")) cache.put(req, res.clone());
   return res;
 }
+

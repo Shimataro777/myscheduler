@@ -1,7 +1,7 @@
 /* gsync.js の試験。  node gsync.test.mjs
    本物のGoogleドライブの代わりに、同じ形で答える偽のドライブを使い、2〜3台の端末のふるまいを再現する */
 import assert from "node:assert/strict";
-import { createGoogleSync, mergeKeyed, mergeValue, DATA_FILE, BACKUP_PREFIX, SYNC_FOLDER, MYTECHO_SCHEMA, calEventId, planCalendar } from "./gsync.src.mjs";
+import { createGoogleSync, mergeKeyed, mergeValue, DATA_FILE, BACKUP_PREFIX, SYNC_FOLDER, MYTECHO_SCHEMA } from "./gsync.src.mjs";
 
 /* ---------- 偽のGoogleドライブ ---------- */
 function fakeDrive() {
@@ -62,43 +62,6 @@ function fakeDrive() {
   return api;
 }
 
-
-/* ---------- 偽のGoogleカレンダー（ドライブの偽物にかぶせる） ---------- */
-function withCalendar(drive) {
-  const cals = new Map();
-  let n = 0;
-  const api = { cals, calls: 0 };
-  const j = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { "Content-Type": "application/json" } });
-  const inner = drive.fetch;
-  drive.cal = api;
-  drive.fetch = async (url, init = {}) => {
-    const u = new URL(url);
-    if (!u.pathname.startsWith("/calendar/v3/")) return inner(url, init);
-    api.calls++;
-    const method = (init.method || "GET").toUpperCase();
-    const parts = u.pathname.slice("/calendar/v3/".length).split("/").map(decodeURIComponent);
-    if (parts[0] !== "calendars") return j({}, 400);
-    if (parts.length === 1 && method === "POST") { const id = "cal" + ++n; cals.set(id, { id, ...JSON.parse(init.body), events: new Map() }); return j({ id }); }
-    const c = cals.get(parts[1]);
-    if (!c) return j({ error: { status: "NOT_FOUND" } }, 404);
-    if (parts.length === 2) { if (method === "DELETE") { cals.delete(parts[1]); return new Response(null, { status: 204 }); } return j({ id: c.id }); }
-    if (parts.length === 3 && method === "GET") {
-      const tmin = u.searchParams.get("timeMin");
-      return j({ items: [...c.events.values()].filter((e) => new Date(e.end.dateTime + "Z") >= new Date(tmin) || true).map((e) => ({ id: e.id, status: e.status, extendedProperties: e.extendedProperties })) });
-    }
-    if (parts.length === 3 && method === "POST") {
-      const b = JSON.parse(init.body);
-      if (c.events.has(b.id)) return j({ error: { status: "ALREADY_EXISTS" } }, 409);
-      c.events.set(b.id, { ...b, status: "confirmed" }); return j({ id: b.id });
-    }
-    const e = c.events.get(parts[3]);
-    if (method === "PUT") { if (!e) return j({}, 404); c.events.set(parts[3], { ...JSON.parse(init.body), id: parts[3] }); return j({ id: parts[3] }); }
-    if (method === "DELETE") { if (!e || e.status === "cancelled") return j({}, 410); e.status = "cancelled"; return new Response(null, { status: 204 }); }
-    return j({}, 400);
-  };
-  api.live = (calId) => { const c = cals.get(calId || [...cals.keys()][0]); return c ? [...c.events.values()].filter((e) => e.status !== "cancelled") : []; };
-  return drive;
-}
 /* ---------- 端末 ---------- */
 const mem = () => { const m = new Map(); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) }; };
 let CLOCK = Date.UTC(2026, 10, 9, 12, 0, 0);
@@ -109,11 +72,10 @@ function device(name, drive, opt = {}) {
   };
   const photos = new Map();
   const kvm = new Map();
-  const dev = { name, st, photos, applied: 0, backedUp: 0, token: "tok", allow: true, cal: !!opt.cal, allowCal: true, requests: 0 };
+  const dev = { name, st, photos, applied: 0, backedUp: 0, token: "tok", allow: true };
   dev.auth = {
     getStored: () => dev.token, clear: () => { dev.token = null; }, isReady: () => true, preload: async () => true,
-    hasCal: () => !!dev.token && dev.cal,
-    request: async ({ interactive }) => { dev.requests++; if (dev.allow && (interactive || opt.silentOk)) { dev.token = "tok"; dev.cal = dev.allowCal; return { token: "tok" }; } return { token: null, why: "popup" }; },
+    request: async ({ interactive }) => { if (dev.allow && (interactive || opt.silentOk)) { dev.token = "tok"; return { token: "tok" }; } return { token: null, why: "popup" }; },
     revoke: () => {},
   };
   dev.sync = createGoogleSync({
@@ -125,8 +87,6 @@ function device(name, drive, opt = {}) {
     photoHas: async (id) => photos.has(id), photoGet: async (id) => photos.get(id) ?? null, photoPut: async (id, d) => { photos.set(id, d); },
     buildBackupText: async () => "BACKUP " + JSON.stringify(st.records.map((r) => r.id)),
     onBackedUp: () => { dev.backedUp++; },
-    names: opt.cal ? { calendar: "cal.json" } : undefined,
-    buildCalendarEvents: opt.cal ? async ({ from, days }) => (st.events || []).filter((e) => e.start.slice(0, 10) >= from) : undefined,
   });
   dev.sync.connect = dev.sync.connect.bind(dev.sync);
   dev.run = async () => { CLOCK += 60000; await dev.sync.syncManual(); return dev.sync.getStatus(); };
@@ -260,15 +220,36 @@ await test("変化が無ければ書き込まない（無限ループになら�
   assert.equal(A.applied, 0);
 });
 
-await test("1日1回の控え。日が変われば新しい控え、8日目に最古を消す", async () => {
+await test("1日1回の控え。日が変われば新しい控え、11日目に最古を消す（10日分）", async () => {
   const drive = fakeDrive();
   const A = device("A", drive);
   A.st.records = [rec("r1", "one")];
   await A.sync.connect();
-  for (let i = 0; i < 8; i++) { CLOCK += 24 * 3600 * 1000; A.st.records.push(rec("x" + i, "t")); await A.run(); }
+  for (let i = 0; i < 11; i++) { CLOCK += 24 * 3600 * 1000; A.st.records.push(rec("x" + i, "t")); await A.run(); }
   const backups = [...drive.files.values()].filter((f) => f.name && f.name.startsWith(BACKUP_PREFIX));
-  assert.equal(backups.length, 7);
-  assert.equal(A.backedUp, 9);
+  assert.equal(backups.length, 10);
+  assert.equal(A.backedUp, 12);
+});
+
+await test("10.60.0 溜まった控え（同じ日の重複・消しそびれ）も、次の同期で10日分にそろえる。控えを切っていても", async () => {
+  const drive = fakeDrive();
+  const A = device("A", drive);
+  A.st.records = [rec("r1", "one")];
+  await A.sync.connect();
+  const folder = [...drive.files.values()].find((f) => f.folder).id;
+  const d0 = Date.UTC(2026, 0, 1);
+  let k = 0;
+  for (let i = 0; i < 30; i++) for (let j = 0; j < 2; j++) {
+    const day = new Date(d0 + i * 86400000).toISOString().slice(0, 10);
+    const id = "old" + ++k;
+    drive.files.set(id, { id, name: BACKUP_PREFIX + day + ".txt", parents: [folder], content: "x", modifiedTime: new Date(d0 + k * 1000).toISOString(), createdTime: "2026-01-01T00:00:00Z" });
+  }
+  A.sync.setAutoBackup(false);
+  await A.run(); await A.run();
+  const left = [...drive.files.values()].filter((f) => f.name && f.name.startsWith(BACKUP_PREFIX));
+  assert.equal(left.length, 10, "10日分だけ残る");
+  assert.equal(new Set(left.map((f) => f.name)).size, 10, "同じ日の重複は1つに");
+  A.sync.setAutoBackup(true);
 });
 
 await test("ログインが切れたら『再ログインが必要』。ログインし直せば再開", async () => {
@@ -463,75 +444,6 @@ await test("2.30.0 ログインが切れていても、指の操作の外では�
   } finally { A.sync.stop(); A.auth.request = req; }
 });
 
-
-/* ---------- カレンダーへ写す（10.57.0〜） ---------- */
-const ev = (key, start, end, summary = "予定") => ({ key, start, end, summary });
-/* 日付は CLOCK（ほかの試験で進む）から決める。D(1) は明日 */
-const D = (n) => { const d = new Date(CLOCK + n * 86400000); const p = (x) => String(x).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); };
-await test("10.57.0 カレンダー：写す・2台でも重ならない・直す・消す", async () => {
-  const drive = withCalendar(fakeDrive());
-  const A = device("A", drive, { cal: true }), B = device("B", drive, { cal: true });
-  A.st.events = [ev("r1|2026-11-10", D(1) + "T19:30", D(1) + "T21:00", "祈祷会"), ev("r2|2026-11-12", D(3) + "T09:30", D(3) + "T10:30")];
-  B.st.events = JSON.parse(JSON.stringify(A.st.events));
-  await A.sync.connect(); await A.sync.setCalendar(true);
-  let s = A.sync.getStatus();
-  assert.equal(s.calendar, true); assert.equal(s.calCount, 2); assert.equal(s.calMessage, "");
-  assert.equal(drive.cal.cals.size, 1, "カレンダーは1つ");
-  let live = drive.cal.live();
-  assert.equal(live.length, 2);
-  const e1 = live.find((e) => e.id === calEventId("r1|2026-11-10"));
-  assert.equal(e1.summary, "祈祷会"); assert.deepEqual(e1.reminders.overrides, [{ method: "popup", minutes: 10 }]);
-  assert.equal(e1.start.dateTime, D(1) + "T19:30:00");
-  // 2台目：同じカレンダー・同じ予定に（重ならない）
-  await B.sync.connect(); await B.sync.setCalendar(true);
-  assert.equal(drive.cal.cals.size, 1, "2台目は同じカレンダーを使う");
-  assert.equal(drive.cal.live().length, 2, "予定が重ならない");
-  // 何分前を変えると、もう1台にもそろう
-  await A.sync.setCalendarMinutes(30);
-  assert.ok(drive.cal.live().every((e) => e.reminders.overrides[0].minutes === 30));
-  CLOCK += 11 * 60000; await B.run();
-  assert.equal(B.sync.getStatus().calMinutes, 30, "設定ファイルから受け取る");
-  // 直す・消す
-  A.st.events[0].summary = "祈祷会（変更）"; A.st.events.pop();
-  await A.run();
-  live = drive.cal.live();
-  assert.equal(live.length, 1); assert.equal(live[0].summary, "祈祷会（変更）");
-  // 変わっていなければ書きかえない
-  const before = drive.cal.calls; await A.run();
-  assert.ok(drive.cal.calls - before <= 1, "変化が無ければカレンダーに触らない（確認だけ）");
-  // やめるとカレンダーごと消える
-  await A.sync.setCalendar(false);
-  assert.equal(drive.cal.cals.size, 0, "やめたらカレンダーを消す");
-  assert.equal(A.sync.getStatus().calendar, false);
-});
-await test("10.57.0 カレンダー：向こうで消されたら作り直す／許可されなければ写さない", async () => {
-  const drive = withCalendar(fakeDrive());
-  const A = device("A", drive, { cal: true });
-  A.st.events = [ev("r1|2026-11-10", D(1) + "T19:30", D(1) + "T21:00")];
-  await A.sync.connect(); await A.sync.setCalendar(true);
-  drive.cal.cals.clear();
-  CLOCK += 11 * 60000;
-  // 同じ中身でも、新しいセッションでは確かめ直す
-  const A2 = device("A2", drive, { cal: true }); A2.st.events = A.st.events;
-  await A2.sync.connect(); await A2.sync.setCalendar(true);
-  assert.equal(drive.cal.cals.size, 1, "作り直した"); assert.equal(drive.cal.live().length, 1);
-  // 許可を外された端末
-  const C = device("C", drive, { cal: true }); C.cal = false; C.st.events = A.st.events; C.allowCal = false;
-  await C.sync.connect();
-  await C.sync.setCalendar(true);
-  const s = C.sync.getStatus();
-  assert.equal(s.calendar, false, "許可されなければ写すのをやめる");
-  assert.match(s.calMessage, /許可/);
-  assert.equal(s.phase, "idle", "ドライブの同期は続く");
-});
-await test("10.57.0 カレンダー：IDは base32hex・planCalendar", () => {
-  const id = calEventId("abc|2026-01-01");
-  assert.match(id, /^[0-9a-v]{5,1024}$/);
-  assert.equal(id, calEventId("abc|2026-01-01"));
-  assert.notEqual(id, calEventId("abc|2026-01-02"));
-  const p = planCalendar(new Map([["a", "1"], ["b", "2"], ["c", "3"]]), [{ id: "a", h: "1" }, { id: "b", h: "x" }, { id: "d", h: "4" }]);
-  assert.deepEqual([p.inserts.map((x) => x.id), p.updates.map((x) => x.id), p.deletes], [["d"], ["b"], ["c"]]);
-});
 await test("2.30.0 送っていない数・受け取った数", async () => {
   const drive = fakeDrive();
   const A = device("A", drive);
