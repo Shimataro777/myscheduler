@@ -17233,7 +17233,7 @@ const react_1 = __importStar(require("react"));
 const lucide_react_1 = require("lucide-react");
 /* ============================================================
    My手帳（旧 Hibi）— 日々の記録アプリ
-   ・記録はすべてこの端末の中だけに保存される（外に送らない）
+   ・記録はこの端末に保存される。Google連携をしたときだけ、本人のGoogleドライブにも同期する（開発者のサーバーには送らない）
    ・作りは Footprints（聖書学習記録アプリ）の作法に合わせてある。
      手ざわりの演出（ft-*）・ドラム・カレンダー・小窓の決まりは
      そちらの引き継ぎ資料と同じものを踏襲すること
@@ -28607,7 +28607,7 @@ function GsOptRow({ icon, label, sub, subTone, help, right, extra }) {
 const CAL_MIN_LABEL = (m) => (m === 60 ? "1時間前" : m + "分前");
 function CalendarRows({ sync, st, needReady, setNote }) {
     const ce = react_1.default.createElement;
-    const help = "時刻のある予定を、Googleカレンダーの「My手帳」というカレンダーに写します（今日から60日先まで）。通知は Googleカレンダーのアプリが出します。向こうで直しても、こちらには戻りません。切ると「My手帳」のカレンダーごと消えます。";
+    const help = "時刻のある予定を、Googleカレンダーの「My手帳」に写します（60日先まで）。通知は Googleカレンダーのアプリから届きます。向こうで直した内容は戻りません。切ると、写した予定も消えます。";
     const on = !!st.calendar;
     const toggle = (v) => {
         setNote("");
@@ -28655,7 +28655,7 @@ function GoogleSyncCard() {
             note && ce("p", { className: "fs-label gs-tone-warn mt-2 text-center" }, note)),
         st.enabled && ce("div", { className: "gs-opts" },
             ce(GsOptRow, { icon: ce(lucide_react_1.Layers, { size: 18 }), label: "毎日の控え", sub: "ドライブに7日分を残す",
-                help: "1日1回、バックアップファイルをドライブに残します（7日分）。「ファイルから読み込む」で戻せます。",
+                help: "1日1回、バックアップファイルをドライブに残します（7日分）。ドライブから保存して「ファイルから読み込む」で戻せます。",
                 right: ce(Switch, { on: st.autoBackup, onChange: (v) => sync.setAutoBackup(v), label: "毎日の控えもドライブに" }) }),
             ce(CalendarRows, { sync, st, needReady: act.needReady, setNote })),
         st.enabled && ce("div", { className: "gs-foot" },
@@ -28666,6 +28666,11 @@ function GoogleSyncCard() {
                 } setAskOff(false); sync.disconnect(); }, className: "gs-off ft-tap" + (askOff ? " ask" : "") }, askOff ? "もう一度押すと解除" : "Google連携を解除")));
 }
 function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backupAt, unsavedCount, zIndex }) {
+    /* 「この端末の記録」の？（10.59.0〜）。Google連携の有無で、実際の置き場所どおりに言い分ける。**短く** */
+    const syncSt = useSyncStatus();
+    const storeHelp = syncSt.hasClientId && syncSt.enabled
+        ? "記録はこの端末に保存され、Googleドライブにも同期されています。書き出したファイルは、手元の控えになります。"
+        : "記録はこの端末の中だけにあります。端末を替えたりデータを消したりすると失われます。" + (syncSt.hasClientId ? "Google連携か、ファイルへの書き出しで残せます。" : "ファイルに書き出して残せます。");
     const used = (0, react_1.useMemo)(() => usedBytes(data.records), [data.records]);
     const [closing, close] = useClosing(onClose, FT_EXIT_RIGHT_MS);
     const [, closeInstant] = useClosing(onClose);
@@ -28831,7 +28836,7 @@ function BackupScreen({ data, onClose, onRestore, onBackedUp, needBackup, backup
                 react_1.default.createElement("section", { className: "rounded-2xl bg-white card-soft" },
                     react_1.default.createElement("div", { className: "flex items-center gap-1 px-4 pt-4" },
                         react_1.default.createElement("h3", { className: "fs-body font-bold text-neutral-900" }, "この端末の記録"),
-                        react_1.default.createElement(HelpTip, { label: "この端末の記録", text: "記録はこの端末の中だけにあります。履歴を消したり端末を替えると失われます。ファイルに書き出しておくと、「ファイルから読み込む」で戻せます。" })),
+                        react_1.default.createElement(HelpTip, { label: "この端末の記録", text: storeHelp })),
                     react_1.default.createElement("div", { className: "flex flex-wrap gap-1.5 px-4 pt-2.5" },
                         react_1.default.createElement("span", { className: "gs-stat tabular-nums" }, "記録 ", react_1.default.createElement("b", null, n(data.records)), "件"),
                         react_1.default.createElement("span", { className: "gs-stat tabular-nums" }, "写真 ", react_1.default.createElement("b", null, used.photos), "枚"),
@@ -28897,7 +28902,11 @@ const HELP_SECTIONS = [
     },
     {
         title: "記録の置き場所",
-        body: "記録はこの端末の中だけにあり、外には送られません。\nブラウザの履歴を消したり端末を替えたりすると失われます。\nメニューの「バックアップ」から、ときどき書き出してください。",
+        body: "記録はこの端末に保存されます。\nGoogle連携をすると、ご自身のGoogleドライブにも同期されます。\n連携していないときは、端末を替えたりデータを消したりすると失われます。メニューの「バックアップ」から書き出しておいてください。",
+    },
+    {
+        title: "Google連携",
+        body: "メニューの「バックアップ」からGoogleアカウントとつなぐと、記録がGoogleドライブに同期されます。同じアカウントでつないだ端末どうしで、同じ記録を使えます。\n「カレンダーに写す」を入れると、時刻のある予定がGoogleカレンダーに写り、予定の前に通知が届きます。",
     },
 ];
 function HelpScreen({ onClose, zIndex }) {
