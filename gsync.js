@@ -22,6 +22,10 @@ var GSync = (() => {
   __export(gsync_src_exports, {
     BACKUP_KEEP: () => BACKUP_KEEP,
     BACKUP_PREFIX: () => BACKUP_PREFIX,
+    CAL_DAYS: () => CAL_DAYS,
+    CAL_MINUTES: () => CAL_MINUTES,
+    CAL_NAME: () => CAL_NAME,
+    CAL_SCOPE: () => CAL_SCOPE,
     DATA_FILE: () => DATA_FILE,
     FOOTPRINTS_SCHEMA: () => FOOTPRINTS_SCHEMA,
     MYTECHO_SCHEMA: () => MYTECHO_SCHEMA,
@@ -29,7 +33,10 @@ var GSync = (() => {
     SCOPE: () => SCOPE,
     SYNC_FOLDER: () => SYNC_FOLDER,
     SyncError: () => SyncError,
+    calEventBody: () => calEventBody,
+    calEventId: () => calEventId,
     contentHash: () => contentHash,
+    createCalendarApi: () => createCalendarApi,
     createDrive: () => createDrive,
     createGisAuth: () => createGisAuth,
     createGoogleSync: () => createGoogleSync,
@@ -40,6 +47,7 @@ var GSync = (() => {
     mergeKeyed: () => mergeKeyed,
     mergeSnapshots: () => mergeSnapshots,
     mergeValue: () => mergeValue,
+    planCalendar: () => planCalendar,
     setHash: () => setHash,
     stable: () => stable
   });
@@ -294,7 +302,7 @@ var GSync = (() => {
       try {
         res = await fetchFn(url, { ...init || {}, headers: { ...init && init.headers || {}, Authorization: "Bearer " + getToken() } });
       } catch (e) {
-        throw new SyncError("network", "\u901A\u4FE1\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F");
+        throw new SyncError("network", "通信できませんでした");
       }
       if (res.ok) return res;
       let reason = "";
@@ -303,15 +311,15 @@ var GSync = (() => {
         reason = j && j.error && (j.error.errors && j.error.errors[0] && j.error.errors[0].reason || j.error.status) || "";
       } catch (e) {
       }
-      if (res.status === 401) throw new SyncError("auth", "\u30ED\u30B0\u30A4\u30F3\u306E\u671F\u9650\u304C\u5207\u308C\u307E\u3057\u305F");
-      if (res.status === 404) throw new SyncError("notfound", "\u898B\u3064\u304B\u308A\u307E\u305B\u3093\u3067\u3057\u305F");
+      if (res.status === 401) throw new SyncError("auth", "ログインの期限が切れました");
+      if (res.status === 404) throw new SyncError("notfound", "見つかりませんでした");
       if (res.status === 403) {
-        if (/rate|quota/i.test(reason)) throw new SyncError("rate", "\u6DF7\u96D1\u4E2D\u3067\u3059\u3002\u3057\u3070\u3089\u304F\u5F85\u3063\u3066\u304F\u3060\u3055\u3044");
-        if (/accessNotConfigured|SERVICE_DISABLED/i.test(reason)) throw new SyncError("config", "Drive API \u304C\u6709\u52B9\u306B\u306A\u3063\u3066\u3044\u307E\u305B\u3093");
-        throw new SyncError("auth", "\u30C9\u30E9\u30A4\u30D6\u3078\u306E\u30A2\u30AF\u30BB\u30B9\u304C\u8A31\u53EF\u3055\u308C\u3066\u3044\u307E\u305B\u3093");
+        if (/rate|quota/i.test(reason)) throw new SyncError("rate", "混雑中です。しばらく待ってください");
+        if (/accessNotConfigured|SERVICE_DISABLED/i.test(reason)) throw new SyncError("config", "Drive API が有効になっていません");
+        throw new SyncError("auth", "ドライブへのアクセスが許可されていません");
       }
-      if (res.status === 429) throw new SyncError("rate", "\u6DF7\u96D1\u4E2D\u3067\u3059\u3002\u3057\u3070\u3089\u304F\u5F85\u3063\u3066\u304F\u3060\u3055\u3044");
-      throw new SyncError("drive", "Google\u30C9\u30E9\u30A4\u30D6\u3067\u30A8\u30E9\u30FC\u304C\u8D77\u304D\u307E\u3057\u305F\uFF08" + res.status + "\uFF09");
+      if (res.status === 429) throw new SyncError("rate", "混雑中です。しばらく待ってください");
+      throw new SyncError("drive", "Googleドライブでエラーが起きました（" + res.status + "）");
     }
     const json = async (url, init) => (await call(url, init)).json();
     return {
@@ -366,7 +374,7 @@ var GSync = (() => {
       }
     };
   }
-  function createGisAuth({ getClientId, ls, doc, win, tokenKey }) {
+  function createGisAuth({ getClientId, ls, doc, win, tokenKey, wantCal }) {
     const TOKEN_KEY = tokenKey || "ft-gsync-token";
     let client = null;
     let clientFor = "";
@@ -390,6 +398,11 @@ var GSync = (() => {
           ls.removeItem(TOKEN_KEY);
         } catch (e) {
         }
+      },
+      /* 今のトークンで、カレンダーにも書けるか（10.57.0〜） */
+      hasCal() {
+        const t = readTok();
+        return !!(t && t.cal && t.exp - 6e4 > Date.now());
       },
       isReady: () => !!gis(),
       /* 読み込んでおく。**ログインの操作より前に済ませること**
@@ -421,11 +434,13 @@ var GSync = (() => {
         const clientId = getClientId();
         if (!g || !clientId) return Promise.resolve({ token: null, why: !clientId ? "noclient" : "notready" });
         if (pending) return pending.promise;
-        if (!client || clientFor !== clientId) {
-          clientFor = clientId;
+        const scope = SCOPE + (wantCal && wantCal() ? " " + CAL_SCOPE : "");
+        if (!client || clientFor !== clientId + "|" + scope) {
+          clientFor = clientId + "|" + scope;
           client = g.initTokenClient({
             client_id: clientId,
-            scope: SCOPE,
+            scope,
+            include_granted_scopes: true,
             callback: (resp) => {
               const p = pending;
               if (!p) return;
@@ -438,11 +453,12 @@ var GSync = (() => {
                 return;
               }
               const exp = Date.now() + (Number(resp.expires_in) || 3600) * 1e3;
+              const cal = !!(g.hasGrantedAllScopes ? g.hasGrantedAllScopes(resp, CAL_SCOPE) : String(resp.scope || "").indexOf(CAL_SCOPE) >= 0);
               try {
-                ls.setItem(TOKEN_KEY, JSON.stringify({ t: resp.access_token, exp }));
+                ls.setItem(TOKEN_KEY, JSON.stringify({ t: resp.access_token, exp, cal }));
               } catch (e) {
               }
-              p.done({ token: resp.access_token, why: "" });
+              p.done({ token: resp.access_token, why: "", cal });
             },
             error_callback: (err) => {
               const p = pending;
@@ -481,6 +497,120 @@ var GSync = (() => {
       }
     };
   }
+  var CAL_SCOPE = "https://www.googleapis.com/auth/calendar.app.created";
+  var CAL_DAYS = 60;
+  var CAL_NAME = "My手帳";
+  var CAL_MINUTES = [5, 10, 30, 60];
+  var CAL_API = "https://www.googleapis.com/calendar/v3";
+  var CAL_MAX_OPS = 400;
+  function calEventId(key) {
+    const a = cyrb53(String(key)), b = cyrb53("mt:" + key);
+    const to32 = (s36) => parseInt(s36, 36).toString(32);
+    return "mt" + to32(a) + to32(b);
+  }
+  function calEventBody(ev, minutes, tz) {
+    const body = {
+      summary: ev.summary || "",
+      location: ev.location || void 0,
+      description: ev.description || void 0,
+      start: { dateTime: ev.start + ":00", timeZone: tz },
+      end: { dateTime: ev.end + ":00", timeZone: tz },
+      reminders: { useDefault: false, overrides: minutes > 0 ? [{ method: "popup", minutes }] : [] },
+      transparency: "opaque"
+    };
+    const h = hashOf(body);
+    body.extendedProperties = { private: { mt: "1", h } };
+    return { id: calEventId(ev.key), h, body };
+  }
+  function planCalendar(existing, desired) {
+    const want = new Map(desired.map((d) => [d.id, d]));
+    const inserts = [], updates = [], deletes = [];
+    for (const d of desired) {
+      if (!existing.has(d.id)) inserts.push(d);
+      else if (existing.get(d.id) !== d.h) updates.push(d);
+    }
+    for (const id of existing.keys()) if (!want.has(id)) deletes.push(id);
+    return { inserts, updates, deletes };
+  }
+  function createCalendarApi(fetchFn, getToken) {
+    async function call(url, init) {
+      let res;
+      try {
+        res = await fetchFn(url, { ...init || {}, headers: { ...init && init.headers || {}, Authorization: "Bearer " + getToken() } });
+      } catch (e) {
+        throw new SyncError("network", "通信できませんでした");
+      }
+      if (res.ok) return res;
+      let reason = "";
+      try {
+        const j = await res.clone().json();
+        reason = j && j.error && (j.error.errors && j.error.errors[0] && j.error.errors[0].reason || j.error.status) || "";
+      } catch (e) {
+      }
+      if (res.status === 401) throw new SyncError("auth", "ログインの期限が切れました");
+      if (res.status === 404 || res.status === 410) throw new SyncError("notfound", "見つかりませんでした");
+      if (res.status === 409) throw new SyncError("conflict", "すでにあります");
+      if (res.status === 403) {
+        if (/rate|quota/i.test(reason)) throw new SyncError("rate", "混雑中です。しばらく待ってください");
+        if (/accessNotConfigured|SERVICE_DISABLED/i.test(reason)) throw new SyncError("config", "Google Calendar API が有効になっていません");
+        throw new SyncError("calauth", "カレンダーへの書き込みが許可されていません");
+      }
+      if (res.status === 429) throw new SyncError("rate", "混雑中です。しばらく待ってください");
+      throw new SyncError("drive", "Googleカレンダーでエラーが起きました（" + res.status + "）");
+    }
+    const json = async (url, init) => (await call(url, init)).json();
+    const enc = encodeURIComponent;
+    const send = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    return {
+      async alive(calId) {
+        try {
+          await json(CAL_API + "/calendars/" + enc(calId) + "?fields=id");
+          return true;
+        } catch (e) {
+          if (e instanceof SyncError && e.kind === "notfound") return false;
+          throw e;
+        }
+      },
+      async create(summary, tz) {
+        return json(CAL_API + "/calendars?fields=id", send("POST", { summary, timeZone: tz, description: "My手帳 の予定の写し。ここで直しても My手帳 には戻りません。" }));
+      },
+      async removeCal(calId) {
+        try {
+          await call(CAL_API + "/calendars/" + enc(calId), { method: "DELETE" });
+        } catch (e) {
+          if (!(e instanceof SyncError && e.kind === "notfound")) throw e;
+        }
+      },
+      /* timeMin 以降に始まる（終わる）予定。id と h だけ */
+      async list(calId, timeMin) {
+        const out = /* @__PURE__ */ new Map();
+        let pageToken = "";
+        do {
+          const j = await json(CAL_API + "/calendars/" + enc(calId) + "/events?maxResults=2500&showDeleted=false&timeMin=" + enc(timeMin) + "&fields=nextPageToken,items(id,status,extendedProperties)" + (pageToken ? "&pageToken=" + enc(pageToken) : ""));
+          for (const it of j.items || []) {
+            if (it.status === "cancelled") continue;
+            const pv = it.extendedProperties && it.extendedProperties.private || {};
+            out.set(it.id, pv.h || "");
+          }
+          pageToken = j.nextPageToken || "";
+        } while (pageToken);
+        return out;
+      },
+      async insert(calId, id, body) {
+        await json(CAL_API + "/calendars/" + enc(calId) + "/events?fields=id", send("POST", { ...body, id }));
+      },
+      async update(calId, id, body) {
+        await json(CAL_API + "/calendars/" + enc(calId) + "/events/" + enc(id) + "?fields=id", send("PUT", { ...body, status: "confirmed" }));
+      },
+      async remove(calId, id) {
+        try {
+          await call(CAL_API + "/calendars/" + enc(calId) + "/events/" + enc(id), { method: "DELETE" });
+        } catch (e) {
+          if (!(e instanceof SyncError && e.kind === "notfound")) throw e;
+        }
+      }
+    };
+  }
   var STATE_KEY = "state";
   var AUTO_MIN_GAP_MS = 2e4;
   var DEBOUNCE_MS = 6e3;
@@ -508,7 +638,19 @@ var GSync = (() => {
       sentN: 0,
       sentAt: 0,
       recvN: 0,
-      recvAt: 0
+      recvAt: 0,
+      /* カレンダーへ写す（10.57.0〜）。calendar＝この端末で写す、calMinutes＝何分前（ドライブの設定ファイルとそろえる）、
+         calMinutesDirty＝この端末で変えて、まだ設定ファイルに書いていない、calRemove＝やめたのでカレンダーを消しに行く */
+      calendar: false,
+      calMinutes: 10,
+      calMinutesDirty: false,
+      calRemove: false,
+      calId: "",
+      calHash: "",
+      calDay: "",
+      calCount: 0,
+      calAt: 0,
+      calMessage: ""
     };
     try {
       Object.assign(cfg, JSON.parse(ls.getItem(CFG_KEY) || "{}"));
@@ -523,7 +665,10 @@ var GSync = (() => {
     const schema = opts.schema || FOOTPRINTS_SCHEMA;
     const NAMES = { folder: SYNC_FOLDER, data: DATA_FILE, backup: BACKUP_PREFIX, ...opts.names || {} };
     const clientId = () => cfg.clientId || opts.defaultClientId || "";
-    const auth = opts.auth || createGisAuth({ getClientId: clientId, ls, doc: opts.doc, win: opts.win, tokenKey: PREFIX + "-token" });
+    const auth = opts.auth || createGisAuth({ getClientId: clientId, ls, doc: opts.doc, win: opts.win, tokenKey: PREFIX + "-token", wantCal: () => cfg.calendar || cfg.calRemove });
+    const canCalendar = !!opts.buildCalendarEvents;
+    const authHasCal = () => auth.hasCal ? auth.hasCal() : true;
+    const wantsCal = () => canCalendar && (cfg.calendar || cfg.calRemove);
     let status = { phase: cfg.enabled ? "idle" : "off", message: "", pending: 0, askLogin: false };
     const setStatus = (patch) => {
       status = { ...status, ...patch };
@@ -548,7 +693,14 @@ var GSync = (() => {
       recvAt: cfg.recvAt,
       hasClientId: !!clientId(),
       clientIdFixed: !!opts.defaultClientId && !cfg.clientId,
-      ready: auth.isReady ? auth.isReady() : true
+      ready: auth.isReady ? auth.isReady() : true,
+      calendar: canCalendar && cfg.calendar,
+      calMinutes: cfg.calMinutes,
+      calCount: cfg.calCount,
+      calAt: cfg.calAt,
+      calMessage: cfg.calMessage,
+      /* 写す設定なのに、今のログインではカレンダーに書けない（「カレンダーを許可」のボタンを出す） */
+      calNeedsAuth: canCalendar && cfg.calendar && !!auth.getStored() && !authHasCal()
     });
     let statusCache = null;
     let running = null;
@@ -610,10 +762,10 @@ var GSync = (() => {
       try {
         d = JSON.parse(text);
       } catch (e) {
-        throw new SyncError("drive", "\u540C\u671F\u30C7\u30FC\u30BF\u3092\u8AAD\u3081\u307E\u305B\u3093\u3002\u4E0A\u66F8\u304D\u306F\u3057\u307E\u305B\u3093");
+        throw new SyncError("drive", "同期データを読めません。上書きはしません");
       }
       if (!d || typeof d !== "object" || d.format !== FORMAT || !Array.isArray(schema.collections[0].get(d))) {
-        throw new SyncError("drive", "\u540C\u671F\u30C7\u30FC\u30BF\u306E\u5F62\u5F0F\u304C\u65B0\u3057\u3059\u304E\u307E\u3059\u3002\u30A2\u30D7\u30EA\u3092\u66F4\u65B0\u3057\u3066\u304F\u3060\u3055\u3044");
+        throw new SyncError("drive", "同期データの形式が新しすぎます。アプリを更新してください");
       }
       return d;
     }
@@ -644,14 +796,19 @@ var GSync = (() => {
         const id = photoIdOfName(f.name);
         if (id) onDrive.set(id, f);
       }
-      /* 進み具合（7.0.0〜）。写真1枚＝1こま。画面には progress（0〜1）と step（いましていること）で知らせる */
       const __need = refs.filter((id) => !onDrive.has(id));
       const __tot = 4 + refs.length + __need.length;
       let __n = 2, __at = 0;
-      const __p = (label, force) => { const t = Date.now(); if (!force && t - __at < 150) return; __at = t; setStatus({ progress: Math.min(0.97, __n / __tot), step: label }); };
+      const __p = (label, force) => {
+        const t = Date.now();
+        if (!force && t - __at < 150) return;
+        __at = t;
+        setStatus({ progress: Math.min(0.97, __n / __tot), step: label });
+      };
       __p("受け取っています", true);
       for (const id of refs) {
-        __n++; __p("受け取っています");
+        __n++;
+        __p("受け取っています");
         if (await opts.photoHas(id)) continue;
         const f = onDrive.get(id);
         if (!f) continue;
@@ -665,14 +822,16 @@ var GSync = (() => {
       }
       for (const id of refs) {
         if (onDrive.has(id)) continue;
-        __n++; __p("送っています");
+        __n++;
+        __p("送っています");
         const data = await opts.photoGet(id);
         if (typeof data === "string" && data) {
           const up = await drive.upload(PHOTO_PREFIX + id + ".txt", data, "text/plain", folderId);
           onDrive.set(id, { id: up.id, name: PHOTO_PREFIX + id + ".txt", modifiedTime: up.modifiedTime });
         }
       }
-      __n = __tot - 2; __p("送っています", true);
+      __n = __tot - 2;
+      __p("送っています", true);
       let modified = dataFile ? dataFile.modifiedTime : "";
       if (res.remoteChanged || !dataFile) {
         const payload = { app: "bible-tracker-sync", format: FORMAT, updatedAt: new Date(now()).toISOString(), ...res.merged, tombs: res.tombs };
@@ -685,7 +844,8 @@ var GSync = (() => {
           }
         }
       }
-      __n = __tot - 1; __p("仕上げています", true);
+      __n = __tot - 1;
+      __p("仕上げています", true);
       await saveState({ base: res.base, tombs: res.tombs, lastRemoteModified: modified, lastLocalHash: contentHash(res.merged, schema), baseAt: now() });
       lastMoved = { sent, received };
       await cleanOrphans(drive, files, refs, res.merged);
@@ -727,38 +887,172 @@ var GSync = (() => {
         if (e instanceof SyncError && (e.kind === "auth" || e.kind === "network")) throw e;
       }
     }
+    let calVerified = "";
+    const tzOf = () => {
+      try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Tokyo";
+      } catch (e) {
+        return "Asia/Tokyo";
+      }
+    };
+    const calFileName = () => NAMES.calendar || "calendar.json";
+    let calConfCache = null;
+    async function readCalConf(drive, folderId) {
+      if (calConfCache && now() - calConfCache.at < 10 * 60 * 1e3) return { f: calConfCache.f, conf: { ...calConfCache.conf } };
+      const files = await drive.list(folderId);
+      const f = files.find((x) => x.name === calFileName()) || null;
+      let conf = {};
+      if (f) {
+        try {
+          conf = JSON.parse(await drive.download(f.id)) || {};
+        } catch (e) {
+          conf = {};
+        }
+      }
+      calConfCache = { at: now(), f, conf: { ...conf } };
+      return { f, conf };
+    }
+    async function writeCalConf(drive, folderId, f, conf) {
+      const up = await drive.upload(calFileName(), JSON.stringify(conf), "application/json", folderId, f ? f.id : void 0);
+      calConfCache = { at: now(), f: f || { id: up.id, name: calFileName() }, conf: { ...conf } };
+    }
+    async function pushCalendar(drive, token) {
+      if (!canCalendar || !(cfg.calendar || cfg.calRemove)) return;
+      if (!authHasCal()) return;
+      const capi = createCalendarApi(fetchFn, () => auth.getStored() || token);
+      const folderId = await ensureFolder(drive);
+      let { f, conf } = await readCalConf(drive, folderId);
+      if (cfg.calRemove && !cfg.calendar) {
+        const id = conf.calendarId || cfg.calId;
+        if (id) await capi.removeCal(id);
+        if (conf.calendarId) {
+          conf = { ...conf, calendarId: "" };
+          await writeCalConf(drive, folderId, f, conf);
+        }
+        cfg.calRemove = false;
+        cfg.calId = "";
+        cfg.calHash = "";
+        cfg.calDay = "";
+        cfg.calCount = 0;
+        cfg.calMessage = "";
+        saveCfg();
+        return;
+      }
+      cfg.calRemove = false;
+      let confDirty = false;
+      if (cfg.calMinutesDirty) {
+        conf.minutes = cfg.calMinutes;
+        confDirty = true;
+        cfg.calMinutesDirty = false;
+      } else if (CAL_MINUTES.includes(Number(conf.minutes))) cfg.calMinutes = Number(conf.minutes);
+      let calId = conf.calendarId || "";
+      if (calId && calVerified !== calId) {
+        if (await capi.alive(calId)) calVerified = calId;
+        else calId = "";
+      }
+      if (!calId) {
+        const c = await capi.create(CAL_NAME, tzOf());
+        calId = c.id;
+        calVerified = calId;
+        conf.calendarId = calId;
+        confDirty = true;
+        cfg.calHash = "";
+      }
+      if (confDirty) await writeCalConf(drive, folderId, f, conf);
+      cfg.calId = calId;
+      const today = dayStr(now());
+      const tz = tzOf();
+      const evs = await opts.buildCalendarEvents({ from: today, days: CAL_DAYS }) || [];
+      const desired = evs.map((e) => calEventBody(e, cfg.calMinutes, tz));
+      const allHash = setHash(desired.map((d) => d.id + ":" + d.h)) + "|" + calId;
+      if (cfg.calHash === allHash && cfg.calDay === today) {
+        saveCfg();
+        return;
+      }
+      const start = new Date(now());
+      start.setHours(0, 0, 0, 0);
+      const existing = await capi.list(calId, start.toISOString());
+      const plan = planCalendar(existing, desired);
+      let ops = 0;
+      for (const d of plan.inserts) {
+        if (ops++ >= CAL_MAX_OPS) break;
+        try {
+          await capi.insert(calId, d.id, d.body);
+        } catch (e) {
+          if (e instanceof SyncError && e.kind === "conflict") await capi.update(calId, d.id, d.body);
+          else throw e;
+        }
+      }
+      for (const d of plan.updates) {
+        if (ops++ >= CAL_MAX_OPS) break;
+        await capi.update(calId, d.id, d.body);
+      }
+      for (const id of plan.deletes) {
+        if (ops++ >= CAL_MAX_OPS) break;
+        await capi.remove(calId, id);
+      }
+      const done = ops <= CAL_MAX_OPS;
+      cfg.calHash = done ? allHash : "";
+      cfg.calDay = today;
+      cfg.calCount = desired.length;
+      cfg.calAt = now();
+      cfg.calMessage = "";
+      saveCfg();
+    }
+    async function runCalendar(drive, token) {
+      try {
+        await pushCalendar(drive, token);
+      } catch (e) {
+        const err = classify(e);
+        if (err.kind === "auth") throw err;
+        if (err.kind === "calauth") {
+          try {
+            auth.clear();
+          } catch (e2) {
+          }
+        }
+        cfg.calMessage = err.kind === "network" ? "" : err.message;
+        saveCfg();
+      }
+    }
     function classify(e) {
       if (e instanceof SyncError) return e;
-      return new SyncError("drive", e && e.message || "\u540C\u671F\u306B\u5931\u6557\u3057\u307E\u3057\u305F");
+      return new SyncError("drive", e && e.message || "同期に失敗しました");
     }
     async function runOnce(reason, interactive) {
       let token = auth.getStored();
+      if (token && interactive && wantsCal() && !authHasCal()) token = null;
       if (!token && !interactive) {
-        setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059" });
+        setStatus({ phase: "needsAuth", message: "ログインが必要です" });
         return;
       }
       if (!token) {
         if (auth.preload && auth.isReady && !auth.isReady()) await auth.preload();
         const r = await auth.request({ interactive, hint: cfg.email });
         token = r && r.token;
+        if (token && cfg.calendar && canCalendar && !authHasCal()) {
+          cfg.calendar = false;
+          cfg.calMessage = "カレンダーへの書き込みが許可されませんでした";
+          saveCfg();
+        }
         if (!token) {
           const why = r && r.why || "";
           if (why === "noclient") {
-            setStatus({ phase: "error", message: "\u30AF\u30E9\u30A4\u30A2\u30F3\u30C8ID\u304C\u8A2D\u5B9A\u3055\u308C\u3066\u3044\u307E\u305B\u3093" });
+            setStatus({ phase: "error", message: "クライアントIDが設定されていません" });
             return;
           }
           if (why === "scope") {
-            setStatus({ phase: "error", message: "Google\u30C9\u30E9\u30A4\u30D6\u3078\u306E\u30A2\u30AF\u30BB\u30B9\u3092\u8A31\u53EF\u3057\u3066\u304F\u3060\u3055\u3044" });
+            setStatus({ phase: "error", message: "Googleドライブへのアクセスを許可してください" });
             return;
           }
           const denied = why === "access_denied" || why === "denied";
           if (interactive && !cfg.email && why !== "notready") {
             cfg.enabled = false;
             saveCfg();
-            setStatus({ phase: "off", message: denied ? "Google\u306B\u30ED\u30B0\u30A4\u30F3\u3092\u62D2\u5426\u3055\u308C\u307E\u3057\u305F\u3002\u30A2\u30D7\u30EA\u306EGoogle\u8A2D\u5B9A\uFF08\u516C\u958B\u72B6\u614B\uFF09\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044" : "\u30ED\u30B0\u30A4\u30F3\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F" });
+            setStatus({ phase: "off", message: denied ? "Googleにログインを拒否されました。アプリのGoogle設定（公開状態）を確認してください" : "ログインできませんでした" });
             return;
           }
-          setStatus({ phase: "needsAuth", message: why === "notready" ? "\u6E96\u5099\u4E2D\u3067\u3059\u3002\u3082\u3046\u4E00\u5EA6\u62BC\u3057\u3066\u304F\u3060\u3055\u3044" : "\u30ED\u30B0\u30A4\u30F3\u304C\u5B8C\u4E86\u3057\u307E\u305B\u3093\u3067\u3057\u305F" });
+          setStatus({ phase: "needsAuth", message: why === "notready" ? "準備中です。もう一度押してください" : "ログインが完了しませんでした" });
           return;
         }
       }
@@ -776,6 +1070,10 @@ var GSync = (() => {
         }
         let ok = false;
         for (let i = 0; i < 3 && !ok; i++) ok = await cycle(drive, token);
+        if (wantsCal()) {
+          setStatus({ progress: 0.98, step: "カレンダーに写しています" });
+          await runCalendar(drive, token);
+        }
         cfg.lastSyncAt = now();
         if (lastMoved.sent > 0) {
           cfg.sentN = lastMoved.sent;
@@ -795,7 +1093,7 @@ var GSync = (() => {
           auth.clear();
           setStatus({ phase: "needsAuth", message: err.message });
         } else if (err.kind === "network") {
-          setStatus({ phase: "offline", message: "\u901A\u4FE1\u3067\u304D\u307E\u305B\u3093\u3002\u3064\u306A\u304C\u308C\u3070\u81EA\u52D5\u3067\u518D\u958B\u3057\u307E\u3059" });
+          setStatus({ phase: "offline", message: "通信できません。つながれば自動で再開します" });
         } else {
           setStatus({ phase: "error", message: err.message });
         }
@@ -835,7 +1133,7 @@ var GSync = (() => {
       hiddenAt = 0;
       if (!cfg.enabled) return;
       if (!auth.getStored()) {
-        if (away >= RESUME_ASK_MS) setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059", askLogin: true });
+        if (away >= RESUME_ASK_MS) setStatus({ phase: "needsAuth", message: "ログインが必要です", askLogin: true });
         return;
       }
       if (now() - cfg.lastSyncAt > 3e4 || ev && ev.type === "online") syncNow({ reason: "visible" });
@@ -878,6 +1176,41 @@ var GSync = (() => {
         saveCfg();
         setStatus({});
       },
+      /* カレンダーへ写す（10.57.0〜）。入れるのは指の操作の中から、await を挟まずに呼ぶこと（許可の画面を開くため） */
+      setCalendar(on) {
+        if (!canCalendar) return Promise.resolve();
+        if (on) {
+          cfg.calendar = true;
+          cfg.calRemove = false;
+          cfg.calMessage = "";
+          cfg.calHash = "";
+        } else {
+          cfg.calendar = false;
+          cfg.calRemove = true;
+          cfg.calHash = "";
+          cfg.calMessage = "";
+        }
+        saveCfg();
+        setStatus({});
+        return syncNow({ reason: "manual", interactive: !!on && !authHasCal() });
+      },
+      /* 「カレンダーを許可」のボタン。指の操作の中から呼ぶ */
+      allowCalendar() {
+        cfg.calMessage = "";
+        saveCfg();
+        setStatus({});
+        return syncNow({ reason: "manual", interactive: true });
+      },
+      setCalendarMinutes(m) {
+        const v = Number(m);
+        if (!CAL_MINUTES.includes(v)) return Promise.resolve();
+        cfg.calMinutes = v;
+        cfg.calMinutesDirty = true;
+        cfg.calHash = "";
+        saveCfg();
+        setStatus({});
+        return syncNow({ reason: "manual" });
+      },
       /* 「接続」ボタンの中から呼ぶ。**awaitを挟まずに呼ぶこと**（ポップアップは指の操作の流れの中でしか開かない） */
       connect() {
         cfg.enabled = true;
@@ -900,6 +1233,14 @@ var GSync = (() => {
       },
       /* 解除はログインなしでできること（Googleへは何も問い合わせない） */
       async disconnect() {
+        if (canCalendar && cfg.calendar && cfg.calId && auth.getStored() && authHasCal()) {
+          try {
+            await createCalendarApi(fetchFn, () => auth.getStored()).removeCal(cfg.calId);
+          } catch (e) {
+          }
+        }
+        calConfCache = null;
+        calVerified = "";
         memBase = void 0;
         cfg.enabled = false;
         cfg.email = "";
@@ -910,6 +1251,12 @@ var GSync = (() => {
         cfg.sentAt = 0;
         cfg.recvN = 0;
         cfg.recvAt = 0;
+        cfg.calendar = false;
+        cfg.calRemove = false;
+        cfg.calHash = "";
+        cfg.calId = "";
+        cfg.calCount = 0;
+        cfg.calMessage = "";
         saveCfg();
         folderVerified = false;
         clearTimeout(timer);
@@ -928,7 +1275,7 @@ var GSync = (() => {
         if (!cfg.enabled || !started) return;
         refreshPending();
         if (auth.getStored()) scheduleSoon();
-        else if (status.phase !== "needsAuth") setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059" });
+        else if (status.phase !== "needsAuth") setStatus({ phase: "needsAuth", message: "ログインが必要です" });
       },
       start() {
         if (started) return;
@@ -945,7 +1292,7 @@ var GSync = (() => {
         if (cfg.enabled) {
           refreshPending();
           if (auth.getStored()) syncNow({ reason: "start" });
-          else setStatus({ phase: "needsAuth", message: "\u30ED\u30B0\u30A4\u30F3\u304C\u5FC5\u8981\u3067\u3059", askLogin: true });
+          else setStatus({ phase: "needsAuth", message: "ログインが必要です", askLogin: true });
         }
       },
       stop() {
